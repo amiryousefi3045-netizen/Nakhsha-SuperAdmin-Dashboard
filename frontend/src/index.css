@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* Base tweaks for full-height app and Persian text */
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: #f5f6f8; /* light gray like Divar */
+  font-family: Vazirmatn, system-ui, -apple-system, Segoe UI, Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Map container fix for Leaflet inside flex layouts */
+#map {
+  inset: 0;
+}
+
+/* Nice thin scrollbar for panels */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5e7eb; /* gray-200 */
+  border-radius: 9999px;
+}
