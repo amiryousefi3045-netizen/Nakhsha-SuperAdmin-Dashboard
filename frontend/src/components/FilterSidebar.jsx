@@ -1,14 +1,20 @@
 const FilterSidebar = ({ filters, setFilters }) => {
-  const foodTypes = ["کباب", "خورشت", "پلو", "آش", "دسر", "نان"];
+  const craftTypes = [
+    "قالی و گلیم",
+    "سفال و سرامیک",
+    "منبت و خاتم",
+    "فلزکاری",
+    "پارچه‌بافی",
+    "مینیاتور و نقاشی",
+    "چرم‌دوزی",
+    "سایر",
+  ];
 
-  const difficulties = ["آسان", "متوسط", "سخت"];
-
-  const cookingTimes = [
-    "۱۵ دقیقه",
-    "۳۰ دقیقه",
-    "۴۵ دقیقه",
-    "۱ ساعت",
-    "بیش از ۱ ساعت",
+  const priceRanges = [
+    { value: "0-100", label: "زیر ۱۰۰٬۰۰۰ تومان" },
+    { value: "100-500", label: "۱۰۰٬۰۰۰ - ۵۰۰٬۰۰۰ تومان" },
+    { value: "500-1000", label: "۵۰۰٬۰۰۰ - ۱٬۰۰۰٬۰۰۰ تومان" },
+    { value: "1000+", label: "بیش از ۱٬۰۰۰٬۰۰۰ تومان" },
   ];
 
   return (
@@ -29,18 +35,20 @@ const FilterSidebar = ({ filters, setFilters }) => {
         />
       </div>
 
-      {/* Food Type Filter */}
+      {/* Craft Type Filter */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          نوع غذا
+          نوع صنایع دستی
         </label>
         <select
           className="w-full p-2 border rounded-md"
-          value={filters.foodType}
-          onChange={(e) => setFilters({ ...filters, foodType: e.target.value })}
+          value={filters.craftType}
+          onChange={(e) =>
+            setFilters({ ...filters, craftType: e.target.value })
+          }
         >
           <option value="">همه</option>
-          {foodTypes.map((type) => (
+          {craftTypes.map((type) => (
             <option key={type} value={type}>
               {type}
             </option>
@@ -48,60 +56,41 @@ const FilterSidebar = ({ filters, setFilters }) => {
         </select>
       </div>
 
-      {/* Cooking Time Filter */}
+      {/* Price Range Filter */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          زمان پخت
+          محدوده قیمت
         </label>
         <select
           className="w-full p-2 border rounded-md"
-          value={filters.cookingTime}
+          value={filters.priceRange}
           onChange={(e) =>
-            setFilters({ ...filters, cookingTime: e.target.value })
+            setFilters({ ...filters, priceRange: e.target.value })
           }
         >
           <option value="">همه</option>
-          {cookingTimes.map((time) => (
-            <option key={time} value={time}>
-              {time}
+          {priceRanges.map((range) => (
+            <option key={range.value} value={range.value}>
+              {range.label}
             </option>
           ))}
         </select>
       </div>
 
-      {/* Difficulty Filter */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          سطح سختی
-        </label>
-        <select
-          className="w-full p-2 border rounded-md"
-          value={filters.difficulty}
-          onChange={(e) =>
-            setFilters({ ...filters, difficulty: e.target.value })
-          }
-        >
-          <option value="">همه</option>
-          {difficulties.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Vegetarian Filter */}
+      {/* For Sale Filter */}
       <div className="mb-4">
         <label className="flex items-center space-x-2">
           <input
             type="checkbox"
-            checked={filters.isVegetarian}
+            checked={filters.forSale}
             onChange={(e) =>
-              setFilters({ ...filters, isVegetarian: e.target.checked })
+              setFilters({ ...filters, forSale: e.target.checked })
             }
             className="rounded text-primary-600"
           />
-          <span className="text-sm font-medium text-gray-700">گیاهی</span>
+          <span className="text-sm font-medium text-gray-700 mr-2">
+            برای فروش
+          </span>
         </label>
       </div>
     </div>

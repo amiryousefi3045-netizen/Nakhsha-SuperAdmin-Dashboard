@@ -202,25 +202,42 @@ router.get("/", async (req, res) => {
         mock: true,
       });
     }
-    const {
-      north,
-      south,
-      east,
-      west,
-      city,
-      difficulty,
-      isVegetarian,
-      q,
-      limit = 50,
-      page = 1,
-      sort: rawSort,
-      lng, // user position for distance
-      lat,
-      donation,
-      hosting,
-      barter,
-      sale,
-    } = req.query;
+    // Support both flat query params and nested objects from axios (e.g. bounds[north], filters[city])
+    const rawQuery = req.query || {};
+    const getBound = (k) => {
+      if (rawQuery[k] !== undefined) return rawQuery[k];
+      if (rawQuery.bounds && rawQuery.bounds[k] !== undefined)
+        return rawQuery.bounds[k];
+      const bracket = `bounds[${k}]`;
+      if (rawQuery[bracket] !== undefined) return rawQuery[bracket];
+      return undefined;
+    };
+    const getFilter = (k) => {
+      if (rawQuery[k] !== undefined) return rawQuery[k];
+      if (rawQuery.filters && rawQuery.filters[k] !== undefined)
+        return rawQuery.filters[k];
+      const bracket = `filters[${k}]`;
+      if (rawQuery[bracket] !== undefined) return rawQuery[bracket];
+      return undefined;
+    };
+
+    const north = getBound("north");
+    const south = getBound("south");
+    const east = getBound("east");
+    const west = getBound("west");
+    const city = getFilter("city");
+    const difficulty = getFilter("difficulty");
+    const isVegetarian = getFilter("isVegetarian");
+    const q = rawQuery.q || rawQuery.q || rawQuery.q;
+    const limit = rawQuery.limit || 50;
+    const page = rawQuery.page || 1;
+    const rawSort = rawQuery.sort;
+    const lng = rawQuery.lng; // user position for distance
+    const lat = rawQuery.lat;
+    const donation = rawQuery.donation;
+    const hosting = rawQuery.hosting;
+    const barter = rawQuery.barter;
+    const sale = rawQuery.sale;
 
     const filter = { isPublished: true };
 

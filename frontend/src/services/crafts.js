@@ -24,6 +24,39 @@ export async function fetchCrafts(opts = {}) {
   // opts: bounds, filters, page, limit, q, sort, lat, lng
   try {
     const { data } = await axios.get(`${API_BASE}/crafts`, { params: opts });
+    // If running in dev and backend returned no items, fallback to lightweight mock so map/dev UI is usable
+    if (
+      import.meta.env.DEV &&
+      Array.isArray(data.items) &&
+      data.items.length === 0
+    ) {
+      const mock = [
+        {
+          id: "dev-1",
+          title: "گلیم دست‌باف",
+          image: `${SERVER_ORIGIN}/uploads/carpet.jpg`,
+          location: "اصفهان، جلفا",
+          lat: 32.64,
+          lng: 51.67,
+        },
+        {
+          id: "dev-2",
+          title: "سفال لعابی",
+          image:
+            "https://images.unsplash.com/photo-1545239351-1141bd82e8a6?w=800&q=60",
+          location: "تهران، بازار",
+          lat: 35.73,
+          lng: 51.41,
+        },
+      ];
+      return {
+        items: mock,
+        total: mock.length,
+        page: opts.page || 1,
+        limit: opts.limit || mock.length,
+      };
+    }
+
     return {
       items: data.items || [],
       total: data.total || 0,
@@ -37,7 +70,7 @@ export async function fetchCrafts(opts = {}) {
       {
         id: "dev-1",
         title: "گلیم دست‌باف",
-        image: `${SERVER_ORIGIN}/uploads/kebab.jpg`,
+        image: `${SERVER_ORIGIN}/uploads/carpet.jpg`,
         location: "اصفهان، جلفا",
         lat: 32.64,
         lng: 51.67,
@@ -46,7 +79,7 @@ export async function fetchCrafts(opts = {}) {
         id: "dev-2",
         title: "سفال لعابی",
         image:
-          "https://images.unsplash.com/photo-1604908176997-431c3a7280e5?w=800&q=60",
+          "https://images.unsplash.com/photo-1545239351-1141bd82e8a6?w=800&q=60",
         location: "تهران، بازار",
         lat: 35.73,
         lng: 51.41,

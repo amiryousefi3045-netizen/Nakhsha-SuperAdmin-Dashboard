@@ -11,7 +11,7 @@ import { fetchCrafts, seedDev } from "../services/crafts";
 import { toFa } from "../utils/number";
 import useGeolocation from "../hooks/useGeolocation";
 
-const Home = () => {
+const HomeNew = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     position,
@@ -135,7 +135,7 @@ const Home = () => {
     setPage(1);
   }, [appliedBounds, filters, query, sort]);
 
-  // Auto-apply bounds after user stops panning/zooming
+  // Auto-apply bounds after user stops moving map
   useEffect(() => {
     if (!mapDirty || !bounds) return;
     if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
@@ -311,7 +311,7 @@ const Home = () => {
           header={
             <div className="space-y-3">
               <div className="text-center text-xs text-gray-700 font-medium">
-                {toFa(total)} اثر در این محدوده
+                {toFa(total)} دستور در این محدوده
               </div>
               <div className="flex gap-2 items-center text-[11px]">
                 <input
@@ -392,4 +392,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HomeNew;

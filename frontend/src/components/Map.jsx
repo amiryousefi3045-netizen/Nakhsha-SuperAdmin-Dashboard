@@ -29,6 +29,7 @@ const Map = forwardRef(
       className = "",
       onMoveEnd,
       center,
+      items = [],
       showMyLocationButton = false,
       onLocate,
     },
@@ -40,6 +41,7 @@ const Map = forwardRef(
     const timeoutsRef = useRef([]);
     const boundaryLayerRef = useRef(null);
     const outsideMaskRef = useRef(null);
+    const markersLayerRef = useRef(null);
     const currentCityRef = useRef(null);
 
     // Keep latest callback without re-initializing the map
@@ -84,14 +86,8 @@ const Map = forwardRef(
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
 
-      // Cluster placeholder markers (sample data until real API cluster)
-      const redDot = L.divIcon({
-        html: '<span style="display:block;width:10px;height:10px;background:#dc2626;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 1px rgba(0,0,0,0.1);"></span>',
-        className: "",
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      });
-      const markers = L.markerClusterGroup({
+      // Marker cluster layer for showing craft items (populated from props)
+      markersLayerRef.current = L.markerClusterGroup({
         iconCreateFunction: (cluster) => {
           const count = cluster.getChildCount();
           return L.divIcon({
@@ -104,18 +100,7 @@ const Map = forwardRef(
         },
         maxClusterRadius: 45,
       });
-      const sampleLocations = [
-        { lat: 35.6892, lng: 51.389, count: 25 },
-        { lat: 32.6539, lng: 51.666, count: 15 },
-        { lat: 29.5926, lng: 52.5836, count: 10 },
-      ];
-      sampleLocations.forEach((loc) => {
-        const marker = L.marker([loc.lat, loc.lng], { icon: redDot }).bindPopup(
-          `${loc.count} دستور غذا در این منطقه`
-        );
-        markers.addLayer(marker);
-      });
-      map.addLayer(markers);
+      map.addLayer(markersLayerRef.current);
 
       const emit = () => {
         const m = mapRef.current;
@@ -148,6 +133,40 @@ const Map = forwardRef(
     useEffect(() => {
       initMap();
     }, []);
+
+    // Update markers when items change
+    useEffect(() => {
+      const map = mapRef.current;
+      const layer = markersLayerRef.current;
+      if (!map || !layer) return;
+      // Clear existing markers
+      layer.clearLayers();
+
+      const defaultIcon = L.divIcon({
+        html: '<span style="display:block;width:10px;height:10px;background:#dc2626;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 1px rgba(0,0,0,0.1);"></span>',
+        className: "",
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      (items || [])
+        .filter((i) => i && i.lat && i.lng)
+        .forEach((it) => {
+          const marker = L.marker([it.lat, it.lng], {
+            icon: defaultIcon,
+          }).bindPopup(
+            `<div style="min-width:160px"><strong>${String(
+              it.title || it.name || ""
+            ).replace(
+              /</g,
+              "&lt;"
+            )}</strong><div style="font-size:12px;margin-top:6px;color:#444">${String(
+              it.location || ""
+            ).replace(/</g, "&lt;")}</div></div>`
+          );
+          layer.addLayer(marker);
+        });
+    }, [items]);
 
     // Recenter / animate if center prop changes after init + boundary highlight
     useEffect(() => {

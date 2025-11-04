@@ -1,13 +1,11 @@
 const FilterChips = ({ filters, onClear }) => {
   const items = [];
   if (filters.city) items.push({ key: "city", label: filters.city });
-  if (filters.foodType)
-    items.push({ key: "foodType", label: filters.foodType });
-  if (filters.cookingTime)
-    items.push({ key: "cookingTime", label: filters.cookingTime });
-  if (filters.difficulty)
-    items.push({ key: "difficulty", label: filters.difficulty });
-  if (filters.isVegetarian) items.push({ key: "isVegetarian", label: "گیاهی" });
+  if (filters.craftType)
+    items.push({ key: "craftType", label: filters.craftType });
+  if (filters.priceRange)
+    items.push({ key: "priceRange", label: filters.priceRange });
+  if (filters.forSale) items.push({ key: "forSale", label: "برای فروش" });
 
   if (items.length === 0) return null;
 

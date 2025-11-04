@@ -11,54 +11,40 @@ const FilterToolbar = ({ filters, setFilters }) => {
 
       <select
         className="w-28 border rounded-md px-2 py-1 bg-white"
-        value={filters.foodType}
-        onChange={(e) => setFilters({ ...filters, foodType: e.target.value })}
+        value={filters.craftType}
+        onChange={(e) => setFilters({ ...filters, craftType: e.target.value })}
       >
-        <option value="">نوع غذا</option>
-        <option>کباب</option>
-        <option>خورشت</option>
-        <option>پلو</option>
-        <option>آش</option>
-        <option>دسر</option>
-        <option>نان</option>
+        <option value="">نوع اثر</option>
+        <option>قالیچه</option>
+        <option>سفال</option>
+        <option>پارچه‌بافی</option>
+        <option>فلزکاری</option>
+        <option>چوب‌تراشی</option>
+        <option>نقاشی</option>
       </select>
 
       <select
         className="w-28 border rounded-md px-2 py-1 bg-white"
-        value={filters.cookingTime}
-        onChange={(e) =>
-          setFilters({ ...filters, cookingTime: e.target.value })
-        }
+        value={filters.priceRange}
+        onChange={(e) => setFilters({ ...filters, priceRange: e.target.value })}
       >
-        <option value="">زمان پخت</option>
-        <option>۱۵ دقیقه</option>
-        <option>۳۰ دقیقه</option>
-        <option>۴۵ دقیقه</option>
-        <option>۱ ساعت</option>
-        <option>بیش از ۱ ساعت</option>
-      </select>
-
-      <select
-        className="w-28 border rounded-md px-2 py-1 bg-white"
-        value={filters.difficulty}
-        onChange={(e) => setFilters({ ...filters, difficulty: e.target.value })}
-      >
-        <option value="">سختی</option>
-        <option>آسان</option>
-        <option>متوسط</option>
-        <option>سخت</option>
+        <option value="">بازه قیمت</option>
+        <option value="0-100">زیر ۱۰۰٬۰۰۰ تومان</option>
+        <option value="100-500">۱۰۰٬۰۰۰ - ۵۰۰٬۰۰۰ تومان</option>
+        <option value="500-1000">۵۰۰٬۰۰۰ - ۱٬۰۰۰٬۰۰۰ تومان</option>
+        <option value="1000+">بیش از ۱٬۰۰۰٬۰۰۰ تومان</option>
       </select>
 
       <label className="inline-flex items-center gap-1 mr-2">
         <input
           type="checkbox"
           className="rounded text-primary-600"
-          checked={filters.isVegetarian}
+          checked={filters.forSale}
           onChange={(e) =>
-            setFilters({ ...filters, isVegetarian: e.target.checked })
+            setFilters({ ...filters, forSale: e.target.checked })
           }
         />
-        گیاهی
+        برای فروش
       </label>
     </div>
   );

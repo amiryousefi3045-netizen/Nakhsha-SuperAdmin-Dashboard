@@ -13,12 +13,7 @@ import useGeolocation from "../hooks/useGeolocation";
 
 const Home = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const {
-    position,
-    error: geoError,
-    loading: geoLoading,
-    getPosition,
-  } = useGeolocation();
+  const { position, error: geoError, loading: geoLoading, getPosition } = useGeolocation();
 
   const [filters, setFilters] = useState({
     city: "",
@@ -47,33 +42,9 @@ const Home = () => {
     if (!position?.coords) return null;
     return {
       lat: position.coords.latitude,
-      lng: position.coords.longitude,
+      lng: position.coords.longitude
     };
   }, [position]);
-
-  // Update sort to 'distance' when we get location
-  useEffect(() => {
-    if (userPos && sort === "newest") {
-      setSort("distance");
-    }
-  }, [userPos, sort]);
-
-  // Set initial map bounds when we get location
-  useEffect(() => {
-    if (!userPos || appliedBounds) return;
-
-    // Different zoom levels based on location source
-    const delta = position?.source === "GPS" ? 0.02 : 0.2;
-
-    const initial = {
-      north: userPos.lat + delta,
-      south: userPos.lat - delta,
-      east: userPos.lng + delta,
-      west: userPos.lng - delta,
-    };
-    setBounds(initial);
-    setAppliedBounds(initial);
-  }, [userPos, position?.source, appliedBounds]);
 
   const effectiveParams = useMemo(
     () => ({
@@ -111,9 +82,163 @@ const Home = () => {
     }
   }, [searchParams]);
 
-  // Persist state to URL
+  // Ask for geolocation once (high priority: center & distance sort)
   useEffect(() => {
-    if (mapDirty) return;
+    if (askedGeo) return;
+    setAskedGeo(true);
+
+    // First try Iranian IP location service, then fallback to browser GPS
+    (async () => {
+      // Helper for GPS access with options
+      const tryGeo = (options = {}) =>
+        new Promise((resolve, reject) => {
+          if (!navigator.geolocation) reject(new Error("No geolocation API"));
+          try {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => resolve({ ok: true, pos }),
+              (err) => reject(err),
+              options
+            );
+          } catch (e) {
+            reject(e);
+          }
+        });
+
+      // Try direct GPS (no Google location service)
+      try {
+        const r = await new Promise((resolve, reject) => {
+          if (!navigator.geolocation) reject(new Error("No geolocation"));
+          
+          // Remove default Google location provider
+          const geoOptions = {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 30000,
+            mozSystem: true, // Firefox: use GPS directly
+            webkitSkipLowAccuracy: true // Chrome/Safari: prefer GPS
+          };
+          
+          const handleSuccess = (position) => {
+            // Some browsers might still fall back to Google - check response time
+            // If too fast (< 100ms) it's probably network location
+            const responseTime = Date.now() - startTime;
+            if (responseTime < 100) {
+              reject(new Error("Network location detected"));
+              return;
+            }
+            resolve(position);
+          };
+          
+          const startTime = Date.now();
+          navigator.geolocation.getCurrentPosition(
+            handleSuccess,
+            reject,
+            geoOptions
+          );
+        });
+        
+        const { latitude, longitude, accuracy } = r.coords;
+        console.debug("geo: Direct GPS success", {
+          latitude, longitude,
+          accuracy: Math.round(accuracy),
+          source: "direct-gps"
+        });
+        setUserPos({ lat: latitude, lng: longitude });
+        setGeoError("");
+        setSort((s) => (s === "newest" ? "distance" : s));
+        // Precise view for GPS
+        const delta = 0.02;
+        const initial = {
+          north: latitude + delta,
+          south: latitude - delta,
+          east: longitude + delta,
+          west: longitude - delta,
+        };
+        setBounds(initial);
+        setAppliedBounds(initial);
+        return;
+      } catch (err) {
+        console.debug("geo: Direct GPS failed, trying backup services", err);
+        
+        // Try multiple location services that work in Iran
+        try {
+          // Try NowAPI.ir (Iran service)
+          const resp = await fetch("http://ip.nowapi.ir/");
+          if (resp.ok) {
+            const { lat, lon } = await resp.json();
+          });
+          const { latitude, longitude, accuracy } = r.pos.coords;
+          console.debug("geo: LOW accuracy GPS success", {
+            latitude, longitude,
+            accuracy: Math.round(accuracy),
+            source: "GPS-coarse"
+          });
+          setUserPos({ lat: latitude, lng: longitude });
+          setGeoError("موقعیت با دقت کمتر");
+          setSort((s) => (s === "newest" ? "distance" : s));
+          // Wider view for less precise location
+          const delta = 0.05;
+          const initial = {
+            north: latitude + delta,
+            south: latitude - delta,
+            east: longitude + delta,
+            west: longitude - delta,
+          };
+          setBounds(initial);
+          setAppliedBounds(initial);
+          return;
+        } catch (err2) {
+          console.debug("geo: LOW accuracy failed too, trying IP", err2);
+          
+          // Last try: IP-based location (least accurate)
+          try {
+            const resp = await fetch("https://ipwho.is/");
+            if (resp.ok) {
+              const j = await resp.json();
+              const latitude = parseFloat(j.latitude || j.lat);
+              const longitude = parseFloat(j.longitude || j.lon);
+              if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+                console.debug("geo: IP-based location success", {
+                  latitude, longitude,
+                  source: "IP-fallback"
+                });
+                setUserPos({ lat: latitude, lng: longitude });
+                setGeoError("موقعیت تقریبی از روی IP تعیین شد (دقت خیلی کم)");
+                setSort((s) => (s === "newest" ? "distance" : s));
+                // Much wider view for IP-based location
+                const delta = 0.5;
+                const initial = {
+                  north: latitude + delta,
+                  south: latitude - delta,
+                  east: longitude + delta,
+                  west: longitude - delta,
+                };
+                setBounds(initial);
+                setAppliedBounds(initial);
+                return;
+              }
+            }
+          } catch {
+            // ignore IP lookup errors
+          }
+        }
+
+        if (err && err.code === 1) {
+          console.warn("geo: browser geolocation permission denied", err);
+          setGeoError(
+            "اجازه موقعیت رد شد – می‌توانید بعداً از دکمه ‘موقعیت من’ استفاده کنید."
+          );
+        } else {
+          console.warn("geo: browser geolocation failed", err);
+          setGeoError("دریافت موقعیت ممکن نشد.");
+        }
+      }
+    })();
+  }, [askedGeo]);
+
+  // Persist state to URL on changes (when mapDirty is false = applied)
+  useEffect(() => {
+    if (mapDirty) return; // only save applied state (during debounce we wait)
     const params = new URLSearchParams();
     if (filters.city) params.set("city", filters.city);
     if (filters.difficulty) params.set("difficulty", filters.difficulty);
@@ -129,20 +254,20 @@ const Home = () => {
     setSearchParams(params, { replace: true });
   }, [filters, appliedBounds, mapDirty, query, sort, setSearchParams]);
 
-  // Reset page when filters change
+  // Reset and fetch when filters/bounds/query change
   useEffect(() => {
     setItems([]);
     setPage(1);
   }, [appliedBounds, filters, query, sort]);
 
-  // Auto-apply bounds after user stops panning/zooming
+  // Auto-apply bounds after user stops panning/zooming (debounce)
   useEffect(() => {
     if (!mapDirty || !bounds) return;
     if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
     boundsDebounceRef.current = setTimeout(() => {
       setAppliedBounds(bounds);
       setMapDirty(false);
-    }, 600);
+    }, 600); // 600ms idle after move
     return () => {
       if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
     };
@@ -154,7 +279,6 @@ const Home = () => {
     return () => clearTimeout(t);
   }, [typingQuery]);
 
-  // Fetch items
   useEffect(() => {
     let ignore = false;
     const run = async () => {
@@ -164,6 +288,7 @@ const Home = () => {
       setItems((prev) => (page === 1 ? res.items : [...prev, ...res.items]));
       setTotal(res.total);
       setHasMore((res.page || 1) * (res.limit || limit) < (res.total || 0));
+      // If DB is empty in dev, auto-seed once and refetch
       if (import.meta.env.DEV && !triedSeed && (res.total || 0) === 0) {
         try {
           await seedDev();
@@ -176,7 +301,7 @@ const Home = () => {
             (seeded.page || 1) * (seeded.limit || limit) < (seeded.total || 0)
           );
         } catch {
-          // ignore seeding errors
+          // ignore seeding errors silently in UI
         }
       }
       if (!ignore) setLoading(false);
@@ -187,7 +312,7 @@ const Home = () => {
     };
   }, [effectiveParams, triedSeed, page, limit]);
 
-  // Desktop layout
+  // Desktop layout unchanged, mobile uses bottom sheet over full map
   return (
     <>
       <div className="hidden md:grid h-full grid-rows-[1fr] grid-cols-[420px_1fr]">
@@ -232,14 +357,15 @@ const Home = () => {
                 if (key === "__all__") {
                   setFilters({
                     city: "",
-                    craftType: "",
-                    priceRange: "",
-                    forSale: false,
+                    foodType: "",
+                    cookingTime: "",
+                    difficulty: "",
+                    isVegetarian: false,
                   });
                 } else {
                   setFilters({
                     ...filters,
-                    [key]: key === "forSale" ? false : "",
+                    [key]: key === "isVegetarian" ? false : "",
                   });
                 }
               }}
@@ -268,7 +394,88 @@ const Home = () => {
             center={userPos}
             items={items}
             showMyLocationButton
-            onLocate={getPosition}
+            onLocate={() => {
+              (async () => {
+                const tryGeo = (options = {}) =>
+                  new Promise((resolve, reject) => {
+                    try {
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => resolve({ ok: true, pos }),
+                        (err) => reject(err),
+                        options
+                      );
+                    } catch (e) {
+                      reject(e);
+                    }
+                  });
+
+                // First: Try high accuracy GPS
+                try {
+                  const r = await tryGeo({
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 30000
+                  });
+                  const { latitude, longitude, accuracy } = r.pos.coords;
+                  console.debug("geo: locate button - HIGH accuracy GPS success", {
+                    latitude, longitude,
+                    accuracy: Math.round(accuracy),
+                    source: "GPS-precise"
+                  });
+                  setUserPos({ lat: latitude, lng: longitude });
+                  setSort((s) => (s === "newest" ? "distance" : s));
+                  setGeoError("");
+                  return;
+                } catch (err) {
+                  console.debug("geo: locate button - HIGH accuracy failed, trying LOW", err);
+                  
+                  // Second: Try low accuracy GPS
+                  try {
+                    const r = await tryGeo({
+                      enableHighAccuracy: false,
+                      timeout: 5000,
+                      maximumAge: 60000
+                    });
+                    const { latitude, longitude, accuracy } = r.pos.coords;
+                    console.debug("geo: locate button - LOW accuracy GPS success", {
+                      latitude, longitude,
+                      accuracy: Math.round(accuracy),
+                      source: "GPS-coarse"
+                    });
+                    setUserPos({ lat: latitude, lng: longitude });
+                    setSort((s) => (s === "newest" ? "distance" : s));
+                    setGeoError("موقعیت با دقت کمتر");
+                    return;
+                  } catch (err2) {
+                    console.debug("geo: locate button - LOW accuracy failed too, trying IP", err2);
+                    
+                    // Last: Try IP-based location
+                    try {
+                      const resp = await fetch("https://ipwho.is/");
+                      if (resp.ok) {
+                        const j = await resp.json();
+                        const latitude = parseFloat(j.latitude || j.lat);
+                        const longitude = parseFloat(j.longitude || j.lon);
+                        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+                          console.debug("geo: locate button - IP location success", {
+                            latitude, longitude,
+                            source: "IP-fallback"
+                          });
+                          setUserPos({ lat: latitude, lng: longitude });
+                          setSort((s) => (s === "newest" ? "distance" : s));
+                          setGeoError("موقعیت تقریبی از روی IP تعیین شد (دقت خیلی کم)");
+                          return;
+                        }
+                      }
+                    } catch {
+                      // ignore IP errors
+                    }
+                    console.warn("geo: locate button - all methods failed");
+                    setGeoError("پیدا کردن موقعیت ممکن نشد");
+                  }
+                }
+              })();
+            }}
             onMoveEnd={({ bounds }) => {
               setBounds(bounds);
               setMapDirty(true);
@@ -287,17 +494,66 @@ const Home = () => {
         </section>
       </div>
 
-      {/* Mobile layout */}
+      {/* Mobile full-screen map + draggable sheet */}
       <div className="md:hidden relative h-full w-full">
         <div className="absolute inset-0">
           <Map
             center={userPos}
             items={items}
-            showMyLocationButton
-            onLocate={getPosition}
             onMoveEnd={({ bounds }) => {
               setBounds(bounds);
               setMapDirty(true);
+            }}
+            showMyLocationButton
+            onLocate={() => {
+              (async () => {
+                const tryGeo = (options = {}) =>
+                  new Promise((resolve, reject) => {
+                    try {
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => resolve({ ok: true, pos }),
+                        (err) => reject(err),
+                        options
+                      );
+                    } catch (e) {
+                      reject(e);
+                    }
+                  });
+
+                try {
+                  const r = await tryGeo({
+                    enableHighAccuracy: true,
+                    timeout: 7000,
+                  });
+                  const { latitude, longitude } = r.pos.coords;
+                  setUserPos({ lat: latitude, lng: longitude });
+                  setSort((s) => (s === "newest" ? "distance" : s));
+                  setGeoError("");
+                } catch {
+                  try {
+                    const resp = await fetch("https://ipwho.is/");
+                    if (resp.ok) {
+                      const j = await resp.json();
+                      const latitude = parseFloat(j.latitude || j.lat);
+                      const longitude = parseFloat(j.longitude || j.lon);
+                      if (
+                        Number.isFinite(latitude) &&
+                        Number.isFinite(longitude)
+                      ) {
+                        setUserPos({ lat: latitude, lng: longitude });
+                        setSort((s) => (s === "newest" ? "distance" : s));
+                        setGeoError(
+                          "موقعیت تقریبی از روی IP تعیین شد (دقت کمتر)"
+                        );
+                        return;
+                      }
+                    }
+                  } catch {
+                    // ignore
+                  }
+                  setGeoError("عدم دسترسی به موقعیت");
+                }
+              })();
             }}
           />
           {mapDirty && (
@@ -311,7 +567,7 @@ const Home = () => {
           header={
             <div className="space-y-3">
               <div className="text-center text-xs text-gray-700 font-medium">
-                {toFa(total)} اثر در این محدوده
+                {toFa(total)} دستور در این محدوده
               </div>
               <div className="flex gap-2 items-center text-[11px]">
                 <input
@@ -361,7 +617,7 @@ const Home = () => {
                   } else {
                     setFilters({
                       ...filters,
-                      [key]: key === "forSale" ? false : "",
+                      [key]: key === "isVegetarian" ? false : "",
                     });
                   }
                 }}

@@ -39,23 +39,23 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "admin"],
+      enum: ["user", "admin", "artisan"],
       default: "user",
     },
     isVerified: {
       type: Boolean,
       default: false,
     },
-    recipes: [
+    crafts: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Listing",
+        ref: "Craft",
       },
     ],
-    favoriteRecipes: [
+    favoriteCrafts: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Listing",
+        ref: "Craft",
       },
     ],
   },
