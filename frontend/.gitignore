@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Vite / Frontend-specific
+.vite/
+build/
+coverage/
+.cache/
+public/uploads/
+
+# Environment
+.env
+.env.*
+
+# Ignore system files
+Thumbs.db
+Desktop.ini
