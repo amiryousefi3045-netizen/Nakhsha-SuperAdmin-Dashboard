@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import Map from "../components/Map";
-import RecipeList from "../components/RecipeList";
+import CraftList from "../components/CraftList";
 import MobileBottomSheet from "../components/MobileBottomSheet";
 import FilterSidebar from "../components/FilterSidebar";
 import FilterToolbar from "../components/FilterToolbar";
@@ -246,7 +246,7 @@ const Home = () => {
             />
           </div>
           <div className="flex-1 overflow-y-auto thin-scrollbar">
-            <RecipeList items={items} loading={loading} />
+            <CraftList items={items} loading={loading} />
             <div className="p-3 flex justify-center">
               {hasMore && (
                 <button
@@ -369,7 +369,7 @@ const Home = () => {
             </div>
           }
         >
-          <RecipeList items={items} loading={loading} />
+          <CraftList items={items} loading={loading} />
           <div className="p-3 flex justify-center">
             {hasMore && (
               <button

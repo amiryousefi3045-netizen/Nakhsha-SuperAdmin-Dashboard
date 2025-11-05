@@ -1,20 +1,17 @@
-const RecipeMeta = ({ timeFa, difficulty, servings, category }) => {
-  return (
-    <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-      {timeFa && (
-        <span className="px-2 py-1 rounded-full bg-gray-100">زمان: {timeFa}</span>
-      )}
-      {difficulty && (
-        <span className="px-2 py-1 rounded-full bg-gray-100">سختی: {difficulty}</span>
-      )}
-      {servings && (
-        <span className="px-2 py-1 rounded-full bg-gray-100">نفرات: {servings}</span>
-      )}
-      {category && (
-        <span className="px-2 py-1 rounded-full bg-gray-100">دسته: {category}</span>
-      )}
-    </div>
-  );
-};
+// Compatibility wrapper re-exporting CraftMeta with legacy recipe prop mapping
+import CraftMeta from "./CraftMeta";
+
+/**
+ * @deprecated Use CraftMeta component instead.
+ * This is a compatibility wrapper that will be removed in a future version.
+ */
+const RecipeMeta = ({ timeFa, difficulty, servings, category }) => (
+  <CraftMeta
+    timeFa={timeFa}
+    type={difficulty}
+    size={servings ? `مناسب برای ${servings} نفر` : undefined}
+    category={category}
+  />
+);
 
 export default RecipeMeta;

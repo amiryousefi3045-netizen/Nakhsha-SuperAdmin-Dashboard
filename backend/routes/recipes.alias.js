@@ -1,5 +1,6 @@
 // Compatibility alias router for /api/recipes during migration.
-// Keeps `/api/recipes` working while `/api/crafts` is the canonical implementation.
+// This keeps the endpoint working while the original `recipes.js` is preserved
+// for manual review/merge. The alias simply forwards to the canonical crafts router.
 const express = require("express");
 const craftsRouter = require("./crafts");
 

@@ -45,16 +45,22 @@ app.use(
 // Import routes
 // Ensure models are registered before routes that populate them
 require("./models/User");
+// Register Craft model (wrapper) so crafts routes have the model available
+require("./models/Craft");
 const authRoutes = require("./routes/auth");
-const recipeRoutes = require("./routes/recipes");
 const craftRoutes = require("./routes/crafts");
+// `recipes` is kept as a compatibility alias which currently forwards to `crafts`.
+// We require it after `crafts` so the canonical implementation is loaded first.
+const recipeRoutes = require("./routes/recipes");
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 
 // Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/recipes", recipeRoutes);
+// Mount canonical crafts API first
 app.use("/api/crafts", craftRoutes);
+// Keep legacy /api/recipes as an alias to /api/crafts during migration
+app.use("/api/recipes", recipeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 

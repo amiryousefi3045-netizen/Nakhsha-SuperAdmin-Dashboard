@@ -1,8 +1,8 @@
 import axios from "axios";
 // Reuse auth interceptor
 import "./auth";
-// Re-export utilities from recipes service for convenience
-import { uploadImage, reverseGeocode } from "./recipes";
+// Re-export utilities from shared media helpers
+import { uploadImage, reverseGeocode } from "./media";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 let SERVER_ORIGIN = "";

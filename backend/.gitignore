@@ -1,0 +1,35 @@
+# Backend .gitignore for Nakhsha backend
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.*
+
+# Runtime / build
+dist/
+build/
+
+# Uploads / user files (do not commit)
+uploads/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+
+# PM2 / process files
+pids/
+*.pid
+

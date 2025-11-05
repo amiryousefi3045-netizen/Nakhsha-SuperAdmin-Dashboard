@@ -6,12 +6,12 @@ import {
 } from "react-router-dom";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
-import RecipeDetail from "./pages/RecipeDetail";
-import CreateRecipe from "./pages/CreateRecipe";
-import EditRecipe from "./pages/EditRecipe";
+import CraftDetail from "./pages/CraftDetail";
+import CreateCraft from "./pages/CreateCraft";
+import EditCraft from "./pages/EditCraft";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import MyRecipes from "./pages/MyRecipes";
+import MyCrafts from "./pages/MyCrafts";
 import AuthProvider from "./components/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
@@ -30,12 +30,12 @@ function App() {
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
-            <Route path="craft/:id" element={<RecipeDetail />} />
+            <Route path="craft/:id" element={<CraftDetail />} />
             <Route
               path="craft/:id/edit"
               element={
                 <RequireAuth>
-                  <EditRecipe />
+                  <EditCraft />
                 </RequireAuth>
               }
             />
@@ -43,7 +43,7 @@ function App() {
               path="create-craft"
               element={
                 <RequireAuth roles={["admin", "user"]}>
-                  <CreateRecipe />
+                  <CreateCraft />
                 </RequireAuth>
               }
             />
@@ -53,7 +53,7 @@ function App() {
               path="my"
               element={
                 <RequireAuth>
-                  <MyRecipes />
+                  <MyCrafts />
                 </RequireAuth>
               }
             />
@@ -65,6 +65,6 @@ function App() {
 }
 
 // Placeholder components until we create the actual pages
-const CreateRecipePlaceholder = () => null;
+const CreateCraftPlaceholder = () => null;
 
 export default App;

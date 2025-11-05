@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import Map from "../components/Map";
-import RecipeList from "../components/RecipeList";
+import CraftList from "../components/CraftList";
 import MobileBottomSheet from "../components/MobileBottomSheet";
 import FilterSidebar from "../components/FilterSidebar";
 import FilterToolbar from "../components/FilterToolbar";
@@ -246,7 +246,7 @@ const HomeNew = () => {
             />
           </div>
           <div className="flex-1 overflow-y-auto thin-scrollbar">
-            <RecipeList items={items} loading={loading} />
+            <CraftList items={items} loading={loading} />
             <div className="p-3 flex justify-center">
               {hasMore && (
                 <button
@@ -311,7 +311,7 @@ const HomeNew = () => {
           header={
             <div className="space-y-3">
               <div className="text-center text-xs text-gray-700 font-medium">
-                {toFa(total)} دستور در این محدوده
+                {toFa(total)} اثر در این محدوده
               </div>
               <div className="flex gap-2 items-center text-[11px]">
                 <input
@@ -369,7 +369,7 @@ const HomeNew = () => {
             </div>
           }
         >
-          <RecipeList items={items} loading={loading} />
+          <CraftList items={items} loading={loading} />
           <div className="p-3 flex justify-center">
             {hasMore && (
               <button
