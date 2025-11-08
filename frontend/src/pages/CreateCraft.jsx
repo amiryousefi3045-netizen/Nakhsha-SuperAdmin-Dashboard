@@ -70,7 +70,7 @@ const MapPicker = ({ value, onChange }) => {
   return <div id={id} className="w-full h-64 rounded-md" />;
 };
 
-const CreateRecipe = () => {
+const CreateCraft = () => {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     title: "",
@@ -692,4 +692,4 @@ const CreateRecipe = () => {
   );
 };
 
-export default CreateRecipe;
+export default CreateCraft;

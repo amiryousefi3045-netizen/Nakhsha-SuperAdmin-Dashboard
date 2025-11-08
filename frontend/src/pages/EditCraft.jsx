@@ -66,7 +66,7 @@ const MapPicker = ({ value, onChange }) => {
   return <div id={id} className="w-full h-64 rounded-md" />;
 };
 
-const EditRecipe = () => {
+const EditCraft = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -739,4 +739,4 @@ const EditRecipe = () => {
   );
 };
 
-export default EditRecipe;
+export default EditCraft;

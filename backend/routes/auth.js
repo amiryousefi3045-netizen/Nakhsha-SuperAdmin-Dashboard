@@ -27,6 +27,11 @@ function authMiddleware(req, res, next) {
 
 router.post("/register", async (req, res) => {
   try {
+    // If DB is not ready, return a clear 503 so client doesn't get a generic 500
+    if (!req.app?.locals?.dbReady) {
+      console.warn("POST /auth/register - DB not ready");
+      return res.status(503).json({ message: "Database unavailable" });
+    }
     console.log("Register request received:", JSON.stringify(req.body));
     const { name, email, phone, password, role } = req.body || {};
     const normEmail =
@@ -89,6 +94,11 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
+    // If DB is not ready, return 503 to signal service unavailable
+    if (!req.app?.locals?.dbReady) {
+      console.warn("POST /auth/login - DB not ready");
+      return res.status(503).json({ message: "Database unavailable" });
+    }
     const { email, phone, password } = req.body || {};
     const normEmail =
       typeof email === "string" ? email.toLowerCase().trim() : email;

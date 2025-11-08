@@ -70,8 +70,7 @@ export default function MyCrafts() {
           </div>
         )}
         <div className="bg-white rounded-lg border">
-                      <CraftList items={items} loading={loading} />
-          </div>
+          <CraftList items={items} loading={loading} />
         </div>
       </div>
     </div>
