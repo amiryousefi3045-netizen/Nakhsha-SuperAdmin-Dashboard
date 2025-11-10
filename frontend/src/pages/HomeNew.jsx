@@ -10,6 +10,7 @@ import FilterChips from "../components/FilterChips";
 import { fetchCrafts, seedDev } from "../services/crafts";
 import { toFa } from "../utils/number";
 import useGeolocation from "../hooks/useGeolocation";
+import { fetchCrafts, fetchCraftsNear } from "../services/crafts";
 
 const HomeNew = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,6 +20,9 @@ const HomeNew = () => {
     loading: geoLoading,
     getPosition,
   } = useGeolocation();
+
+  const [useMyLocation, setUseMyLocation] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(10);
 
   const [filters, setFilters] = useState({
     city: "",
@@ -154,16 +158,72 @@ const HomeNew = () => {
     return () => clearTimeout(t);
   }, [typingQuery]);
 
+  // Load initial state from URL (add radiusKm)
+  useEffect(() => {
+    const radius = parseInt(searchParams.get("radius"), 10);
+    if (radius >= 1 && radius <= 50) {
+      setRadiusKm(radius);
+    }
+  }, [searchParams]);
+
+  // Toggle location and update sort
+  useEffect(() => {
+    if (userPos && !geoError) {
+      setUseMyLocation(true);
+      if (sort === "newest") {
+        setSort("distance");
+      }
+    }
+  }, [userPos, geoError, sort]);
+
   // Fetch items
   useEffect(() => {
     let ignore = false;
     const run = async () => {
       setLoading(true);
-      const res = await fetchCrafts(effectiveParams);
+
+      let res;
+      if (useMyLocation && userPos) {
+        // Use near search when location is available
+        const items = await fetchCraftsNear({
+          lng: userPos.lng,
+          lat: userPos.lat,
+          radiusKm,
+          q: query,
+          category: filters.craftType,
+          min: filters.priceRange
+            ? parseInt(filters.priceRange.split("-")[0], 10)
+            : undefined,
+          max: filters.priceRange
+            ? parseInt(filters.priceRange.split("-")[1], 10)
+            : undefined,
+        });
+        res = { items, total: items.length };
+      } else {
+        // Fall back to regular search
+        res = await fetchCrafts(effectiveParams);
+      }
+
       if (ignore) return;
-      setItems((prev) => (page === 1 ? res.items : [...prev, ...res.items]));
+
+      // Format distance if available
+      const formattedItems = res.items.map((item) => ({
+        ...item,
+        distance: item.distanceMeters
+          ? `${(item.distanceMeters / 1000).toFixed(1)} کیلومتر`
+          : undefined,
+      }));
+
+      setItems((prev) =>
+        page === 1 ? formattedItems : [...prev, ...formattedItems]
+      );
       setTotal(res.total);
-      setHasMore((res.page || 1) * (res.limit || limit) < (res.total || 0));
+      setHasMore(
+        !useMyLocation &&
+          (res.page || 1) * (res.limit || limit) < (res.total || 0)
+      );
+
+      // Dev seeding
       if (import.meta.env.DEV && !triedSeed && (res.total || 0) === 0) {
         try {
           await seedDev();
@@ -179,13 +239,24 @@ const HomeNew = () => {
           // ignore seeding errors
         }
       }
+
       if (!ignore) setLoading(false);
     };
     run();
     return () => {
       ignore = true;
     };
-  }, [effectiveParams, triedSeed, page, limit]);
+  }, [
+    effectiveParams,
+    triedSeed,
+    page,
+    limit,
+    useMyLocation,
+    userPos,
+    radiusKm,
+    filters,
+    query,
+  ]);
 
   // Desktop layout
   return (
@@ -225,6 +296,37 @@ const HomeNew = () => {
                 value={typingQuery}
                 onChange={(e) => setTypingQuery(e.target.value)}
               />
+            </div>
+            <div className="flex items-center gap-3 mt-2 text-[11px]">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 text-blue-600 rounded"
+                  checked={useMyLocation}
+                  onChange={(e) => {
+                    setUseMyLocation(e.target.checked);
+                    if (e.target.checked && !userPos) {
+                      getPosition();
+                    }
+                  }}
+                />
+                <span>استفاده از موقعیت من</span>
+              </label>
+              {useMyLocation && userPos && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="50"
+                    value={radiusKm}
+                    onChange={(e) => setRadiusKm(parseInt(e.target.value, 10))}
+                    className="w-24"
+                  />
+                  <span className="text-gray-600">
+                    {toFa(radiusKm)} کیلومتر
+                  </span>
+                </div>
+              )}
             </div>
             <FilterChips
               filters={filters}
@@ -345,6 +447,39 @@ const HomeNew = () => {
                   فیلترهای پیشرفته
                 </summary>
                 <div className="pt-2">
+                  <div className="flex flex-col gap-2 mb-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-blue-600 rounded"
+                        checked={useMyLocation}
+                        onChange={(e) => {
+                          setUseMyLocation(e.target.checked);
+                          if (e.target.checked && !userPos) {
+                            getPosition();
+                          }
+                        }}
+                      />
+                      <span>استفاده از موقعیت من</span>
+                    </label>
+                    {useMyLocation && userPos && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="1"
+                          max="50"
+                          value={radiusKm}
+                          onChange={(e) =>
+                            setRadiusKm(parseInt(e.target.value, 10))
+                          }
+                          className="w-24"
+                        />
+                        <span className="text-gray-600">
+                          {toFa(radiusKm)} کیلومتر
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   <FilterSidebar filters={filters} setFilters={setFilters} />
                 </div>
               </details>

@@ -6,31 +6,99 @@ const path = require("path");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const crypto = require("crypto");
 
+// Load environment variables
 dotenv.config();
+
+// Validate required environment variables
+if (!process.env.JWT_SECRET) {
+  console.error("خطای بحرانی: متغیر JWT_SECRET تنظیم نشده است");
+  process.exit(1);
+}
+
+// Parse CORS allowed origins
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS || "http://localhost:5173,http://localhost:4173"
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+console.log("Origins allowed for CORS:", allowedOrigins);
 
 const app = express();
 app.locals.dbReady = false;
 
+// Request ID middleware
+app.use((req, res, next) => {
+  req.id = crypto.randomUUID();
+  next();
+});
+
+// Custom morgan format with request ID
+morgan.token("reqId", (req) => req.id);
+const logFormat =
+  process.env.NODE_ENV === "production"
+    ? ':reqId :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+    : ":reqId :method :url :status :response-time ms";
+
 // Middleware
+app.use(morgan(logFormat));
+
+// Strict CORS with whitelist
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:4173", "*"],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS policy: Origin not allowed"));
+      }
+    },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-// Allow images to be embedded cross-origin (frontend dev server vs backend)
+
+// Enhanced security headers with Helmet
 app.use(
   helmet({
-    crossOriginResourcePolicy: false,
+    // Required for uploaded images to be accessible
+    crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginEmbedderPolicy: false,
-    contentSecurityPolicy: false,
+    // Content Security Policy
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        connectSrc: ["'self'", ...allowedOrigins],
+      },
+    },
   })
 );
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300 });
-app.use("/api/", limiter);
+
+// Rate limiters
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 50, // 50 requests per windowMs
+  message: { message: "درخواست‌های زیاد. لطفاً کمی صبر کنید" },
+});
+
+const uploadsLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 30, // 30 uploads per hour
+  message: { message: "محدودیت آپلود. لطفاً بعداً تلاش کنید" },
+});
+
+// Apply rate limits to specific routes
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/uploads", uploadsLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(
@@ -79,19 +147,9 @@ const connectDB = async () => {
   }
 };
 
-// Health check endpoint
-app.get("/api/health", (req, res) => {
-  const dbStatus = app.locals.dbReady ? "connected" : "disconnected";
-  res.json({
-    status: "OK",
-    message: "نخشا API is running",
-    db: dbStatus,
-    env: {
-      mongoUri: process.env.MONGODB_URI ? "set" : "not set",
-      nodeEnv: process.env.NODE_ENV || "development",
-    },
-  });
-});
+// Import and use health routes
+const healthRoutes = require("./routes/health");
+app.use("/api/health", healthRoutes);
 
 const PORT = process.env.PORT || 5000;
 

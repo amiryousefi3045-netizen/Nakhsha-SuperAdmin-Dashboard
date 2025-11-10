@@ -146,5 +146,64 @@ export async function seedDev() {
   }
 }
 
+/**
+ * Fetch crafts near a location with optional filters
+ * @param {Object} params
+ * @param {number} [params.lng] - Longitude
+ * @param {number} [params.lat] - Latitude
+ * @param {number} [params.radiusKm=10] - Search radius in kilometers
+ * @param {string} [params.q] - Search query
+ * @param {string} [params.category] - Category filter
+ * @param {number} [params.min] - Minimum price
+ * @param {number} [params.max] - Maximum price
+ * @returns {Promise<Array>} Array of crafts with distance info when coordinates provided
+ */
+export async function fetchCraftsNear({
+  lng,
+  lat,
+  radiusKm = 10,
+  q,
+  category,
+  min,
+  max,
+} = {}) {
+  try {
+    const { data } = await http.get("/crafts/near", {
+      params: buildQuery({
+        lng,
+        lat,
+        radiusKm,
+        q,
+        category,
+        min,
+        max,
+      }),
+    });
+
+    // If in dev mode and no results, provide mock data with distance
+    if (import.meta.env.DEV && (!data?.items || !data.items.length)) {
+      console.info("No near results, using dev mock data");
+      return [
+        {
+          id: "dev-near-1",
+          title: "گلیم نفیس اصفهان",
+          description: "گلیم دست‌باف با نقوش سنتی",
+          craftType: "carpet",
+          location: "اصفهان، میدان نقش جهان",
+          distanceMeters: 800,
+          distanceKm: "0.8",
+          lat: 32.6577,
+          lng: 51.6776,
+        },
+      ];
+    }
+
+    return data.items || [];
+  } catch (err) {
+    console.error("Error fetching nearby crafts:", err);
+    throw err;
+  }
+}
+
 // Re-export helpers for existing pages that still import from recipes
 export { uploadImage, reverseGeocode };
