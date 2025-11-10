@@ -1,11 +1,214 @@
 const mongoose = require("mongoose");
 
-// Reuse the compiled Listing model's schema so we don't duplicate schema code here.
-// This creates a `Craft` model that points to the same underlying `listings` collection.
-// That keeps data consistent during the transition from recipes/listings -> crafts.
-const Listing = require("./Recipe");
-const listingSchema = Listing.schema;
+const craftSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, trim: true },
+    description: { type: String, required: true, trim: true },
+    images: [String],
+    // Craft kind: artwork (physical), class (educational), service
+    kind: {
+      type: String,
+      enum: ["artwork", "class", "service"],
+      required: true,
+    },
+    // Commerce fields
+    price: { type: Number, min: 0 },
+    currency: { type: String, default: "IRR", maxlength: 10 },
+    forSale: { type: Boolean, default: false },
+    tags: [String],
+    // Schedule for classes
+    schedule: {
+      date: Date,
+      durationMinutes: Number,
+      seats: Number,
+      locationNote: String,
+    },
+    author: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    location: {
+      city: String,
+      neighborhood: String,
+      // GeoJSON Point type for MongoDB geospatial queries
+      geometry: {
+        type: {
+          type: String,
+          enum: ["Point"],
+          required: true,
+          default: "Point",
+        },
+        coordinates: {
+          type: [Number], // [longitude, latitude]
+          required: true,
+          validate: {
+            validator: function (coords) {
+              return (
+                Array.isArray(coords) &&
+                coords.length === 2 &&
+                coords[0] >= -180 &&
+                coords[0] <= 180 && // longitude
+                coords[1] >= -90 &&
+                coords[1] <= 90
+              ); // latitude
+            },
+            message: "مختصات جغرافیایی نامعتبر است",
+          },
+        },
+      },
+    },
+    likes: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    dislikes: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    comments: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        text: { type: String },
+        rating: { type: Number, min: 1, max: 5 },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    views: { type: Number, default: 0 },
+    isPublished: { type: Boolean, default: true },
+    extra: { type: mongoose.Schema.Types.Mixed },
+  },
+  { timestamps: true }
+);
 
-// Export a Craft model that uses the same collection name ('listings') to remain
-// compatible with existing documents until we perform an explicit DB migration.
-module.exports = mongoose.model("Craft", listingSchema, "listings");
+// Geospatial index for location searches
+craftSchema.index({ "location.geometry": "2dsphere" });
+
+// Full text search on common fields with weights
+craftSchema.index(
+  { title: "text", description: "text", tags: "text" },
+  {
+    weights: {
+      title: 10,
+      description: 5,
+      tags: 3,
+    },
+    name: "craft_text_search",
+  }
+);
+
+// Indexes for fast lookups
+craftSchema.index({ "likes.user": 1 });
+craftSchema.index({ "dislikes.user": 1 });
+craftSchema.index({ author: 1, isPublished: 1 });
+craftSchema.index({ kind: 1, isPublished: 1 });
+
+// Virtuals
+craftSchema.virtual("averageRating").get(function () {
+  if (!Array.isArray(this.comments) || this.comments.length === 0) return 0;
+  const rated = this.comments.filter((c) => c.rating);
+  if (!rated.length) return 0;
+  const sum = rated.reduce((a, b) => a + (b.rating || 0), 0);
+  return (sum / rated.length).toFixed(1);
+});
+
+craftSchema.virtual("totalLikes").get(function () {
+  return Array.isArray(this.likes) ? this.likes.length : 0;
+});
+
+craftSchema.virtual("totalDislikes").get(function () {
+  return Array.isArray(this.dislikes) ? this.dislikes.length : 0;
+});
+
+craftSchema.set("toJSON", { virtuals: true });
+craftSchema.set("toObject", { virtuals: true });
+
+// Pre-save middleware to accept legacy `location.coordinates` and normalize to GeoJSON
+craftSchema.pre("save", function (next) {
+  try {
+    if (
+      this.location &&
+      Array.isArray(this.location.coordinates) &&
+      (!this.location.geometry ||
+        !Array.isArray(this.location.geometry.coordinates))
+    ) {
+      this.location = Object.assign({}, this.location, {
+        geometry: {
+          type: "Point",
+          coordinates: this.location.coordinates,
+        },
+      });
+      // keep legacy coordinates on the object for compatibility when requested
+    }
+  } catch (e) {
+    // ignore and allow validation to handle issues
+  }
+  next();
+});
+
+// Transform JSON output to keep backward-compatible `location.coordinates` field
+craftSchema.set("toJSON", {
+  virtuals: true,
+  transform: function (doc, ret) {
+    if (
+      ret.location &&
+      ret.location.geometry &&
+      Array.isArray(ret.location.geometry.coordinates)
+    ) {
+      ret.location = Object.assign({}, ret.location, {
+        coordinates: ret.location.geometry.coordinates,
+      });
+      // don't expose nested geometry to API consumers
+      delete ret.location.geometry;
+    }
+    return ret;
+  },
+});
+
+// Create an initialization function to ensure indexes
+craftSchema.statics.ensureIndexes = async function () {
+  try {
+    const indexes = await this.collection.getIndexes();
+    const hasGeo = indexes["location.geometry_2dsphere"];
+    const hasText = indexes["craft_text_search"];
+
+    if (!hasGeo || !hasText) {
+      console.log("Creating missing craft indexes...");
+      if (!hasGeo) {
+        await this.collection.createIndex(
+          { "location.geometry": "2dsphere" },
+          { background: true }
+        );
+      }
+      if (!hasText) {
+        await this.collection.createIndex(
+          { title: "text", description: "text", tags: "text" },
+          {
+            weights: {
+              title: 10,
+              description: 5,
+              tags: 3,
+            },
+            name: "craft_text_search",
+            background: true,
+          }
+        );
+      }
+      console.log("Craft indexes created successfully");
+    }
+  } catch (err) {
+    console.error("Error ensuring craft indexes:", err);
+  }
+};
+
+// Create model but keep collection name `listings` for backwards compatibility
+const Craft = mongoose.model("Craft", craftSchema, "listings");
+
+// Export model and utility methods
+module.exports = Object.assign(Craft, {
+  ensureIndexes: () => Craft.ensureIndexes(),
+});

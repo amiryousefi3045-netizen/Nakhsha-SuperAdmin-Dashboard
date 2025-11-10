@@ -1,6 +1,6 @@
 const CraftMeta = ({ timeFa, type, size, category }) => {
   return (
-    <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+    <div className="flex flex-wrap gap-2 text-xs text-gray-600 text-right">
       {timeFa && (
         <span className="px-2 py-1 rounded-full bg-gray-100">
           زمان ساخت: {timeFa}

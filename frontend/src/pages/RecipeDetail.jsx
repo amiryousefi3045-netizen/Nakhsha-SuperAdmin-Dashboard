@@ -1,10 +1,4 @@
-// Compatibility wrapper that re-exports CraftDetail
-import CraftDetail from "./CraftDetail";
-
-/**
- * @deprecated Use CraftDetail component instead.
- * This is a compatibility wrapper that will be removed in a future version.
- */
-const RecipeDetail = () => <CraftDetail />;
-
-export default RecipeDetail;
+// The legacy RecipeDetail page has been removed. Use CraftDetail instead.
+throw new Error(
+  "The legacy `pages/RecipeDetail.jsx` has been removed. Update routes/imports to use `CraftDetail`."
+);

@@ -1,21 +1,8 @@
-// Compatibility wrapper: re-export canonical crafts APIs under the old `recipes` names
-import * as crafts from "./crafts";
-import { uploadImage, reverseGeocode } from "./media";
-
-export const fetchRecipes = (opts) => crafts.fetchCrafts(opts);
-export const fetchRecipeById = (id) => crafts.fetchCraftById(id);
-export const createRecipe = (payload) => crafts.createCraft(payload);
-export const updateRecipe = (id, payload) => crafts.updateCraft(id, payload);
-export const deleteRecipe = (id) => crafts.deleteCraft(id);
-
-export const toggleLike = (id) => crafts.toggleLike(id);
-export const toggleDislike = (id) => crafts.toggleDislike(id);
-
-export const addComment = (recipeId, opts) => crafts.addComment(recipeId, opts);
-export const deleteComment = (recipeId, commentId) =>
-  crafts.deleteComment(recipeId, commentId);
-
-export const fetchMyRecipes = () => crafts.fetchMyCrafts();
-export const seedDev = () => crafts.seedDev();
-
-export { uploadImage, reverseGeocode };
+// Compatibility wrapper (DEPRECATED): re-export canonical `crafts` APIs under the old `recipes` names
+// Note: Use `src/services/crafts` and `Craft*` components going forward. These
+// wrappers are kept only for backward compatibility.
+// The recipes compatibility wrapper has been removed as a breaking change.
+// Please update imports to use `src/services/crafts` directly.
+throw new Error(
+  "The legacy `services/recipes` module has been removed. Import from 'src/services/crafts' instead."
+);

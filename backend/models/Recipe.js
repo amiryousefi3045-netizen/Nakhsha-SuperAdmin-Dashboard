@@ -31,7 +31,36 @@ const listingSchema = new mongoose.Schema(
     location: {
       city: String,
       neighborhood: String,
-      coordinates: { type: [Number] }, // [lng, lat]
+      // GeoJSON Point type for MongoDB geospatial queries
+      geometry: {
+        type: {
+          type: String,
+          enum: ["Point"],
+          required: true,
+          default: "Point",
+        },
+        coordinates: {
+          type: [Number], // [longitude, latitude]
+          required: true,
+          validate: {
+            validator: function (coords) {
+              return (
+                Array.isArray(coords) &&
+                coords.length === 2 &&
+                coords[0] >= -180 &&
+                coords[0] <= 180 && // longitude
+                coords[1] >= -90 &&
+                coords[1] <= 90
+              ); // latitude
+            },
+            message: "مختصات جغرافیایی نامعتبر است",
+          },
+        },
+      },
+      coordinates: {
+        type: [Number], // Legacy field for backward compatibility
+        deprecated: true,
+      },
     },
     likes: [
       {
@@ -60,11 +89,21 @@ const listingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Geospatial index (if coordinates used)
-listingSchema.index({ "location.coordinates": "2dsphere" });
+// Geospatial index on GeoJSON Point field
+listingSchema.index({ "location.geometry": "2dsphere" });
 
-// Full text search on common fields
-listingSchema.index({ title: "text", description: "text", tags: "text" });
+// Full text search on common fields with weights
+listingSchema.index(
+  { title: "text", description: "text", tags: "text" },
+  {
+    weights: {
+      title: 10,
+      description: 5,
+      tags: 3,
+    },
+    name: "listing_text_search",
+  }
+);
 
 // Indexes for fast lookups
 listingSchema.index({ "likes.user": 1 });
@@ -87,11 +126,115 @@ listingSchema.virtual("totalDislikes").get(function () {
   return Array.isArray(this.dislikes) ? this.dislikes.length : 0;
 });
 
-listingSchema.set("toJSON", { virtuals: true });
+// Pre-save middleware for location data migration
+listingSchema.pre("save", function (next) {
+  // If old format coordinates exist but no geometry
+  if (
+    Array.isArray(this.location?.coordinates) &&
+    !this.location?.geometry?.coordinates
+  ) {
+    // Move coordinates to GeoJSON format
+    this.location = {
+      ...this.location,
+      geometry: {
+        type: "Point",
+        coordinates: this.location.coordinates,
+      },
+    };
+  }
+  next();
+});
+
+// Ensure consistent format for JSON responses
+listingSchema.set("toJSON", {
+  virtuals: true,
+  transform: function (doc, ret) {
+    // If new GeoJSON format exists, ensure coordinates are accessible
+    // at the expected path for backward compatibility
+    if (ret.location?.geometry?.coordinates) {
+      ret.location = {
+        ...ret.location,
+        coordinates: ret.location.geometry.coordinates,
+      };
+      // Don't expose internal GeoJSON structure in API
+      delete ret.location.geometry;
+    }
+    return ret;
+  },
+});
+
 listingSchema.set("toObject", { virtuals: true });
 
-// Export as 'Recipe' to keep existing routes working while repurposing the schema
-// Export as 'Listing' so documents are stored in a `listings` collection.
-// Existing route files `backend/routes/recipes.js` require this file and
-// will continue to work because they import the model from this path.
-module.exports = mongoose.model("Listing", listingSchema);
+// Helper method for bulk migration of old documents
+listingSchema.statics.migrateLocations = async function () {
+  const docs = await this.find({
+    "location.coordinates": { $exists: true },
+    "location.geometry": { $exists: false },
+  });
+
+  console.log(`Found ${docs.length} documents to migrate`);
+
+  for (const doc of docs) {
+    if (Array.isArray(doc.location?.coordinates)) {
+      doc.location = {
+        ...doc.location,
+        geometry: {
+          type: "Point",
+          coordinates: doc.location.coordinates,
+        },
+      };
+      await doc.save();
+    }
+  }
+
+  console.log("Location migration complete");
+};
+
+// Create an initialization function to ensure indexes
+listingSchema.statics.ensureIndexes = async function () {
+  try {
+    const indexes = await this.collection.getIndexes();
+    const hasGeo = indexes["location.geometry_2dsphere"];
+    const hasText = indexes["listing_text_search"];
+
+    if (!hasGeo || !hasText) {
+      console.log("Creating missing listing indexes...");
+      if (!hasGeo) {
+        await this.collection.createIndex(
+          { "location.geometry": "2dsphere" },
+          { background: true }
+        );
+      }
+      if (!hasText) {
+        await this.collection.createIndex(
+          { title: "text", description: "text", tags: "text" },
+          {
+            weights: {
+              title: 10,
+              description: 5,
+              tags: 3,
+            },
+            name: "listing_text_search",
+            background: true,
+          }
+        );
+      }
+      console.log("Listing indexes created successfully");
+    }
+  } catch (err) {
+    console.error("Error ensuring listing indexes:", err);
+  }
+};
+
+// Deprecated shim: re-export the canonical Craft model to maintain compatibility
+// with any remaining imports that reference ../models/Recipe
+try {
+  module.exports = require("./Craft");
+} catch (e) {
+  // Fallback: export Listing model if Craft is not available (unlikely)
+  const Listing = mongoose.model("Listing", listingSchema);
+  module.exports = Object.assign(Listing, {
+    ensureIndexes: () => Listing.ensureIndexes(),
+    migrateLocations: () => Listing.migrateLocations(),
+  });
+}

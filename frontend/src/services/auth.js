@@ -1,33 +1,4 @@
-import axios from "axios";
-
-// For auth endpoints, always go directly to the backend server
-// This avoids issues with Vite's proxy in development mode
-const API_BASE = "http://localhost:5000/api";
-
-// Shared axios instance
-const http = axios.create({ baseURL: API_BASE });
-
-// Attach token to requests
-http.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-// Also attach token to the default axios instance so other services using axios
-// (like recipes.js) automatically include Authorization header.
-axios.interceptors.request.use((config) => {
-  try {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return config;
-});
+import { http } from "../lib/http";
 
 export async function register(payload) {
   try {

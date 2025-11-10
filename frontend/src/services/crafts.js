@@ -1,29 +1,17 @@
-import axios from "axios";
-// Reuse auth interceptor
-import "./auth";
-// Re-export utilities from shared media helpers
+import { http, buildQuery } from "../lib/http";
 import { uploadImage, reverseGeocode } from "./media";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
-let SERVER_ORIGIN = "";
-try {
-  if (/^https?:\/\//i.test(API_BASE)) {
-    SERVER_ORIGIN = new URL(API_BASE).origin;
-  } else if (import.meta.env.VITE_SERVER_ORIGIN) {
-    SERVER_ORIGIN = import.meta.env.VITE_SERVER_ORIGIN;
-  } else if (typeof window !== "undefined" && window.location) {
-    SERVER_ORIGIN = `${window.location.protocol}//${window.location.hostname}:5000`;
-  }
-} catch (e) {
-  // ignore but keep a lightweight warning for debugging
-  // (some environments may not have window or URL available)
-  console.warn("determine SERVER_ORIGIN failed", e?.message || e);
-}
+// Determine server origin for image URLs in dev mode
+const SERVER_ORIGIN =
+  import.meta.env.VITE_SERVER_ORIGIN ||
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : "");
 
 export async function fetchCrafts(opts = {}) {
   // opts: bounds, filters, page, limit, q, sort, lat, lng
   try {
-    const { data } = await axios.get(`${API_BASE}/crafts`, { params: opts });
+    const { data } = await http.get("/crafts", { params: buildQuery(opts) });
     // If running in dev and backend returned no items, fallback to lightweight mock so map/dev UI is usable
     if (
       import.meta.env.DEV &&
@@ -96,8 +84,8 @@ export async function fetchCrafts(opts = {}) {
 
 export async function fetchCraftById(id) {
   try {
-    const { data } = await axios.get(`${API_BASE}/crafts/${id}`, {
-      params: { _: Date.now() },
+    const { data } = await http.get(`/crafts/${id}`, {
+      params: buildQuery({ _: Date.now() }),
     });
     return data;
   } catch {
@@ -106,56 +94,51 @@ export async function fetchCraftById(id) {
 }
 
 export async function createCraft(payload) {
-  const { data } = await axios.post(`${API_BASE}/crafts`, payload);
+  const { data } = await http.post("/crafts", payload);
   return data;
 }
 
 export async function updateCraft(id, payload) {
-  const { data } = await axios.put(`${API_BASE}/crafts/${id}`, payload);
+  const { data } = await http.put(`/crafts/${id}`, payload);
   return data;
 }
 
 export async function deleteCraft(id) {
-  const { data } = await axios.delete(`${API_BASE}/crafts/${id}`);
+  const { data } = await http.delete(`/crafts/${id}`);
   return data;
 }
 
 export async function toggleLike(id) {
-  const { data } = await axios.post(`${API_BASE}/crafts/${id}/like`);
+  const { data } = await http.post(`/crafts/${id}/like`);
   return data;
 }
 
 export async function toggleDislike(id) {
-  const { data } = await axios.post(`${API_BASE}/crafts/${id}/dislike`);
+  const { data } = await http.post(`/crafts/${id}/dislike`);
   return data;
 }
 
 export async function addComment(craftId, { text, rating } = {}) {
-  const payload = { text };
-  if (rating !== undefined && rating !== null && rating !== "")
-    payload.rating = rating;
-  const { data } = await axios.post(
-    `${API_BASE}/crafts/${craftId}/comments`,
-    payload
-  );
+  const payload = buildQuery({ text, rating });
+  const { data } = await http.post(`/crafts/${craftId}/comments`, payload);
   return data;
 }
 
 export async function deleteComment(craftId, commentId) {
-  const { data } = await axios.delete(
-    `${API_BASE}/crafts/${craftId}/comments/${commentId}`
+  const { data } = await http.delete(
+    `/crafts/${craftId}/comments/${commentId}`
   );
   return data;
 }
 
 export async function fetchMyCrafts() {
-  const { data } = await axios.get(`${API_BASE}/crafts/mine/list`);
+  const { data } = await http.get("/crafts/mine/list");
   return Array.isArray(data?.items) ? data.items : [];
 }
 
 export async function seedDev() {
   try {
-    const { data } = await axios.get(`${API_BASE}/crafts/seed/dev`);
+    const { data } = await http.get("/crafts/seed/dev");
     return data;
   } catch (e) {
     console.warn("/api/crafts/seed/dev failed", e?.message);

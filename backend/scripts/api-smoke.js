@@ -43,30 +43,24 @@ async function main() {
 
     // 2) Create
     const payload = {
-      title: "تست نخشا (smoke) ",
-      description: "رکورد تستی چندتصویری توسط اسکریپت",
-      ingredients: [{ name: "نمک", amount: "1", unit: "ق چ" }],
-      instructions: [{ step: 1, description: "مخلوط کنید" }],
+      title: "تست نخشا (smoke)",
+      description: "رکورد تستی توسط اسکریپت",
       images: [img1, img2],
-      cookingTime: { total: 5 },
-      difficulty: "آسان",
-      servings: 1,
-      category: "خورش",
+      craftType: "سفالگری",
+      price: 100000,
+      forSale: true,
       tags: ["تست"],
-      isVegetarian: true,
       location: { city: "تهران", neighborhood: "تست", lat: 35.735, lng: 51.41 },
     };
     const created = await axios
-      .post(`${BASE}/recipes`, payload)
+      .post(`${BASE}/crafts`, payload)
       .then((r) => r.data);
     if (!created?.id) throw new Error("Create failed");
     const id = created.id;
     out.steps.push({ step: "create", ok: true, id });
 
     // 3) Read
-    const detail1 = await axios
-      .get(`${BASE}/recipes/${id}`)
-      .then((r) => r.data);
+    const detail1 = await axios.get(`${BASE}/crafts/${id}`).then((r) => r.data);
     out.steps.push({
       step: "read1",
       ok: Array.isArray(detail1?.images),
@@ -75,14 +69,12 @@ async function main() {
 
     // 4) Update order (swap)
     const updateRes = await axios
-      .put(`${BASE}/recipes/${id}`, { images: [img2, img1] })
+      .put(`${BASE}/crafts/${id}`, { images: [img2, img1] })
       .then((r) => r.data);
     out.steps.push({ step: "update", ok: !!updateRes?.ok });
 
     // 5) Read again
-    const detail2 = await axios
-      .get(`${BASE}/recipes/${id}`)
-      .then((r) => r.data);
+    const detail2 = await axios.get(`${BASE}/crafts/${id}`).then((r) => r.data);
     out.steps.push({
       step: "read2",
       ok: Array.isArray(detail2?.images),
@@ -90,7 +82,7 @@ async function main() {
     });
 
     // 6) Delete
-    const del = await axios.delete(`${BASE}/recipes/${id}`).then((r) => r.data);
+    const del = await axios.delete(`${BASE}/crafts/${id}`).then((r) => r.data);
     out.steps.push({ step: "delete", ok: !!del?.ok });
 
     console.log(JSON.stringify({ ok: true, ...out }, null, 2));

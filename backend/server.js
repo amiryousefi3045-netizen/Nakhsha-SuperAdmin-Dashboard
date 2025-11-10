@@ -49,18 +49,18 @@ require("./models/User");
 require("./models/Craft");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
-// `recipes` is kept as a compatibility alias which currently forwards to `crafts`.
-// We require it after `crafts` so the canonical implementation is loaded first.
-const recipeRoutes = require("./routes/recipes");
+// NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
+const listingsNearRoutes = require("./routes/listings.near");
 
 // Routes
 app.use("/api/auth", authRoutes);
 // Mount canonical crafts API first
 app.use("/api/crafts", craftRoutes);
-// Keep legacy /api/recipes as an alias to /api/crafts during migration
-app.use("/api/recipes", recipeRoutes);
+// (Removed compatibility alias to /api/recipes)
+// Mount the new near-search route
+app.use("/api/listings", listingsNearRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 

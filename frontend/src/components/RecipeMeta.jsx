@@ -1,17 +1,4 @@
-// Compatibility wrapper re-exporting CraftMeta with legacy recipe prop mapping
-import CraftMeta from "./CraftMeta";
-
-/**
- * @deprecated Use CraftMeta component instead.
- * This is a compatibility wrapper that will be removed in a future version.
- */
-const RecipeMeta = ({ timeFa, difficulty, servings, category }) => (
-  <CraftMeta
-    timeFa={timeFa}
-    type={difficulty}
-    size={servings ? `مناسب برای ${servings} نفر` : undefined}
-    category={category}
-  />
+// The legacy RecipeMeta component has been removed. Use CraftMeta instead.
+throw new Error(
+  "The legacy `components/RecipeMeta.jsx` has been removed. Import and use `CraftMeta` instead."
 );
-
-export default RecipeMeta;

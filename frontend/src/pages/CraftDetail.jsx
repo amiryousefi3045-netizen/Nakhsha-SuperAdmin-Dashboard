@@ -22,21 +22,6 @@ const PLACEHOLDER =
     </g>\
   </svg>";
 
-const CATEGORY_FALLBACKS = {
-  "قالی و قالیچه":
-    "https://images.unsplash.com/photo-1604908176997-431c3a7280e5?w=1200&q=60",
-  سفال: "https://images.unsplash.com/photo-1604908554200-4d8f8d9ba4b3?w=1200&q=60",
-  خاتم: "https://images.unsplash.com/photo-1617191517009-bb4d9c504761?w=1200&q=60",
-  مینا: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&q=60",
-  گلیم: "https://images.unsplash.com/photo-1551024709-8f23befc6cf7?w=1200&q=60",
-  "چرم دست‌دوز":
-    "https://images.unsplash.com/photo-1604908207268-1a2fba9b5d7f?w=1200&q=60",
-  میناکاری:
-    "https://images.unsplash.com/photo-1549931319-420c83f9b21d?w=1200&q=60",
-  فیروزه‌کوبی:
-    "https://images.unsplash.com/photo-1544025162-d76694265947?w=1200&q=60",
-};
-
 const MiniMap = ({ lat, lng, title }) => {
   useEffect(() => {
     if (typeof lat !== "number" || typeof lng !== "number") return;
@@ -58,50 +43,45 @@ const MiniMap = ({ lat, lng, title }) => {
   return <div id="mini-map" className="w-full h-48 rounded-md" />;
 };
 
-const CraftDetail = () => {
+export default function CraftDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
-  const [likeState, setLikeState] = useState({ loading: false });
+  const [likeLoading, setLikeLoading] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentRating, setCommentRating] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [comments, setComments] = useState([]);
 
   useEffect(() => {
-    let ignore = false;
+    let mounted = true;
     setLoading(true);
-    fetchCraftById(id).then((d) => {
-      if (ignore) return;
-      if (d) {
-        setData({
-          ...d,
-          _liked: d.liked || false,
-          _disliked: d.disliked || false,
-        });
-        setComments(Array.isArray(d.comments) ? d.comments : []);
-      } else {
-        setData(d);
-      }
-      setLoading(false);
-    });
-    return () => {
-      ignore = true;
-    };
+    fetchCraftById(id)
+      .then((d) => {
+        if (!mounted) return;
+        setData(
+          d
+            ? { ...d, _liked: d.liked || false, _disliked: d.disliked || false }
+            : null
+        );
+        setComments(d && Array.isArray(d.comments) ? d.comments : []);
+      })
+      .finally(() => mounted && setLoading(false));
+    return () => (mounted = false);
   }, [id]);
 
-  if (loading) {
+  if (loading)
     return (
       <div className="p-6 text-center text-sm text-gray-500">
         در حال بارگذاری…
       </div>
     );
-  }
-  if (!data) {
+  if (!data)
     return (
       <div className="p-6 text-center text-sm text-gray-500">
         محصول پیدا نشد.{" "}
@@ -110,26 +90,19 @@ const CraftDetail = () => {
         </Link>
       </div>
     );
-  }
 
-  const totalMinutes = data.craftingTime?.total;
-  const timeFa = totalMinutes ? `${totalMinutes} دقیقه` : "";
   const imgs = Array.isArray(data.images) ? data.images : [];
-  const realImage = imgs[0];
-  const fallbackByCategory = CATEGORY_FALLBACKS[data.category];
-  const primaryImage =
-    imgs[imgIdx] || realImage || fallbackByCategory || PLACEHOLDER;
-  const isFallback = !realImage;
+  const primaryImage = imgs[imgIdx] || imgs[0] || PLACEHOLDER;
 
   const onDelete = async () => {
     if (deleting) return;
-    const ok = window.confirm("حذف این محصول؟");
-    if (!ok) return;
+    if (!window.confirm("حذف این محصول؟")) return;
     try {
       setDeleting(true);
       await deleteCraft(id);
       navigate("/");
-    } catch {
+    } catch (e) {
+      console.error(e);
       alert("حذف ناموفق بود.");
     } finally {
       setDeleting(false);
@@ -137,8 +110,8 @@ const CraftDetail = () => {
   };
 
   const onLike = async () => {
-    if (likeState.loading || !data) return;
-    setLikeState((s) => ({ ...s, loading: true }));
+    if (likeLoading) return;
+    setLikeLoading(true);
     try {
       const res = await toggleLike(id);
       setData((d) =>
@@ -153,15 +126,15 @@ const CraftDetail = () => {
           : d
       );
     } catch (e) {
-      console.warn("like failed", e);
+      console.warn(e);
     } finally {
-      setLikeState({ loading: false });
+      setLikeLoading(false);
     }
   };
 
   const onDislike = async () => {
-    if (likeState.loading || !data) return;
-    setLikeState((s) => ({ ...s, loading: true }));
+    if (likeLoading) return;
+    setLikeLoading(true);
     try {
       const res = await toggleDislike(id);
       setData((d) =>
@@ -176,9 +149,9 @@ const CraftDetail = () => {
           : d
       );
     } catch (e) {
-      console.warn("dislike failed", e);
+      console.warn(e);
     } finally {
-      setLikeState({ loading: false });
+      setLikeLoading(false);
     }
   };
 
@@ -191,10 +164,11 @@ const CraftDetail = () => {
         text: commentText.trim(),
         rating: commentRating ? Number(commentRating) : undefined,
       });
-      setComments((prev) => [res, ...prev]);
+      setComments((p) => [res, ...p]);
       setCommentText("");
       setCommentRating("");
-    } catch {
+    } catch (e) {
+      console.error(e);
       alert("ثبت نظر ناموفق بود");
     } finally {
       setCommentBusy(false);
@@ -206,38 +180,82 @@ const CraftDetail = () => {
     const target = comments.find((c) => c.id === cid);
     if (!target) return;
     const canDelete =
-      user.role === "admin" ||
-      (data?.author?.id && user.id === data.author.id) ||
-      String(target.user) === String(user.id);
+      user &&
+      (user.role === "admin" ||
+        (data?.artisan?.id && user.id === data.artisan.id) ||
+        String(target.user) === String(user.id));
     if (!canDelete) return alert("اجازه حذف ندارید");
-    const ok = window.confirm("حذف نظر؟");
-    if (!ok) return;
+    if (!window.confirm("حذف نظر؟")) return;
     try {
       await deleteComment(id, cid);
-      setComments((prev) => prev.filter((c) => c.id !== cid));
-    } catch {
+      setComments((p) => p.filter((c) => c.id !== cid));
+    } catch (e) {
+      console.error(e);
       alert("حذف نظر ناموفق بود");
     }
   };
 
+  const renderComment = (c) => {
+    const canDelete =
+      user &&
+      (user.role === "admin" ||
+        (data?.artisan?.id && user.id === data.artisan.id) ||
+        String(c.user) === String(user.id));
+    return (
+      <li
+        key={c.id}
+        className="border rounded p-2 text-[11px] bg-gray-50 flex flex-col gap-1"
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-700 truncate max-w-[120px]">
+            {String(c.user).slice(0, 10)}
+          </span>
+          {c.rating && (
+            <span className="text-amber-600 font-medium">
+              {"★".repeat(c.rating)}
+              <span className="text-gray-400">{"★".repeat(5 - c.rating)}</span>
+            </span>
+          )}
+          <span className="text-gray-400 ml-auto">
+            {new Date(c.createdAt).toLocaleDateString("fa-IR")}
+          </span>
+        </div>
+        <div className="text-gray-700 leading-5 whitespace-pre-wrap">
+          {c.text}
+        </div>
+        {canDelete && (
+          <div className="text-left mt-1">
+            <button
+              onClick={() => removeComment(c.id)}
+              className="text-[10px] text-red-600 hover:underline"
+            >
+              حذف
+            </button>
+          </div>
+        )}
+      </li>
+    );
+  };
+
   return (
     <div className="max-w-[1100px] mx-auto grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 p-4">
-      {/* Left - content */}
       <section className="bg-white rounded-lg border p-4">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-xl font-bold">{data.title}</h1>
           <CraftMeta
-            timeFa={timeFa}
+            timeFa={
+              data.craftingTime?.total ? `${data.craftingTime.total} دقیقه` : ""
+            }
             type={data.type}
             size={data.dimensions}
             category={data.category}
           />
         </div>
-        {/* Like / Dislike Bar */}
+
         <div className="mt-3 flex items-center gap-3 justify-end">
           <button
             onClick={onLike}
-            disabled={!user || likeState.loading}
+            disabled={!user || likeLoading}
             className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition ${
               data._liked
                 ? "bg-green-600 text-white border-green-600"
@@ -245,19 +263,11 @@ const CraftDetail = () => {
             } disabled:opacity-50`}
             title="پسندیدم"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="w-4 h-4"
-            >
-              <path d="M2 12.5C2 10.57 3.57 9 5.5 9h3.58l-.63-3.06-.02-.23c0-.31.13-.61.33-.82L10.83 3l4.92 4.92c.18.18.29.43.29.71V19c0 1.1-.9 2-2 2H8c-.89 0-1.64-.58-1.89-1.39L3.14 13.4A3.49 3.49 0 0 1 2 12.5Z" />
-            </svg>
             <span>{data.totalLikes || 0}</span>
           </button>
           <button
             onClick={onDislike}
-            disabled={!user || likeState.loading}
+            disabled={!user || likeLoading}
             className={`flex items-center gap-1 text-xs px-3 py-1 rounded border transition ${
               data._disliked
                 ? "bg-red-600 text-white border-red-600"
@@ -265,17 +275,10 @@ const CraftDetail = () => {
             } disabled:opacity-50`}
             title="نپسندیدم"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="w-4 h-4"
-            >
-              <path d="M22 11.5c0 1.93-1.57 3.5-3.5 3.5h-3.58l.63 3.06.02.23c0 .31-.13.61-.33.82L13.17 21l-4.92-4.92A1 1 0 0 1 8 15.37V5c0-1.1.9-2 2-2h4.99c.89 0 1.64.58 1.89 1.39l2.97 6.21c.16.33.15.7.15.9Z" />
-            </svg>
             <span>{data.totalDislikes || 0}</span>
           </button>
         </div>
+
         <div className="relative mt-4">
           <img
             src={primaryImage}
@@ -288,55 +291,8 @@ const CraftDetail = () => {
               e.currentTarget.src = PLACEHOLDER;
             }}
           />
-          {imgs.length > 1 && (
-            <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-between px-2">
-              <button
-                className="bg-white/80 hover:bg-white text-xs px-2 py-1 rounded"
-                onClick={() =>
-                  setImgIdx((i) => (i - 1 + imgs.length) % imgs.length)
-                }
-              >
-                قبلی
-              </button>
-              <button
-                className="bg-white/80 hover:bg-white text-xs px-2 py-1 rounded"
-                onClick={() => setImgIdx((i) => (i + 1) % imgs.length)}
-              >
-                بعدی
-              </button>
-            </div>
-          )}
-          {isFallback && (
-            <span className="absolute top-3 left-3 px-2 py-1 rounded bg-amber-100 text-amber-800 text-xs">
-              بدون عکس واقعی
-            </span>
-          )}
         </div>
-        {imgs.length > 1 && (
-          <div className="mt-2 flex gap-2 overflow-x-auto">
-            {imgs.map((u, i) => (
-              <button
-                key={i}
-                className={`w-16 h-16 flex-shrink-0 rounded border ${
-                  i === imgIdx ? "ring-2 ring-primary-600" : ""
-                }`}
-                onClick={() => setImgIdx(i)}
-                title={`تصویر ${i + 1}`}
-              >
-                <img
-                  src={u}
-                  alt="thumb"
-                  className="w-full h-full object-cover rounded"
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = PLACEHOLDER;
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-        )}
+
         <p className="text-sm text-gray-700 mt-4 leading-7">
           {data.description}
         </p>
@@ -378,7 +334,6 @@ const CraftDetail = () => {
         </ol>
       </section>
 
-      {/* Right - info & map */}
       <aside className="space-y-4">
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-3">
@@ -411,6 +366,7 @@ const CraftDetail = () => {
             </div>
           )}
         </div>
+
         <div className="bg-white rounded-lg border p-4">
           <div className="text-sm text-gray-700">محل تولید اثر</div>
           <div className="text-sm text-gray-700">محل عرضه محصول</div>
@@ -445,7 +401,6 @@ const CraftDetail = () => {
           </div>
         </div>
 
-        {/* Comments */}
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">نظرات کاربران</h3>
@@ -487,58 +442,16 @@ const CraftDetail = () => {
               برای ثبت نظر وارد شوید.
             </div>
           )}
+
           <ul className="space-y-3 max-h-80 overflow-y-auto thin-scrollbar pr-1">
-            {comments.length === 0 && (
+            {comments.length === 0 ? (
               <li className="text-[11px] text-gray-400">هنوز نظری ثبت نشده.</li>
+            ) : (
+              comments.map(renderComment)
             )}
-            {comments.map((c) => {
-              const canDelete =
-                user &&
-                (user.role === "admin" ||
-                  (data?.artisan?.id && user.id === data.artisan.id) ||
-                  String(c.user) === String(user.id));
-              return (
-                <li
-                  key={c.id}
-                  className="border rounded p-2 text-[11px] bg-gray-50 flex flex-col gap-1"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-700 truncate max-w-[120px]">
-                      {String(c.user).slice(0, 10)}
-                    </span>
-                    {c.rating && (
-                      <span className="text-amber-600 font-medium">
-                        {"★".repeat(c.rating)}
-                        <span className="text-gray-400">
-                          {"★".repeat(5 - c.rating)}
-                        </span>
-                      </span>
-                    )}
-                    <span className="text-gray-400 ml-auto">
-                      {new Date(c.createdAt).toLocaleDateString("fa-IR")}
-                    </span>
-                  </div>
-                  <div className="text-gray-700 leading-5 whitespace-pre-wrap">
-                    {c.text}
-                  </div>
-                  {canDelete && (
-                    <div className="text-left mt-1">
-                      <button
-                        onClick={() => removeComment(c.id)}
-                        className="text-[10px] text-red-600 hover:underline"
-                      >
-                        حذف
-                      </button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
           </ul>
         </div>
       </aside>
     </div>
   );
-};
-
-export default CraftDetail;
+}
