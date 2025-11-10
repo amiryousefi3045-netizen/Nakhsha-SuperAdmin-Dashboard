@@ -5,7 +5,11 @@ const Artisan = require("../models/Artisan");
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { validate, createCraftSchema, nearQuerySchema } = require("../middlewares/validate");
+const {
+  validate,
+  createCraftSchema,
+  nearQuerySchema,
+} = require("../middlewares/validate");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -239,7 +243,7 @@ router.get("/", async (req, res) => {
 
 // GET /api/crafts/near
 // Query: lng, lat, radiusKm, q, category, min, max
-router.get("/near", validate(nearQuerySchema, 'query'), async (req, res) => {
+router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
   try {
     const { lng, lat, radiusKm = 10, q, category, min, max } = req.query;
     const start = Date.now();
