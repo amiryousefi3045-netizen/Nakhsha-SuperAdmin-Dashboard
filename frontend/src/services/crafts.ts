@@ -8,6 +8,7 @@ import type {
   CraftFilters,
   Comment,
   CommentCreateRequest,
+  CraftResponse,
 } from "../types/api";
 
 // Determine server origin for image URLs in dev mode
@@ -59,7 +60,7 @@ export async function fetchCrafts(opts: CraftFilters = {}): Promise<{
   limit: number;
 }> {
   try {
-    const { data } = await http.get<ApiResponse<Craft>>("/crafts", {
+    const { data } = await http.get<ApiResponse<Craft[]>>("/crafts", {
       params: buildQuery(opts),
     });
 
@@ -97,11 +98,16 @@ export async function fetchCrafts(opts: CraftFilters = {}): Promise<{
   }
 }
 
-export async function fetchCraftById(id: string): Promise<Craft | null> {
+export async function fetchCraftById(
+  id: string
+): Promise<CraftResponse | null> {
   try {
-    const { data } = await http.get<ApiResponse<Craft>>(`/crafts/${id}`, {
-      params: buildQuery({ _: Date.now() }),
-    });
+    const { data } = await http.get<ApiResponse<CraftResponse>>(
+      `/crafts/${id}`,
+      {
+        params: buildQuery({ _: Date.now() }),
+      }
+    );
     return data.data || null;
   } catch {
     return null;
@@ -127,20 +133,40 @@ export async function deleteCraft(id: string): Promise<void> {
 
 export async function toggleLike(
   id: string
-): Promise<{ liked: boolean; total: number }> {
+): Promise<{ liked: boolean; totalLikes: number; totalDislikes?: number }> {
   const { data } = await http.post<
-    ApiResponse<{ liked: boolean; total: number }>
+    ApiResponse<{
+      liked?: boolean;
+      total?: number;
+      totalLikes?: number;
+      totalDislikes?: number;
+    }>
   >(`/crafts/${id}/like`);
-  return data.data!;
+  const payload = data.data || {};
+  return {
+    liked: !!payload.liked,
+    totalLikes: payload.totalLikes ?? payload.total ?? 0,
+    totalDislikes: payload.totalDislikes ?? 0,
+  };
 }
 
 export async function toggleDislike(
   id: string
-): Promise<{ disliked: boolean; total: number }> {
+): Promise<{ disliked: boolean; totalLikes?: number; totalDislikes: number }> {
   const { data } = await http.post<
-    ApiResponse<{ disliked: boolean; total: number }>
+    ApiResponse<{
+      disliked?: boolean;
+      total?: number;
+      totalLikes?: number;
+      totalDislikes?: number;
+    }>
   >(`/crafts/${id}/dislike`);
-  return data.data!;
+  const payload = data.data || {};
+  return {
+    disliked: !!payload.disliked,
+    totalLikes: payload.totalLikes ?? 0,
+    totalDislikes: payload.totalDislikes ?? payload.total ?? 0,
+  };
 }
 
 export async function addComment(
@@ -163,8 +189,8 @@ export async function deleteComment(
 }
 
 export async function fetchMyCrafts(): Promise<Craft[]> {
-  const { data } = await http.get<ApiResponse<Craft>>("/crafts/mine/list");
-  return Array.isArray(data?.items) ? data.items : [];
+  const { data } = await http.get<ApiResponse<Craft[]>>("/crafts/mine/list");
+  return Array.isArray(data?.items) ? (data.items as Craft[]) : [];
 }
 
 export async function seedDev(): Promise<void> {
@@ -179,5 +205,75 @@ export async function seedDev(): Promise<void> {
   }
 }
 
+/**
+ * Fetch crafts near a location with optional filters
+ * @param params - Search parameters
+ * @param params.lng - Longitude
+ * @param params.lat - Latitude
+ * @param params.radiusKm - Search radius in kilometers (default: 10)
+ * @param params.q - Search query
+ * @param params.category - Category filter
+ * @param params.min - Minimum price
+ * @param params.max - Maximum price
+ * @returns Array of crafts with distance info when coordinates provided
+ */
+export async function fetchCraftsNear({
+  lng,
+  lat,
+  radiusKm = 10,
+  q,
+  category,
+  min,
+  max,
+}: {
+  lng?: number;
+  lat?: number;
+  radiusKm?: number;
+  q?: string;
+  category?: string;
+  min?: number;
+  max?: number;
+} = {}): Promise<Craft[]> {
+  try {
+    const { data } = await http.get<ApiResponse<Craft[]>>("/crafts/near", {
+      params: buildQuery({
+        lng,
+        lat,
+        radiusKm,
+        q,
+        category,
+        min,
+        max,
+      }),
+    });
+
+    // If in dev mode and no results, provide mock data with distance
+    if (import.meta.env.DEV && (!data?.items || !data.items.length)) {
+      console.info("No near results, using dev mock data");
+      return [
+        {
+          id: "dev-near-1",
+          title: "گلیم نفیس اصفهان",
+          description: "گلیم دست‌باف با نقوش سنتی",
+          category: "WEAVING",
+          images: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          distanceMeters: 800,
+        },
+      ];
+    }
+
+    return data.items || [];
+  } catch (err) {
+    console.error("Error fetching nearby crafts:", err);
+    throw err;
+  }
+}
+
 // Re-export helpers for existing pages that still import from recipes
 export { uploadImage, reverseGeocode };
+
+// Re-export a couple of types so older imports that used to grab them from
+// the service file continue to work during the incremental migration.
+export type { CraftResponse, CommentResponse } from "../types/api";

@@ -7,19 +7,13 @@ import FilterSidebar from "../components/FilterSidebar";
 import FilterToolbar from "../components/FilterToolbar";
 import BreadcrumbBar from "../components/BreadcrumbBar";
 import FilterChips from "../components/FilterChips";
-import { fetchCrafts, seedDev } from "../services/crafts";
+import { fetchCrafts, fetchCraftsNear, seedDev } from "../services/crafts";
 import { toFa } from "../utils/number";
 import useGeolocation from "../hooks/useGeolocation";
-import { fetchCrafts, fetchCraftsNear } from "../services/crafts";
 
 const HomeNew = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const {
-    position,
-    error: geoError,
-    loading: geoLoading,
-    getPosition,
-  } = useGeolocation();
+  const { position, error: geoError, getPosition } = useGeolocation();
 
   const [useMyLocation, setUseMyLocation] = useState(false);
   const [radiusKm, setRadiusKm] = useState(10);

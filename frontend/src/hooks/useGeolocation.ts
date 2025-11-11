@@ -82,7 +82,7 @@ export default function useGeolocation(): UseGeolocationReturn {
               // vendor hints (may be ignored by browsers)
               mozSystem: true,
               webkitSkipLowAccuracy: true,
-            } as GeolocationOptions & {
+            } as PositionOptions & {
               mozSystem?: boolean;
               webkitSkipLowAccuracy?: boolean;
             }
