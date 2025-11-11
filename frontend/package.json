@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "build:prod": "vite build",
+    "smoke": "node ./scripts/smoke.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -35,6 +38,7 @@
     "globals": "^16.3.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.11",
+    "typescript": "^5.3.3",
     "vite": "^7.0.4"
   }
 }

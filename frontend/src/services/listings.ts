@@ -29,15 +29,16 @@ export async function fetchNearListings(
 export async function fetchListings(
   params: Omit<NearListingsParams, "lng" | "lat" | "radiusKm">
 ) {
-  const { data } = await http.get<ApiResponse<ListingWithDistance>>(
+  const { data } = await http.get<ApiResponse<ListingWithDistance[]>>(
     "/listings",
     {
       params: buildQuery(params),
     }
   );
 
+  const items = Array.isArray(data?.items) ? (data.items as ListingWithDistance[]) : [];
   return {
-    items: data.items || [],
+    items,
     total: data.total || 0,
     page: data.page || 1,
     limit: data.limit || 20,

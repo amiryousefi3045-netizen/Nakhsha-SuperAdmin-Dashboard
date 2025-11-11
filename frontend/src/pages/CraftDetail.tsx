@@ -29,21 +29,6 @@ const PLACEHOLDER_SVG =
     </g>\
   </svg>";
 
-const CATEGORY_FALLBACKS: Record<string, string> = {
-  "قالی و قالیچه":
-    "https://images.unsplash.com/photo-1604908176997-431c3a7280e5?w=1200&q=60",
-  سفال: "https://images.unsplash.com/photo-1604908554200-4d8f8d9ba4b3?w=1200&q=60",
-  خاتم: "https://images.unsplash.com/photo-1617191517009-bb4d9c504761?w=1200&q=60",
-  مینا: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&q=60",
-  گلیم: "https://images.unsplash.com/photo-1551024709-8f23befc6cf7?w=1200&q=60",
-  "چرم دست‌دوز":
-    "https://images.unsplash.com/photo-1604908207268-1a2fba9b5d7f?w=1200&q=60",
-  میناکاری:
-    "https://images.unsplash.com/photo-1549931319-420c83f9b21d?w=1200&q=60",
-  فیروزه‌کوبی:
-    "https://images.unsplash.com/photo-1544025162-d76694265947?w=1200&q=60",
-} as const;
-
 interface MiniMapProps {
   lat: number;
   lng: number;
@@ -139,8 +124,6 @@ export const CraftDetail: React.FC = () => {
   const timeFa = totalMinutes ? `${totalMinutes} دقیقه` : "";
   const imgs = Array.isArray(data.images) ? data.images : [];
   const realImage = imgs[0];
-  const fallbackByCategory = CATEGORY_FALLBACKS[data.category as keyof typeof CATEGORY_FALLBACKS];
-  const primaryImage = imgs[imgIdx] || realImage || fallbackByCategory || PLACEHOLDER_SVG;
   const isFallback = !realImage;
 
   const onDelete = async () => {
@@ -149,9 +132,10 @@ export const CraftDetail: React.FC = () => {
     const ok = window.confirm("آیا از حذف این محصول مطمئن هستید؟");
     if (!ok) return;
     
-    try {
+  try {
       setDeleting(true);
-      await deleteCraft(id);
+  if (!id) return;
+  await deleteCraft(id!);
       navigate("/", { 
         state: { message: "محصول با موفقیت حذف شد" }
       });
@@ -398,9 +382,9 @@ export const CraftDetail: React.FC = () => {
               <div className="text-sm font-medium">
                 {data.artisan?.name || "—"}
               </div>
-              <time className="text-xs text-gray-500" dateTime={data.createdAt}>
-                ثبت شده در {new Date(data.createdAt).toLocaleDateString("fa-IR")}
-              </time>
+              <time className="text-xs text-gray-500" dateTime={data.createdAt || ''}>
+                    ثبت شده در {new Date(data.createdAt || '').toLocaleDateString("fa-IR")}
+                  </time>
             </div>
           </div>
           
@@ -430,8 +414,8 @@ export const CraftDetail: React.FC = () => {
           <div className="text-sm text-gray-700">محل تولید اثر</div>
           <div className="text-sm text-gray-700">محل عرضه محصول</div>
           <div className="text-xs text-gray-500 mt-1">
-            {data.location?.city}
-            {data.location?.neighborhood && `، ${data.location.neighborhood}`}
+            {(data.location as any)?.city}
+            {(data.location as any)?.neighborhood && `، ${(data.location as any).neighborhood}`}
           </div>
           {typeof data.location?.coordinates?.[1] === "number" && (
             <div className="mt-3">

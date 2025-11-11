@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import useGeolocation from "../hooks/useGeolocation";
-import type { GeoPoint } from "../types/listings";
+import type { GeoPoint as ApiGeoPoint } from "../types/api";
+
+type LatLng = { lat: number; lng: number };
 
 interface LocationControlProps {
-  onChange: (location: GeoPoint | null) => void;
+  onChange: (location: ApiGeoPoint | LatLng | null) => void;
   className?: string;
 }
 
