@@ -114,7 +114,7 @@ app.use(
 // Ensure models are registered before routes that populate them
 require("./models/User");
 // Register Craft model (wrapper) so crafts routes have the model available
-require("./models/Craft");
+const Craft = require("./models/Craft");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
 // NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
@@ -141,6 +141,17 @@ const connectDB = async () => {
     });
     app.locals.dbReady = true;
     console.log("MongoDB connected successfully");
+
+    // Ensure geospatial index exists for Craft model
+    try {
+      await Craft.collection.createIndex({ "location.geometry": "2dsphere" });
+      console.log("Geospatial index ensured for crafts");
+    } catch (indexErr) {
+      console.warn(
+        "Warning: Could not create geospatial index:",
+        indexErr.message
+      );
+    }
   } catch (error) {
     app.locals.dbReady = false;
     console.warn("MongoDB not available, continuing without DB (dev mode)");

@@ -53,9 +53,7 @@ try {
   const files = fs.readdirSync(distPath, { recursive: true });
   const jsFiles = files.filter(
     (f) =>
-      typeof f === "string" &&
-      f.endsWith(".js") &&
-      !f.includes("source-map")
+      typeof f === "string" && f.endsWith(".js") && !f.includes("source-map")
   );
 
   if (jsFiles.length === 0) {

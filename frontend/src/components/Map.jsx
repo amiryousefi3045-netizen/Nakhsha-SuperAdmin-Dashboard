@@ -7,6 +7,17 @@ import "leaflet.markercluster";
 import CITY_POLYGONS from "../data/cityPolygons";
 import { simplifyDouglasPeucker, chaikinSmooth } from "../utils/geometry";
 
+// Fix Leaflet default icon paths for Vite (dev and build)
+import iconUrl from "leaflet/dist/images/marker-icon.png";
+import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import shadowUrl from "leaflet/dist/images/marker-shadow.png";
+
+L.Icon.Default.mergeOptions({
+  iconUrl,
+  iconRetinaUrl,
+  shadowUrl,
+});
+
 function pointInPolygon(point, polygon) {
   // Ray casting algorithm for point in polygon
   const [x, y] = [point.lng, point.lat];

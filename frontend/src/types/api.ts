@@ -1,9 +1,9 @@
-﻿export type GeoPoint = { type: 'Point'; coordinates: [number, number] }
+﻿export type GeoPoint = { type: "Point"; coordinates: [number, number] };
 
 export type Craft = {
-  id: string
-  title: string
-  description?: string
+  id: string;
+  title: string;
+  description?: string;
   category?:
     | "WEAVING"
     | "POTTERY"
@@ -11,34 +11,36 @@ export type Craft = {
     | "EMBROIDERY"
     | "JEWELRY"
     | "PAINTING"
-    | "OTHER"
-  price?: number
-  images?: string[]
-  city?: string
+    | "OTHER";
+  price?: number;
+  images?: string[];
+  city?: string;
   // support both GeoJSON Point and legacy location object (city + coordinates)
-  location?: GeoPoint | { city?: string; neighborhood?: string; coordinates?: [number, number] }
-  createdAt?: string
-  updatedAt?: string
-  distanceMeters?: number
+  location?:
+    | GeoPoint
+    | { city?: string; neighborhood?: string; coordinates?: [number, number] };
+  createdAt?: string;
+  updatedAt?: string;
+  distanceMeters?: number;
   // additional optional fields used by the UI
-  artisanId?: string
-  tags?: string[]
-  forSale?: boolean
-  materials?: Array<{ name: string; amount?: string | number; unit?: string }>
+  artisanId?: string;
+  tags?: string[];
+  forSale?: boolean;
+  materials?: Array<{ name: string; amount?: string | number; unit?: string }>;
   craftingSteps?: Array<{
-    step?: number
-    title?: string
-    description?: string
-    image?: string
-  }>
-  craftingTime?: { total?: number }
-  type?: string
-  dimensions?: string
-}
+    step?: number;
+    title?: string;
+    description?: string;
+    image?: string;
+  }>;
+  craftingTime?: { total?: number };
+  type?: string;
+  dimensions?: string;
+};
 
 export type CraftCreateRequest = Omit<
   Craft,
-  'id' | 'createdAt' | 'updatedAt' | 'distanceMeters'
+  "id" | "createdAt" | "updatedAt" | "distanceMeters"
 >;
 
 export type CraftUpdateRequest = Partial<CraftCreateRequest>;
@@ -71,7 +73,7 @@ export interface User {
   name?: string;
   email?: string;
   phone?: string;
-  role?: 'user' | 'admin' | 'artisan';
+  role?: "user" | "admin" | "artisan";
   avatar?: string;
   location?: { city?: string; coordinates?: [number, number] };
   isVerified?: boolean;
@@ -79,9 +81,19 @@ export interface User {
   updatedAt?: string;
 }
 
-export interface LoginRequest { email?: string; phone?: string; password: string }
-export interface RegisterRequest extends Omit<User, 'id' | 'isVerified' | 'createdAt' | 'updatedAt'> { password: string }
-export interface AuthResponse { token: string; user: User }
+export interface LoginRequest {
+  email?: string;
+  phone?: string;
+  password: string;
+}
+export interface RegisterRequest
+  extends Omit<User, "id" | "isVerified" | "createdAt" | "updatedAt"> {
+  password: string;
+}
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
 
 export type CraftResponse = Craft & {
   liked?: boolean;
@@ -92,7 +104,7 @@ export type CraftResponse = Craft & {
   artisan?: { id?: string; name?: string };
   totalLikes?: number;
   totalDislikes?: number;
-}
+};
 
 export type CommentResponse = Comment;
 
@@ -101,7 +113,7 @@ export type CraftFilters = Partial<{
   page: number;
   limit: number;
   q: string;
-  sort: 'latest' | 'price_asc' | 'price_desc' | 'rating';
+  sort: "latest" | "price_asc" | "price_desc" | "rating";
   lat: number;
   lng: number;
   radius: number;
@@ -126,4 +138,3 @@ export type CommentCreateRequest = {
   text: string;
   rating?: number;
 };
-

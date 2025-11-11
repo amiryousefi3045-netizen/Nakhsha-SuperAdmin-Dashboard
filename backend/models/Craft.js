@@ -11,6 +11,21 @@ const craftSchema = new mongoose.Schema(
       enum: ["artwork", "class", "service"],
       required: true,
     },
+    // Craft type/category (for filtering and display)
+    craftType: {
+      type: String,
+      enum: [
+        "carpet",
+        "pottery",
+        "metalwork",
+        "woodwork",
+        "textile",
+        "jewelry",
+        "leather",
+        "other",
+      ],
+      default: "other",
+    },
     // Commerce fields
     price: { type: Number, min: 0 },
     currency: { type: String, default: "IRR", maxlength: 10 },
@@ -27,6 +42,11 @@ const craftSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    // Alias for backward compatibility with routes that use artisanId
+    artisanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Artisan",
     },
     location: {
       city: String,

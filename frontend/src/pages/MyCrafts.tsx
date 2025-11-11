@@ -51,15 +51,21 @@ export default function MyCrafts(): React.ReactElement {
           raw.map((r) => ({
             id: (r._id as string) || r.id,
             title: r.title,
-            image: Array.isArray(r.images) && r.images[0] ? r.images[0] : undefined,
+            image:
+              Array.isArray(r.images) && r.images[0] ? r.images[0] : undefined,
             images: r.images,
             duration:
-              r.duration || (r.cookingTime?.total ? `${r.cookingTime.total} دقیقه` : ""),
+              r.duration ||
+              (r.cookingTime?.total ? `${r.cookingTime.total} دقیقه` : ""),
             difficulty: (r as any).difficulty,
             location:
               typeof r.location === "string"
                 ? r.location
-                : `${r.location?.city || ""}${r.location?.neighborhood ? "، " + r.location.neighborhood : ""}`,
+                : `${r.location?.city || ""}${
+                    r.location?.neighborhood
+                      ? "، " + r.location.neighborhood
+                      : ""
+                  }`,
             hasImage: !!(Array.isArray(r.images) && r.images[0]),
             isHandmade: !!r.isHandmade,
           }))

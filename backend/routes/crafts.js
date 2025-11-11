@@ -202,6 +202,17 @@ router.get("/", async (req, res) => {
 
     // Transform to API response format
     const mapCraft = (c) => {
+      // Handle both legacy (location.coordinates) and new (location.geometry.coordinates) formats
+      let lng, lat;
+      if (c.location?.coordinates && Array.isArray(c.location.coordinates)) {
+        [lng, lat] = c.location.coordinates;
+      } else if (
+        c.location?.geometry?.coordinates &&
+        Array.isArray(c.location.geometry.coordinates)
+      ) {
+        [lng, lat] = c.location.geometry.coordinates;
+      }
+
       const base = {
         id: c._id,
         title: c.title,
@@ -215,8 +226,8 @@ router.get("/", async (req, res) => {
               c.location.neighborhood ? "، " + c.location.neighborhood : ""
             }`
           : "",
-        lat: c.location?.coordinates?.[1],
-        lng: c.location?.coordinates?.[0],
+        lat,
+        lng,
         tags: c.tags || [],
         totalLikes: c.totalLikes || 0,
         totalDislikes: c.totalDislikes || 0,

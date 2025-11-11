@@ -38,21 +38,25 @@ interface MiniMapProps {
 const MiniMap: React.FC<MiniMapProps> = ({ lat, lng, title }) => {
   useEffect(() => {
     if (typeof lat !== "number" || typeof lng !== "number") return;
-    
+
     const el = document.getElementById("mini-map");
     if (!el) return;
-    
+
     const map = L.map(el, {
       zoomControl: false,
       attributionControl: false,
     }).setView([lat, lng], 12);
-    
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-    L.marker([lat, lng]).addTo(map).bindPopup(title || "");
-    
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(
+      map
+    );
+    L.marker([lat, lng])
+      .addTo(map)
+      .bindPopup(title || "");
+
     // Fix Leaflet render issues in container
     requestAnimationFrame(() => map.invalidateSize());
-    
+
     return () => map.remove();
   }, [lat, lng, title]);
 
@@ -63,7 +67,7 @@ export const CraftDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   const [data, setData] = useState<CraftResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
@@ -105,7 +109,7 @@ export const CraftDetail: React.FC = () => {
   if (!data) {
     return (
       <div className="p-6 text-center">
-        <Alert 
+        <Alert
           variant="warning"
           message={
             <>
@@ -128,22 +132,22 @@ export const CraftDetail: React.FC = () => {
 
   const onDelete = async () => {
     if (deleting) return;
-    
+
     const ok = window.confirm("آیا از حذف این محصول مطمئن هستید؟");
     if (!ok) return;
-    
-  try {
+
+    try {
       setDeleting(true);
-  if (!id) return;
-  await deleteCraft(id!);
-      navigate("/", { 
-        state: { message: "محصول با موفقیت حذف شد" }
+      if (!id) return;
+      await deleteCraft(id!);
+      navigate("/", {
+        state: { message: "محصول با موفقیت حذف شد" },
       });
     } catch (err) {
-      Alert({ 
+      Alert({
         variant: "error",
         message: "حذف محصول با خطا مواجه شد",
-        duration: 3000
+        duration: 3000,
       });
     } finally {
       setDeleting(false);
@@ -152,7 +156,7 @@ export const CraftDetail: React.FC = () => {
 
   const onLike = async () => {
     if (likeState.loading || !data || !id) return;
-    
+
     setLikeState((s) => ({ ...s, loading: true }));
     try {
       const res = await toggleLike(id);
@@ -172,7 +176,7 @@ export const CraftDetail: React.FC = () => {
       Alert({
         variant: "error",
         message: "ثبت پسند با خطا مواجه شد",
-        duration: 2000
+        duration: 2000,
       });
     } finally {
       setLikeState({ loading: false });
@@ -181,7 +185,7 @@ export const CraftDetail: React.FC = () => {
 
   const onDislike = async () => {
     if (likeState.loading || !data || !id) return;
-    
+
     setLikeState((s) => ({ ...s, loading: true }));
     try {
       const res = await toggleDislike(id);
@@ -201,7 +205,7 @@ export const CraftDetail: React.FC = () => {
       Alert({
         variant: "error",
         message: "ثبت نپسندیدن با خطا مواجه شد",
-        duration: 2000
+        duration: 2000,
       });
     } finally {
       setLikeState({ loading: false });
@@ -211,7 +215,7 @@ export const CraftDetail: React.FC = () => {
   const submitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || commentBusy || !commentText.trim() || !id) return;
-    
+
     setCommentBusy(true);
     try {
       const res = await addComment(id, {
@@ -224,13 +228,13 @@ export const CraftDetail: React.FC = () => {
       Alert({
         variant: "success",
         message: "نظر شما با موفقیت ثبت شد",
-        duration: 2000
+        duration: 2000,
       });
     } catch (err) {
       Alert({
         variant: "error",
         message: "ثبت نظر با خطا مواجه شد",
-        duration: 3000
+        duration: 3000,
       });
     } finally {
       setCommentBusy(false);
@@ -239,40 +243,40 @@ export const CraftDetail: React.FC = () => {
 
   const removeComment = async (cid: string) => {
     if (!user || !id) return;
-    
+
     const target = comments.find((c) => c.id === cid);
     if (!target) return;
-    
+
     const canDelete =
-      user.role === "admin" || 
-      (data?.artisan?.id && user.id === data.artisan.id) || 
+      user.role === "admin" ||
+      (data?.artisan?.id && user.id === data.artisan.id) ||
       String(target.user) === String(user.id);
-      
+
     if (!canDelete) {
       Alert({
         variant: "error",
         message: "شما اجازه حذف این نظر را ندارید",
-        duration: 2000
+        duration: 2000,
       });
       return;
     }
-    
+
     const ok = window.confirm("آیا از حذف این نظر مطمئن هستید؟");
     if (!ok) return;
-    
+
     try {
       await deleteComment(id, cid);
       setComments((prev) => prev.filter((c) => c.id !== cid));
       Alert({
         variant: "success",
         message: "نظر با موفقیت حذف شد",
-        duration: 2000
+        duration: 2000,
       });
     } catch (err) {
       Alert({
         variant: "error",
         message: "حذف نظر با خطا مواجه شد",
-        duration: 2000
+        duration: 2000,
       });
     }
   };
@@ -282,14 +286,14 @@ export const CraftDetail: React.FC = () => {
       <Card className="bg-white rounded-lg border p-4">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-xl font-bold">{data.title}</h1>
-          <CraftMeta 
+          <CraftMeta
             timeFa={timeFa}
             type={data.type}
             size={data.dimensions}
             category={data.category}
           />
         </div>
-        
+
         <div className="mt-3 flex items-center gap-3 justify-end">
           <Button
             onClick={onLike}
@@ -308,7 +312,7 @@ export const CraftDetail: React.FC = () => {
             </svg>
             <span>{data.totalLikes || 0}</span>
           </Button>
-          
+
           <Button
             onClick={onDislike}
             disabled={!user || likeState.loading}
@@ -366,7 +370,11 @@ export const CraftDetail: React.FC = () => {
                 </div>
                 <div className="text-gray-700 leading-7">{st.description}</div>
                 {st.image && (
-                  <img src={st.image} alt={`مرحله ${st.step}`} className="w-full rounded mt-2" />
+                  <img
+                    src={st.image}
+                    alt={`مرحله ${st.step}`}
+                    className="w-full rounded mt-2"
+                  />
                 )}
               </li>
             ))}
@@ -382,12 +390,16 @@ export const CraftDetail: React.FC = () => {
               <div className="text-sm font-medium">
                 {data.artisan?.name || "—"}
               </div>
-              <time className="text-xs text-gray-500" dateTime={data.createdAt || ''}>
-                    ثبت شده در {new Date(data.createdAt || '').toLocaleDateString("fa-IR")}
-                  </time>
+              <time
+                className="text-xs text-gray-500"
+                dateTime={data.createdAt || ""}
+              >
+                ثبت شده در{" "}
+                {new Date(data.createdAt || "").toLocaleDateString("fa-IR")}
+              </time>
             </div>
           </div>
-          
+
           {user && (user.role === "admin" || user.id === data.artisan?.id) && (
             <div className="mt-3 flex gap-2">
               <Button
@@ -415,7 +427,8 @@ export const CraftDetail: React.FC = () => {
           <div className="text-sm text-gray-700">محل عرضه محصول</div>
           <div className="text-xs text-gray-500 mt-1">
             {(data.location as any)?.city}
-            {(data.location as any)?.neighborhood && `، ${(data.location as any).neighborhood}`}
+            {(data.location as any)?.neighborhood &&
+              `، ${(data.location as any).neighborhood}`}
           </div>
           {typeof data.location?.coordinates?.[1] === "number" && (
             <div className="mt-3">
@@ -445,9 +458,7 @@ export const CraftDetail: React.FC = () => {
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">نظرات کاربران</h3>
-            <span className="text-[11px] text-gray-500">
-              {comments.length}
-            </span>
+            <span className="text-[11px] text-gray-500">{comments.length}</span>
           </div>
 
           {user ? (
@@ -460,7 +471,7 @@ export const CraftDetail: React.FC = () => {
                 maxLength={2000}
                 required
               />
-              
+
               <div className="flex items-center gap-2 text-xs justify-between">
                 <Button
                   type="submit"
@@ -471,7 +482,7 @@ export const CraftDetail: React.FC = () => {
                 >
                   {commentBusy ? "در حال ارسال…" : "ارسال"}
                 </Button>
-                
+
                 <select
                   className="border rounded px-2 py-1 order-1"
                   value={commentRating}
@@ -496,9 +507,7 @@ export const CraftDetail: React.FC = () => {
 
           <ul className="space-y-3 max-h-80 overflow-y-auto thin-scrollbar pr-1">
             {comments.length === 0 ? (
-              <li className="text-[11px] text-gray-400">
-                هنوز نظری ثبت نشده.
-              </li>
+              <li className="text-[11px] text-gray-400">هنوز نظری ثبت نشده.</li>
             ) : (
               comments.map((c) => {
                 const canDelete =
@@ -516,7 +525,7 @@ export const CraftDetail: React.FC = () => {
                       <span className="font-medium text-gray-700 truncate max-w-[120px]">
                         {String(c.user).slice(0, 10)}
                       </span>
-                      
+
                       {c.rating && (
                         <span className="text-amber-600 font-medium">
                           {"★".repeat(c.rating)}
@@ -525,7 +534,7 @@ export const CraftDetail: React.FC = () => {
                           </span>
                         </span>
                       )}
-                      
+
                       <time
                         className="text-gray-400 ml-auto"
                         dateTime={c.createdAt}

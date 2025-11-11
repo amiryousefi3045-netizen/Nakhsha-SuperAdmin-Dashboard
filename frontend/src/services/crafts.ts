@@ -98,11 +98,16 @@ export async function fetchCrafts(opts: CraftFilters = {}): Promise<{
   }
 }
 
-export async function fetchCraftById(id: string): Promise<CraftResponse | null> {
+export async function fetchCraftById(
+  id: string
+): Promise<CraftResponse | null> {
   try {
-    const { data } = await http.get<ApiResponse<CraftResponse>>(`/crafts/${id}`, {
-      params: buildQuery({ _: Date.now() }),
-    });
+    const { data } = await http.get<ApiResponse<CraftResponse>>(
+      `/crafts/${id}`,
+      {
+        params: buildQuery({ _: Date.now() }),
+      }
+    );
     return data.data || null;
   } catch {
     return null;
@@ -130,7 +135,12 @@ export async function toggleLike(
   id: string
 ): Promise<{ liked: boolean; totalLikes: number; totalDislikes?: number }> {
   const { data } = await http.post<
-    ApiResponse<{ liked?: boolean; total?: number; totalLikes?: number; totalDislikes?: number }>
+    ApiResponse<{
+      liked?: boolean;
+      total?: number;
+      totalLikes?: number;
+      totalDislikes?: number;
+    }>
   >(`/crafts/${id}/like`);
   const payload = data.data || {};
   return {
@@ -144,7 +154,12 @@ export async function toggleDislike(
   id: string
 ): Promise<{ disliked: boolean; totalLikes?: number; totalDislikes: number }> {
   const { data } = await http.post<
-    ApiResponse<{ disliked?: boolean; total?: number; totalLikes?: number; totalDislikes?: number }>
+    ApiResponse<{
+      disliked?: boolean;
+      total?: number;
+      totalLikes?: number;
+      totalDislikes?: number;
+    }>
   >(`/crafts/${id}/dislike`);
   const payload = data.data || {};
   return {
@@ -233,7 +248,7 @@ export async function fetchCraftsNear({
     });
 
     // If in dev mode and no results, provide mock data with distance
-  if (import.meta.env.DEV && (!data?.items || !data.items.length)) {
+    if (import.meta.env.DEV && (!data?.items || !data.items.length)) {
       console.info("No near results, using dev mock data");
       return [
         {

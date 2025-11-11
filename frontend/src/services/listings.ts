@@ -36,7 +36,9 @@ export async function fetchListings(
     }
   );
 
-  const items = Array.isArray(data?.items) ? (data.items as ListingWithDistance[]) : [];
+  const items = Array.isArray(data?.items)
+    ? (data.items as ListingWithDistance[])
+    : [];
   return {
     items,
     total: data.total || 0,
