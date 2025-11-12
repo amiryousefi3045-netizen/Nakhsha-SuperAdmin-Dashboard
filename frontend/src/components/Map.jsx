@@ -43,6 +43,9 @@ const Map = forwardRef(
       items = [],
       showMyLocationButton = false,
       onLocate,
+      onMapClick,
+      selectingLocation = false,
+      selectedPos = null,
     },
     ref
   ) => {
@@ -61,6 +64,7 @@ const Map = forwardRef(
     }, [onMoveEnd]);
 
     const userMarkerRef = useRef(null);
+    const selectedMarkerRef = useRef(null);
     const lastCenterRef = useRef(null);
     const initialCenterRef = useRef(center);
 
@@ -126,7 +130,16 @@ const Map = forwardRef(
           },
         });
       };
+
+      // Manual location selection: if selectingLocation is true, allow click to select coords
+      const handleMapClick = (e) => {
+        if (selectingLocation && onMapClick) {
+          onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+        }
+      };
+
       map.on("moveend", emit);
+      map.on("click", handleMapClick);
       map.whenReady(() => {
         const t = setTimeout(emit, 0);
         timeoutsRef.current.push(t);
@@ -308,6 +321,32 @@ const Map = forwardRef(
         }
       }
     }, [center]);
+
+    // Show a temporary selected marker when user picks a location on the map
+    useEffect(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      if (selectedMarkerRef.current) {
+        try {
+          map.removeLayer(selectedMarkerRef.current);
+        } catch {
+          // ignore remove errors
+        }
+        selectedMarkerRef.current = null;
+      }
+      if (selectedPos && selectedPos.lat && selectedPos.lng) {
+        const selIcon = L.divIcon({
+          html: '<div style="width:14px;height:14px;background:#f59e0b;border-radius:7px;border:2px solid #fff;"></div>',
+          className: "",
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        });
+        selectedMarkerRef.current = L.marker(
+          [selectedPos.lat, selectedPos.lng],
+          { icon: selIcon }
+        ).addTo(map);
+      }
+    }, [selectedPos]);
 
     return (
       <div className={`relative w-full h-full min-h-[240px] z-0 ${className}`}>

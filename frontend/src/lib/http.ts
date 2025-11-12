@@ -25,12 +25,32 @@ http.interceptors.request.use((config) => {
  * @returns Record with non-empty values only
  */
 export function buildQuery(params: Record<string, any>): Record<string, any> {
-  return Object.entries(params || {}).reduce((acc, [key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      acc[key] = value;
+  const out: Record<string, any> = {};
+
+  function walk(prefix: string | null, obj: any) {
+    if (obj === undefined || obj === null || obj === "") return;
+    if (typeof obj === "object" && !Array.isArray(obj)) {
+      for (const [k, v] of Object.entries(obj)) {
+        const key = prefix ? `${prefix}[${k}]` : k;
+        walk(key, v);
+      }
+    } else if (Array.isArray(obj)) {
+      // repeat array items: key[]=v1&key[]=v2
+      for (const v of obj) {
+        const key = prefix ? `${prefix}[]` : "";
+        if (key) {
+          out[key] = out[key] || [];
+          out[key].push(v);
+        }
+      }
+    } else {
+      if (prefix) out[prefix] = obj;
+      else out[String(obj)] = obj;
     }
-    return acc;
-  }, {} as Record<string, any>);
+  }
+
+  walk(null, params || {});
+  return out;
 }
 
 // Export common response types for services

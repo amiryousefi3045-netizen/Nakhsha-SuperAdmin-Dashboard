@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 
-// Prefer GPS first. If GPS fails, fall back to CORS-friendly IP-location services.
+// Prefer GPS first. If GPS fails and caller explicitly allows it,
+// fall back to CORS-friendly IP-location services. IP results are
+// returned for auxiliary UI only and must NOT be used to update the
+// Iran-only safe coords.
 const IP_LOCATION_SERVICES = [
   // ipwho.is is CORS-friendly and commonly available
   {
@@ -26,10 +29,40 @@ export default function useGeolocation() {
   const [position, setPosition] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [usedIpFallback, setUsedIpFallback] = useState(false);
+  const [providerBlocked, setProviderBlocked] = useState(false);
+  const [geoError, setGeoError] = useState(null);
 
-  const getPosition = useCallback(async () => {
+  // Last known good Iran-only coords (kept in-memory and persisted to localStorage)
+  const [lastIranGood, setLastIranGood] = useState(() => {
+    try {
+      const v = localStorage.getItem("geo.ir.good");
+      return v ? JSON.parse(v) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isInIran = (lat, lng) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    return lat >= 25 && lat <= 40 && lng >= 44 && lng <= 64;
+  };
+
+  const clampIran = (lat, lng) => ({
+    lat: Math.min(40, Math.max(25, lat)),
+    lng: Math.min(64, Math.max(44, lng)),
+  });
+
+  // getPosition(allowIpFallback = false)
+  // - allowIpFallback: when true, if browser GPS fails we attempt IP-based services
+  // Default is false to avoid auto-using IP geolocation (which may return a coarse/incorrect country)
+  // If IP fallback is used we set usedIpFallback=true but we DO NOT update the Iran-only
+  // persisted coords from IP results. Only valid GPS inside Iran updates that store.
+  const getPosition = useCallback(async (allowIpFallback = false) => {
     setLoading(true);
     setError("");
+    setGeoError(null);
+    setProviderBlocked(false);
 
     // 1. Try browser GPS first (preferred) with conservative timeout/options
     const tryBrowserGPS = () =>
@@ -42,39 +75,80 @@ export default function useGeolocation() {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const took = Date.now() - start;
-            // If the browser returns a position extremely quickly it's likely
-            // a cached/network provider (sometimes backed by Google). We still
-            // accept it, but we log the timing so the app can react if needed.
             resolve({ pos, took });
           },
           (err) => reject(err),
           {
+            // Use the conservative options requested
             enableHighAccuracy: true,
-            timeout: 8000,
+            timeout: 15000,
             maximumAge: 0,
-            // vendor hints (may be ignored by browsers)
-            mozSystem: true,
-            webkitSkipLowAccuracy: true,
           }
         );
       });
 
     try {
       const { pos, took } = await tryBrowserGPS();
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
       console.debug("geo: GPS success", {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
+        latitude: lat,
+        longitude: lng,
         accuracy: Math.round(pos.coords.accuracy || 0),
         took,
         source: "GPS",
       });
 
-      setPosition({ ...pos, source: "GPS" });
+      // If GPS result is inside Iran, persist as last good Iran coords and
+      // clamp them to the safe bounding box. If outside Iran, we still return
+      // the GPS location for auxiliary UI but do not update Iran-only storage.
+      if (isInIran(lat, lng)) {
+        const clamped = clampIran(lat, lng);
+        const coords = {
+          latitude: clamped.lat,
+          longitude: clamped.lng,
+          accuracy: pos.coords.accuracy || 0,
+        };
+        setPosition({
+          coords,
+          timestamp: pos.timestamp || Date.now(),
+          source: "GPS",
+        });
+        setUsedIpFallback(false);
+        const saved = { lat: clamped.lat, lng: clamped.lng, ts: Date.now() };
+        try {
+          localStorage.setItem("geo.ir.good", JSON.stringify(saved));
+        } catch {
+          // ignore storage errors (privacy mode, quota, etc.)
+        }
+        setLastIranGood(saved);
+      } else {
+        // outside Iran: keep raw GPS for UI but don't treat it as 'safe'
+        setPosition({ ...pos, source: "GPS" });
+        setUsedIpFallback(false);
+      }
+
       setLoading(false);
       return;
     } catch (gpsErr) {
       // If GPS fails or is unavailable, we'll fall back to IP-based lookups
       console.warn("geo: GPS failed", gpsErr);
+
+      // Detect Google provider block: check for 403 or googleapis.com references
+      if (gpsErr && gpsErr.message) {
+        if (
+          gpsErr.message.includes("403") ||
+          gpsErr.message.includes("www.googleapis.com") ||
+          gpsErr.message.includes("Returned error code 403")
+        ) {
+          setProviderBlocked(true);
+          setGeoError("سرویس Google برای موقعیت‌یابی مسدود است (403)");
+          setLoading(false);
+          return;
+        }
+      }
+      // Store the error for diagnostics
+      setGeoError(gpsErr && gpsErr.message ? gpsErr.message : "GPS ناموفق بود");
     }
 
     // 2. If GPS didn't provide a usable result, attempt CORS-friendly IP services
@@ -101,35 +175,41 @@ export default function useGeolocation() {
           });
       });
 
-    for (const service of IP_LOCATION_SERVICES) {
-      try {
-        const resp = await fetchWithTimeout(service.url, 4000);
-        if (!resp.ok) {
-          console.debug(`geo: ${service.url} returned ${resp.status}`);
-          continue;
+    // Only attempt IP-based services if caller explicitly allows it. This
+    // prevents silently using coarse IP-derived locations and unexpectedly
+    // recentering the map. If used, IP-based results will set `usedIpFallback`
+    // but will NOT be stored as the Iran-only last-good coords.
+    if (allowIpFallback) {
+      for (const service of IP_LOCATION_SERVICES) {
+        try {
+          const resp = await fetchWithTimeout(service.url, 4000);
+          if (!resp.ok) {
+            console.debug(`geo: ${service.url} returned ${resp.status}`);
+            continue;
+          }
+          const data = await resp.json();
+          const pos = service.parse(data);
+          if (Number.isFinite(pos.latitude) && Number.isFinite(pos.longitude)) {
+            console.debug(`geo: ${service.url} success`, pos);
+            setPosition({
+              coords: {
+                latitude: pos.latitude,
+                longitude: pos.longitude,
+                accuracy: 5000,
+              },
+              timestamp: Date.now(),
+              source: pos.source,
+            });
+            setUsedIpFallback(true);
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.debug(
+            `geo: ${service.url} failed`,
+            err && err.message ? err.message : err
+          );
         }
-        const data = await resp.json();
-        const pos = service.parse(data);
-        if (Number.isFinite(pos.latitude) && Number.isFinite(pos.longitude)) {
-          console.debug(`geo: ${service.url} success`, pos);
-          setPosition({
-            coords: {
-              latitude: pos.latitude,
-              longitude: pos.longitude,
-              accuracy: 5000,
-            },
-            timestamp: Date.now(),
-            source: pos.source,
-          });
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        // DNS/CORS or other network error for this service: try next one
-        console.debug(
-          `geo: ${service.url} failed`,
-          err && err.message ? err.message : err
-        );
       }
     }
 
@@ -138,15 +218,19 @@ export default function useGeolocation() {
     setLoading(false);
   }, []);
 
-  // درخواست موقعیت به محض mount
+  // درخواست موقعیت به محض mount — no IP fallback on mount
   useEffect(() => {
-    getPosition();
+    getPosition(false);
   }, [getPosition]);
 
   return {
     position,
     error,
     loading,
-    getPosition, // برای درخواست مجدد
+    getPosition, // برای درخواست مجدد: call getPosition(true) to allow IP fallback
+    usedIpFallback,
+    lastIranGood,
+    providerBlocked,
+    geoError,
   };
 }

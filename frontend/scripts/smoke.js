@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+/* eslint-env node */
+/* global process */
 
 /**
  * Smoke test for frontend build

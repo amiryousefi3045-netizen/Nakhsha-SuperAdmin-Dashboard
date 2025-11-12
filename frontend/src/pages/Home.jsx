@@ -16,8 +16,9 @@ const Home = () => {
   const {
     position,
     error: geoError,
-    loading: geoLoading,
     getPosition,
+    usedIpFallback,
+    providerBlocked,
   } = useGeolocation();
 
   const [filters, setFilters] = useState({
@@ -41,19 +42,65 @@ const Home = () => {
   const [triedSeed, setTriedSeed] = useState(false);
   const [sort, setSort] = useState("newest");
   const [typingQuery, setTypingQuery] = useState("");
+  const [selectingLocation, setSelectingLocation] = useState(false);
+  const [manualError, setManualError] = useState(null);
+  const [manualSelectedPos, setManualSelectedPos] = useState(null);
 
   // Convert geolocation position to userPos
   const userPos = useMemo(() => {
+    // Do not treat IP-fallback positions as userPos for centering.
     if (!position?.coords) return null;
+    if (usedIpFallback) return null;
     return {
       lat: position.coords.latitude,
       lng: position.coords.longitude,
     };
-  }, [position]);
+  }, [position, usedIpFallback]);
+
+  // Handle manual map location selection
+  const handleMapClick = (coords) => {
+    if (!selectingLocation || !coords) return;
+    const { lat, lng } = coords;
+    // Clear selection mode regardless
+    setSelectingLocation(false);
+    // Validate Iran bounding box
+    if (isInIran(lat, lng)) {
+      const clamped = {
+        lat: Math.min(40, Math.max(25, lat)),
+        lng: Math.min(64, Math.max(44, lng)),
+      };
+      setManualSelectedPos(clamped);
+      setManualError(null);
+      try {
+        localStorage.setItem(
+          "geo.ir.good",
+          JSON.stringify({ lat: clamped.lat, lng: clamped.lng, ts: Date.now() })
+        );
+      } catch {
+        // ignore
+      }
+    } else {
+      setManualSelectedPos(null);
+      setManualError("مختصات انتخابی خارج از محدوده ایران است.");
+    }
+  };
+
+  // Only consider positions that fall within Iran's rough bounding box
+  const isInIran = (lat, lng) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    return lat >= 25 && lat <= 40 && lng >= 44 && lng <= 64;
+  };
+
+  const safeUserPos =
+    manualSelectedPos && isInIran(manualSelectedPos.lat, manualSelectedPos.lng)
+      ? manualSelectedPos
+      : userPos && isInIran(userPos.lat, userPos.lng)
+      ? userPos
+      : null;
 
   // Update sort to 'distance' when we get location
   useEffect(() => {
-    if (userPos && sort === "newest") {
+    if (userPos && isInIran(userPos.lat, userPos.lng) && sort === "newest") {
       setSort("distance");
     }
   }, [userPos, sort]);
@@ -64,6 +111,9 @@ const Home = () => {
 
     // Different zoom levels based on location source
     const delta = position?.source === "GPS" ? 0.02 : 0.2;
+
+    // Only set bounds from user position if it's inside Iran; otherwise keep defaults
+    if (!isInIran(userPos.lat, userPos.lng)) return;
 
     const initial = {
       north: userPos.lat + delta,
@@ -83,10 +133,10 @@ const Home = () => {
       limit,
       q: query,
       sort,
-      lat: userPos?.lat,
-      lng: userPos?.lng,
+      lat: safeUserPos?.lat,
+      lng: safeUserPos?.lng,
     }),
-    [appliedBounds, filters, page, limit, query, sort, userPos]
+    [appliedBounds, filters, page, limit, query, sort, safeUserPos]
   );
 
   // Load initial state from URL
@@ -264,11 +314,36 @@ const Home = () => {
           <div className="absolute top-3 left-3 z-10 bg-white/95 px-3 py-1.5 rounded-full shadow text-xs font-semibold">
             {total.toLocaleString("fa-IR")} اثر در این محدوده
           </div>
+          {usedIpFallback && (
+            <div className="absolute top-12 left-3 z-10 bg-yellow-50 text-yellow-800 text-xs px-2 py-1 rounded-full shadow">
+              موقعیت تقریبی (IP)
+            </div>
+          )}
+          {(providerBlocked || geoError?.includes("403")) && (
+            <div className="absolute top-24 left-3 right-3 z-20 bg-red-50 text-red-700 text-xs px-3 py-2 rounded shadow max-w-xs text-center">
+              <div className="font-medium mb-2">
+                سرویس موقعیت‌یابی در دسترس نیست
+              </div>
+              <div className="text-[11px] mb-3">
+                سرویس شبکه‌ای موقعیت در این مرورگر قابل دسترس نیست. پیشنهاد:
+                Firefox یا Safari.
+              </div>
+              <button
+                onClick={() => setSelectingLocation(true)}
+                className="inline-block bg-red-700 text-white px-2 py-1 rounded text-[10px] hover:bg-red-800"
+              >
+                انتخاب دستی روی نقشه
+              </button>
+            </div>
+          )}
           <Map
-            center={userPos}
+            center={manualSelectedPos || safeUserPos}
+            selectedPos={manualSelectedPos}
             items={items}
             showMyLocationButton
-            onLocate={getPosition}
+            onLocate={() => getPosition(true)}
+            onMapClick={handleMapClick}
+            selectingLocation={selectingLocation}
             onMoveEnd={({ bounds }) => {
               setBounds(bounds);
               setMapDirty(true);
@@ -284,6 +359,11 @@ const Home = () => {
               {geoError}
             </div>
           )}
+          {manualError && (
+            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-full shadow max-w-[300px] text-center">
+              {manualError}
+            </div>
+          )}
         </section>
       </div>
 
@@ -291,15 +371,36 @@ const Home = () => {
       <div className="md:hidden relative h-full w-full">
         <div className="absolute inset-0">
           <Map
-            center={userPos}
+            center={safeUserPos}
+            selectedPos={manualSelectedPos}
             items={items}
             showMyLocationButton
-            onLocate={getPosition}
+            onLocate={() => getPosition(true)}
+            onMapClick={handleMapClick}
+            selectingLocation={selectingLocation}
             onMoveEnd={({ bounds }) => {
               setBounds(bounds);
               setMapDirty(true);
             }}
           />
+          {usedIpFallback && (
+            <div className="absolute top-3 right-3 z-10 bg-yellow-50 text-yellow-800 text-xs px-2 py-1 rounded-full shadow">
+              موقعیت تقریبی (IP)
+            </div>
+          )}
+          {(providerBlocked || geoError?.includes("403")) && (
+            <div className="absolute top-3 left-3 right-3 z-20 bg-red-50 text-red-700 text-[11px] px-2 py-1 rounded shadow text-center">
+              <div className="font-medium mb-1">
+                موقعیت‌یابی قابل دسترس نیست
+              </div>
+              <button
+                onClick={() => setSelectingLocation(true)}
+                className="inline-block bg-red-700 text-white px-2 py-0.5 rounded text-[10px] hover:bg-red-800 mt-1"
+              >
+                انتخاب روی نقشه
+              </button>
+            </div>
+          )}
           {mapDirty && (
             <div className="absolute top-3 left-3 bg-white/95 text-gray-800 px-3 py-1 rounded-full text-[10px] shadow animate-pulse">
               بروزرسانی…

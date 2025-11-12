@@ -51,7 +51,7 @@ export default function CraftDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [imgIdx, setImgIdx] = useState(0);
+  const [imgIdx] = useState(0);
   const [likeLoading, setLikeLoading] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentRating, setCommentRating] = useState("");
