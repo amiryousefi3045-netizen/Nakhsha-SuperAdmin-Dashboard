@@ -47,7 +47,24 @@ const CraftCard = ({ craft }) => (
                 : `${(craft.distanceMeters / 1000).toFixed(1)} کیلومتر`}
             </span>
           )}
-          <span>{craft.location || "—"}</span>
+          <span>
+            {typeof craft.location === "string"
+              ? craft.location
+              : craft.location && typeof craft.location === "object"
+              ? craft.location.city
+                ? `${craft.location.city}${
+                    craft.location.neighborhood
+                      ? "، " + craft.location.neighborhood
+                      : ""
+                  }`
+                : Array.isArray(craft.location.coordinates)
+                ? // coordinates stored as [lng, lat]
+                  `${Number(craft.location.coordinates[1]).toFixed(
+                    3
+                  )}, ${Number(craft.location.coordinates[0]).toFixed(3)}`
+                : "—"
+              : "—"}
+          </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"

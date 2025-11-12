@@ -92,24 +92,50 @@ router.get("/", async (req, res) => {
     const e = parseFloat(getBound("east"));
     const w = parseFloat(getBound("west"));
     if ([n, s, e, w].every((v) => Number.isFinite(v))) {
-      console.log("Searching in bounds:", { n, s, e, w });
-      // Use GeoJSON polygon for $geoWithin against location.geometry
-      filter["location.geometry"] = {
-        $geoWithin: {
-          $geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [w, s],
-                [e, s],
-                [e, n],
-                [w, n],
-                [w, s],
-              ],
-            ],
-          },
-        },
-      };
+      // Basic sanity checks: ensure bounds make sense (north > south, east > west)
+      if (!(n > s && e > w)) {
+        console.warn(
+          "Ignoring invalid bounds (north/south or east/west inverted)",
+          {
+            n,
+            s,
+            e,
+            w,
+            rawQuery,
+          }
+        );
+      } else {
+        try {
+          console.log("Searching in bounds:", { n, s, e, w });
+          // Use GeoJSON polygon for $geoWithin against location.geometry
+          filter["location.geometry"] = {
+            $geoWithin: {
+              $geometry: {
+                type: "Polygon",
+                coordinates: [
+                  [
+                    [w, s],
+                    [e, s],
+                    [e, n],
+                    [w, n],
+                    [w, s],
+                  ],
+                ],
+              },
+            },
+          };
+        } catch (ex) {
+          // Defensive: if Polygon creation or value causes a runtime error, log and skip geo filter
+          console.error("Failed to build geo polygon from bounds", {
+            n,
+            s,
+            e,
+            w,
+            err: ex && ex.message,
+            rawQuery,
+          });
+        }
+      }
     }
 
     // Basic filters
