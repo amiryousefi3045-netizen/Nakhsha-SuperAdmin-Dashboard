@@ -240,25 +240,29 @@ const Home = () => {
   // Desktop layout
   return (
     <>
-      <div className="hidden md:grid h-full grid-rows-[1fr] grid-cols-[420px_1fr]">
-        {/* Right Panel (RTL) */}
-        <aside className="bg-white flex flex-col border-r md:border-l md:border-r-0 min-h-0">
-          <div className="p-3 border-b">
+      <div className="hidden md:grid h-full grid-rows-[1fr] grid-cols-[460px_1fr]">
+        {/* Left Sidebar (RTL) - Redesigned with polished UI */}
+        <aside className="bg-gradient-to-b from-white to-gray-50 flex flex-col border-r md:border-l md:border-r-0 min-h-0 overflow-hidden">
+          {/* Header Section */}
+          <div className="space-y-4 p-6 border-b border-gray-200/80">
             <BreadcrumbBar />
-          </div>
-          <div className="p-3 border-b">
             <FilterToolbar filters={filters} setFilters={setFilters} />
           </div>
-          <div className="px-3 pb-2 border-b">
-            <div className="flex items-center justify-between py-2">
-              <h2 className="text-sm font-medium text-gray-700">همه آثار</h2>
-              <div className="text-[11px] text-gray-500">
-                {toFa(total)} نتیجه
+
+          {/* Search & Sort Section - Redesigned */}
+          <div className="px-6 py-5 border-b border-gray-200/80 space-y-4">
+            {/* Title & Result Count */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">آثار هنری</h2>
+              <div className="text-sm font-semibold text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                {toFa(total)}
               </div>
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-gray-600">
+
+            {/* Sort & Search Controls */}
+            <div className="flex items-center gap-3">
               <select
-                className="border rounded-full px-3 py-1 text-[11px]"
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white hover:border-gray-400 focus:border-primary-500 focus:outline-none transition-colors"
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
               >
@@ -270,12 +274,14 @@ const Home = () => {
                 <option value="distance">نزدیک‌ترین</option>
               </select>
               <input
-                className="ml-auto border rounded-full px-3 py-1 text-[11px]"
-                placeholder="جستجو"
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white placeholder:text-gray-400 hover:border-gray-400 focus:border-primary-500 focus:outline-none transition-colors"
+                placeholder="جستجو…"
                 value={typingQuery}
                 onChange={(e) => setTypingQuery(e.target.value)}
               />
             </div>
+
+            {/* Active Filters Chips */}
             <FilterChips
               filters={filters}
               onClear={(key) => {
@@ -295,42 +301,154 @@ const Home = () => {
               }}
             />
           </div>
+
+          {/* Content Area - Items Grid */}
           <div className="flex-1 overflow-y-auto thin-scrollbar">
-            <CraftList items={items} loading={loading} />
-            <div className="p-3 flex justify-center">
-              {hasMore && (
+            <div className="p-6">
+              {loading ? (
+                // Loading skeleton in grid layout
+                <div className="grid grid-cols-2 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="bg-gray-200 rounded-2xl h-48 animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : items.length === 0 ? (
+                // Empty state
+                <div className="flex items-center justify-center h-48">
+                  <div className="text-center text-gray-500">
+                    <p className="text-sm">نتیجه‌ای پیدا نشد</p>
+                  </div>
+                </div>
+              ) : (
+                // Items grid - 2 columns
+                <div className="grid grid-cols-2 gap-4">
+                  {items.map((craft, idx) => (
+                    <a
+                      key={craft.id || idx}
+                      href={`/craft/${craft.id}`}
+                      className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer"
+                    >
+                      {/* Image Container */}
+                      <div className="relative w-full h-32 bg-gray-200 overflow-hidden">
+                        <img
+                          src={
+                            craft.image ||
+                            (Array.isArray(craft.images) && craft.images[0]) ||
+                            "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='128' viewBox='0 0 160 128'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3Cg fill='%239ca3af' font-family='sans-serif' font-size='12' text-anchor='middle'%3E%3Ctext x='80' y='64'%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E"
+                          }
+                          alt={craft.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src =
+                              "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='128' viewBox='0 0 160 128'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3Cg fill='%239ca3af' font-family='sans-serif' font-size='12' text-anchor='middle'%3E%3Ctext x='80' y='64'%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E";
+                          }}
+                        />
+                      </div>
+
+                      {/* Card Content */}
+                      <div className="p-4 space-y-3">
+                        {/* Title */}
+                        <div>
+                          <h3 className="font-semibold text-sm text-gray-900 line-clamp-2">
+                            {craft.title}
+                          </h3>
+                        </div>
+
+                        {/* Category Badge */}
+                        {craft.type && (
+                          <div>
+                            <span className="inline-block px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-full">
+                              {craft.type}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Location & Distance */}
+                        <div className="text-xs text-gray-600 space-y-1">
+                          {typeof craft.distanceMeters === "number" && (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block px-2 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium">
+                                {craft.distanceMeters < 1000
+                                  ? `${Math.round(craft.distanceMeters)} متر`
+                                  : `${(craft.distanceMeters / 1000).toFixed(
+                                      1
+                                    )} کم`}
+                              </span>
+                            </div>
+                          )}
+                          {craft.location && (
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <svg
+                                className="w-3 h-3"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
+                              </svg>
+                              <span className="line-clamp-1">
+                                {typeof craft.location === "string"
+                                  ? craft.location
+                                  : craft.location?.city || "موقعیت نامشخص"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* CTA Button - Subtle */}
+                        <div className="pt-2">
+                          <button className="w-full text-xs font-semibold text-primary-600 py-1.5 px-3 rounded-lg border border-primary-200 bg-primary-50 hover:bg-primary-100 transition-colors">
+                            مشاهده جزئیات
+                          </button>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="px-6 pb-6 flex justify-center">
                 <button
-                  className="border rounded-full px-4 py-2 text-sm hover:bg-gray-50"
+                  className="px-6 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={loading}
                 >
                   {loading ? "در حال بارگذاری…" : "نمایش بیشتر"}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </aside>
-        <section className="relative h-full min-h-0">
-          <div className="absolute top-3 left-3 z-10 bg-white/95 px-3 py-1.5 rounded-full shadow text-xs font-semibold">
+        {/* Map Section */}
+        <section className="relative h-full min-h-0 rounded-tl-3xl overflow-hidden shadow-lg">
+          <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-gray-900">
             {total.toLocaleString("fa-IR")} اثر در این محدوده
           </div>
           {usedIpFallback && (
-            <div className="absolute top-12 left-3 z-10 bg-yellow-50 text-yellow-800 text-xs px-2 py-1 rounded-full shadow">
+            <div className="absolute top-16 left-4 z-10 bg-amber-50 text-amber-800 text-xs px-3 py-2 rounded-lg shadow-md font-medium">
               موقعیت تقریبی (IP)
             </div>
           )}
           {(providerBlocked || geoError?.includes("403")) && (
-            <div className="absolute top-24 left-3 right-3 z-20 bg-red-50 text-red-700 text-xs px-3 py-2 rounded shadow max-w-xs text-center">
-              <div className="font-medium mb-2">
+            <div className="absolute top-28 left-4 right-4 z-20 bg-red-50 text-red-700 text-xs px-4 py-3 rounded-lg shadow-md max-w-sm">
+              <div className="font-semibold mb-2">
                 سرویس موقعیت‌یابی در دسترس نیست
               </div>
-              <div className="text-[11px] mb-3">
-                سرویس شبکه‌ای موقعیت در این مرورگر قابل دسترس نیست. پیشنهاد:
-                Firefox یا Safari.
+              <div className="text-xs mb-3 text-red-600">
+                سرویس شبکه‌ای موقعیت در این مرورگر قابل دسترس نیست. Firefox یا
+                Safari را امتحان کنید.
               </div>
               <button
                 onClick={() => setSelectingLocation(true)}
-                className="inline-block bg-red-700 text-white px-2 py-1 rounded text-[10px] hover:bg-red-800"
+                className="inline-block bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-800 transition-colors"
               >
                 انتخاب دستی روی نقشه
               </button>
@@ -348,19 +466,20 @@ const Home = () => {
               setBounds(bounds);
               setMapDirty(true);
             }}
+            className="rounded-tl-3xl"
           />
           {mapDirty && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 text-gray-700 text-xs px-4 py-1 rounded-full shadow animate-pulse">
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur text-gray-900 text-xs px-4 py-2 rounded-full shadow-md font-medium animate-pulse">
               بروزرسانی خودکار…
             </div>
           )}
           {geoError && (
-            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-full shadow max-w-[260px] text-center">
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-red-50 text-red-700 text-xs px-4 py-2 rounded-lg shadow-md max-w-xs text-center font-medium">
               {geoError}
             </div>
           )}
           {manualError && (
-            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-full shadow max-w-[300px] text-center">
+            <div className="absolute bottom-40 left-1/2 -translate-x-1/2 bg-red-50 text-red-700 text-xs px-4 py-2 rounded-lg shadow-md max-w-sm text-center font-medium">
               {manualError}
             </div>
           )}
@@ -368,8 +487,8 @@ const Home = () => {
       </div>
 
       {/* Mobile layout */}
-      <div className="md:hidden relative h-full w-full">
-        <div className="absolute inset-0">
+      <div className="md:hidden relative h-full w-full flex flex-col">
+        <div className="absolute inset-0 z-0">
           <Map
             center={safeUserPos}
             selectedPos={manualSelectedPos}
@@ -384,25 +503,23 @@ const Home = () => {
             }}
           />
           {usedIpFallback && (
-            <div className="absolute top-3 right-3 z-10 bg-yellow-50 text-yellow-800 text-xs px-2 py-1 rounded-full shadow">
+            <div className="absolute top-3 right-3 z-10 bg-amber-50 text-amber-800 text-xs px-2 py-1 rounded-lg shadow-md font-medium">
               موقعیت تقریبی (IP)
             </div>
           )}
           {(providerBlocked || geoError?.includes("403")) && (
-            <div className="absolute top-3 left-3 right-3 z-20 bg-red-50 text-red-700 text-[11px] px-2 py-1 rounded shadow text-center">
-              <div className="font-medium mb-1">
-                موقعیت‌یابی قابل دسترس نیست
-              </div>
+            <div className="absolute top-3 left-3 right-3 z-20 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg shadow-md text-center font-medium">
+              <div className="mb-1">موقعیت‌یابی قابل دسترس نیست</div>
               <button
                 onClick={() => setSelectingLocation(true)}
-                className="inline-block bg-red-700 text-white px-2 py-0.5 rounded text-[10px] hover:bg-red-800 mt-1"
+                className="inline-block bg-red-700 text-white px-2 py-1 rounded-lg text-[10px] hover:bg-red-800 font-semibold mt-1 transition-colors"
               >
                 انتخاب روی نقشه
               </button>
             </div>
           )}
           {mapDirty && (
-            <div className="absolute top-3 left-3 bg-white/95 text-gray-800 px-3 py-1 rounded-full text-[10px] shadow animate-pulse">
+            <div className="absolute top-3 left-3 bg-white/95 backdrop-blur text-gray-800 px-3 py-1 rounded-lg text-xs shadow-md font-medium animate-pulse">
               بروزرسانی…
             </div>
           )}
@@ -410,19 +527,19 @@ const Home = () => {
         <MobileBottomSheet
           initial="collapsed"
           header={
-            <div className="space-y-3">
-              <div className="text-center text-xs text-gray-700 font-medium">
+            <div className="space-y-4 p-4">
+              <div className="text-center text-sm font-bold text-gray-900">
                 {toFa(total)} اثر در این محدوده
               </div>
-              <div className="flex gap-2 items-center text-[11px]">
+              <div className="flex gap-2 items-center text-sm">
                 <input
-                  className="border rounded-full px-3 py-1 text-[11px] flex-1"
-                  placeholder="جستجو"
+                  className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm flex-1 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none"
+                  placeholder="جستجو…"
                   value={typingQuery}
                   onChange={(e) => setTypingQuery(e.target.value)}
                 />
                 <select
-                  className="border rounded-full px-2 py-1 text-[11px]"
+                  className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:border-primary-500 focus:outline-none"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
                 >
@@ -430,22 +547,12 @@ const Home = () => {
                   <option value="distance">نزدیک‌ترین</option>
                   <option value="popular">محبوب‌ترین</option>
                 </select>
-                <button
-                  type="button"
-                  className="text-[11px] px-2 py-1 rounded-full border bg-gray-50"
-                  onClick={() => {
-                    const el = document.getElementById("mobile-filters-inline");
-                    if (el) el.open = !el.open;
-                  }}
-                >
-                  فیلتر
-                </button>
               </div>
-              <details id="mobile-filters-inline" className="text-[11px]">
-                <summary className="cursor-pointer text-gray-600">
+              <details id="mobile-filters-inline" className="text-sm">
+                <summary className="cursor-pointer font-semibold text-gray-700 hover:text-gray-900 transition-colors">
                   فیلترهای پیشرفته
                 </summary>
-                <div className="pt-2">
+                <div className="pt-3 mt-3 space-y-3 border-t border-gray-200">
                   <FilterSidebar filters={filters} setFilters={setFilters} />
                 </div>
               </details>
@@ -470,20 +577,81 @@ const Home = () => {
             </div>
           }
         >
-          <CraftList items={items} loading={loading} />
-          <div className="p-3 flex justify-center">
-            {hasMore && (
+          {/* Mobile items grid */}
+          <div className="px-4 py-4">
+            {loading ? (
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-gray-200 rounded-xl h-40 animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : items.length === 0 ? (
+              <div className="flex items-center justify-center h-40">
+                <div className="text-center text-gray-500">
+                  <p className="text-sm">نتیجه‌ای پیدا نشد</p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {items.map((craft, idx) => (
+                  <a
+                    key={craft.id || idx}
+                    href={`/craft/${craft.id}`}
+                    className="group block bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200"
+                  >
+                    <div className="relative w-full h-28 bg-gray-200">
+                      <img
+                        src={
+                          craft.image ||
+                          (Array.isArray(craft.images) && craft.images[0]) ||
+                          "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='112' viewBox='0 0 140 112'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3Cg fill='%239ca3af' font-family='sans-serif' font-size='11' text-anchor='middle'%3E%3Ctext x='70' y='56'%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E"
+                        }
+                        alt={craft.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src =
+                            "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='112' viewBox='0 0 140 112'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3Cg fill='%239ca3af' font-family='sans-serif' font-size='11' text-anchor='middle'%3E%3Ctext x='70' y='56'%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E";
+                        }}
+                      />
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <h3 className="font-semibold text-xs text-gray-900 line-clamp-2">
+                        {craft.title}
+                      </h3>
+                      {craft.type && (
+                        <span className="inline-block px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg">
+                          {craft.type}
+                        </span>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Load More Button */}
+          {hasMore && (
+            <div className="px-4 pb-4 flex justify-center">
               <button
-                className="border rounded-full px-4 py-2 text-sm hover:bg-gray-50"
+                className="px-4 py-2 text-xs font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 onClick={() => setPage((p) => p + 1)}
                 disabled={loading}
               >
                 {loading ? "در حال بارگذاری…" : "نمایش بیشتر"}
               </button>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Error Messages */}
           {geoError && (
-            <div className="mx-3 mb-3 bg-red-50 text-red-700 text-xs px-3 py-2 rounded shadow text-center">
+            <div className="mx-4 mb-4 bg-red-50 text-red-700 text-xs px-4 py-2 rounded-lg shadow text-center font-medium">
               {geoError}
             </div>
           )}
