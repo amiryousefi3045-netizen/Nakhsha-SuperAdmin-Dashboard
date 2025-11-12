@@ -38,12 +38,13 @@ AFTER:
 ```
 
 ### Key Features:
+
 - Two-column grid layout for compact form
 - All inputs with `rounded-xl` corners
 - Subtle shadow on hover: `shadow-sm` → `shadow-md`
 - Gradient background: white to gray-50
 - Focus rings: `2px solid primary-500` with `4px offset`
-- Smooth transitions: `duration-200` 
+- Smooth transitions: `duration-200`
 - Full keyboard navigation
 
 ---
@@ -67,13 +68,13 @@ Effect: Gradient moves left to right
 
 ```css
 @keyframes fadeInUp {
-  from { 
-    opacity: 0; 
-    transform: translateY(8px); 
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -84,6 +85,7 @@ Stagger: +0.05s per item
 ```
 
 ### Timeline Example:
+
 ```
 Item 1: 0ms    opacity 0→1, y +8→0
 Item 2: 50ms   opacity 0→1, y +8→0
@@ -93,6 +95,7 @@ Item 4: 150ms  opacity 0→1, y +8→0
 ```
 
 ### Reduced Motion (prefers-reduced-motion: reduce)
+
 ```css
 .animate-shimmer,
 .grid > a {
@@ -131,13 +134,14 @@ shadow-md, -translate-y-0.5, scale-1.01
 ```
 
 ### Transitions Applied:
+
 ```javascript
 // Image on hover
 motion-safe:group-hover:brightness-110
 transition-all duration-200
 
 // Card container
-motion-safe:hover:-translate-y-0.5 
+motion-safe:hover:-translate-y-0.5
 motion-safe:hover:scale-[1.01]
 transition-[transform,box-shadow] duration-200
 
@@ -174,7 +178,7 @@ Focused (Tab key):
 <input aria-label="فیلتر بر اساس شهر" />
 <select aria-label="فیلتر بر اساس نوع صنایع دستی" />
 
-// Buttons  
+// Buttons
 <button aria-label="دیدن جزئیات ${title}" />
 <button aria-label="استفاده از موقعیت فعلی" />
 
@@ -190,7 +194,7 @@ Focused (Tab key):
 ```
 Tab Order:
 1. Search input
-2. Sort select  
+2. Sort select
 3. Sidebar filters
 4. Load More button
 5. Map elements
@@ -223,9 +227,9 @@ All elements:
 <label className="text-xs font-semibold text-gray-700" />
 
 // Inputs
-className="border border-gray-200 rounded-xl px-4 py-2.5 
+className="border border-gray-200 rounded-xl px-4 py-2.5
            text-sm bg-white placeholder:text-gray-400
-           hover:border-gray-300 
+           hover:border-gray-300
            focus:border-primary-500 focus:outline-none
            focus:ring-1 focus:ring-primary-500/20
            transition-all duration-200
@@ -236,7 +240,7 @@ className="border border-gray-200 rounded-xl px-4 py-2.5
 
 ```javascript
 // Primary action
-className="bg-primary-600 hover:bg-primary-700 
+className="bg-primary-600 hover:bg-primary-700
            text-white font-semibold
            px-6 py-2.5 rounded-full
            transition-colors duration-200
@@ -288,6 +292,7 @@ motion-reduce:transition-none
 ## Browser Support
 
 ✅ All modern browsers:
+
 - Chrome/Edge 88+
 - Firefox 87+
 - Safari 14+
@@ -297,14 +302,22 @@ motion-reduce:transition-none
 
 ```css
 /* CSS Custom Properties - universally supported */
-@supports (animation: shimmer) { ... }
+@supports (animation: shimmer) {
+  ...;
+}
 
 /* prefers-reduced-motion - supported in all modern browsers */
-@media (prefers-reduced-motion: reduce) { ... }
+@media (prefers-reduced-motion: reduce) {
+  ...;
+}
 
 /* Focus-visible - Progressive enhancement */
-.focus-visible { ring: 2px; }
-:focus:not(:focus-visible) { outline: none; }
+.focus-visible {
+  ring: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
 ```
 
 ---
@@ -312,6 +325,7 @@ motion-reduce:transition-none
 ## Testing Checklist
 
 ### Visual Regression
+
 - [ ] Compare sidebar layout (2-column grid)
 - [ ] Verify rounded corners on all inputs
 - [ ] Check shadow depths and subtle effects
@@ -319,13 +333,15 @@ motion-reduce:transition-none
 - [ ] Test shimmer effect on skeletons
 
 ### Interaction Testing
+
 - [ ] Card hover: Image zoom, shadow enhance
 - [ ] Badge hover: Background color change
 - [ ] Button hover: Color and shadow transition
 - [ ] Focus ring: Visible on all interactive elements
 - [ ] All transitions: Smooth, no jank
 
-### Accessibility Testing  
+### Accessibility Testing
+
 - [ ] Keyboard: Full navigation with Tab
 - [ ] Screen reader: ARIA labels read correctly
 - [ ] Focus: Always visible, logical order
@@ -333,6 +349,7 @@ motion-reduce:transition-none
 - [ ] Contrast: All text readable (WCAG AA)
 
 ### Performance Testing
+
 - [ ] Load time: No regression
 - [ ] Animation smoothness: 60fps on standard devices
 - [ ] Memory usage: No leaks from animations

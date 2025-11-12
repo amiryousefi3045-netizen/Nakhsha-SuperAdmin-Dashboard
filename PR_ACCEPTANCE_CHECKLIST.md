@@ -11,6 +11,7 @@ This document confirms all requirements have been implemented for the PR accepta
 **File Modified:** `src/components/FilterSidebar.jsx`
 
 ### Changes Made:
+
 - **Two-column grid layout**: Implemented `grid grid-cols-2 gap-4` for filter inputs
 - **Rounded corners**: Applied `rounded-xl` to all input elements
 - **Subtle shadow**: Added subtle `shadow-sm` and `shadow-md` with backdrop blur
@@ -22,6 +23,7 @@ This document confirms all requirements have been implemented for the PR accepta
   - Focus ring styling: `focus:ring-1 focus:ring-primary-500/20`
 
 ### Accessibility Enhancements:
+
 - Added `aria-label` to all form inputs
 - Added `htmlFor` attributes linking labels to inputs with unique IDs
 - Added `title` attributes for additional context
@@ -32,11 +34,14 @@ This document confirms all requirements have been implemented for the PR accepta
 ## 2. ✅ Skeleton در لود (Loading Skeletons)
 
 **Files Modified:**
+
 - `src/components/SkeletonCard.tsx`
 - `src/index.css`
 
 ### Changes Made:
+
 - **Enhanced skeleton animations**:
+
   - Added `animate-shimmer` custom animation for gradient shimmer effect
   - Implemented staggered animation delays: `animation-delay: 0.05s` per item
   - Smooth fade-in-up animation: `@keyframes fadeInUp` with `opacity` and `transform: translateY(8px)`
@@ -47,15 +52,26 @@ This document confirms all requirements have been implemented for the PR accepta
   - Applied to `.grid > a` elements with proper z-index
 
 ### Animation Details:
+
 ```css
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -1000px 0; }
-  100% { background-position: 1000px 0; }
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
 }
 ```
 
@@ -64,23 +80,28 @@ This document confirms all requirements have been implemented for the PR accepta
 ## 3. ✅ کارت‌ها (Cards) - تعاملات کوچک و قابل حس
 
 **Files Modified:**
+
 - `src/components/CraftList.jsx`
 - `src/pages/Home.jsx`
 - `src/components/FilterChips.jsx`
 - `src/index.css`
 
 ### Micro-Interactions Implemented:
+
 - **Hover effects**:
+
   - Image brightness: `motion-safe:group-hover:brightness-110`
   - Scale on hover: `motion-safe:hover:scale-[1.01]` or `motion-safe:hover:scale-105`
   - Shadow enhancement: `hover:shadow-md` transitions
   - Background color shifts: `hover:bg-gray-50`, `hover:bg-gray-200`, etc.
 
 - **Smooth transitions**:
+
   - Applied `transition-colors duration-150` or `transition-all duration-200`
   - All transitions respect `motion-reduce:transition-none`
 
 - **Focus interactions**:
+
   - Focus ring styling: `focus-visible:ring-2 focus-visible:ring-primary-500`
   - Ring offset: `focus-visible:ring-offset-2`
   - Rounded focus areas: `rounded` classes on buttons
@@ -95,15 +116,19 @@ This document confirms all requirements have been implemented for the PR accepta
 ## 4. ✅ Map هماهنگ با UI (Map UI Alignment)
 
 **Files Modified:**
+
 - `src/components/Map.jsx`
 
 ### Improvements:
+
 - **Consistent styling**:
+
   - Map button: `bg-white/90 backdrop-blur` with `rounded-full`
   - Applied `transition-colors duration-200` for consistency
   - Added focus styling: `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500`
 
 - **Tooltip spacing**:
+
   - Already implemented with proper offset: `offset: [0, -10]`
   - Distance display in tooltips with `1 decimal` format
   - Consistent tooltip rendering
@@ -117,15 +142,18 @@ This document confirms all requirements have been implemented for the PR accepta
 ## 5. ✅ A11y (Accessibility Features)
 
 **Files Modified:**
+
 - All component files
 
 ### Accessibility Enhancements:
 
 #### Focus Management:
+
 - All interactive elements have `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`
 - Focus ring color matches theme: `focus-visible:ring-primary-500`
 
 #### ARIA Labels:
+
 - **Form inputs**: `aria-label="فیلتر بر اساس شهر"`
 - **Sort select**: `aria-label="مرتب‌سازی آثار"`
 - **Search input**: `aria-label="جستجوی عنوان اثر"`
@@ -136,6 +164,7 @@ This document confirms all requirements have been implemented for the PR accepta
 - **Icons**: `aria-hidden="true"` for decorative SVGs
 
 #### Semantic HTML:
+
 - `<nav>` for navigation (BreadcrumbBar)
 - `<label>` elements linked to inputs with `htmlFor`
 - `<button>` instead of `<a>` where appropriate
@@ -143,12 +172,14 @@ This document confirms all requirements have been implemented for the PR accepta
 - Proper heading hierarchy
 
 #### Keyboard Navigation:
+
 - All form elements are keyboard accessible
 - Tab order is logical and sequential
 - Enter/Space activation on buttons
 - No keyboard traps
 
 #### Color & Contrast:
+
 - Text colors meet WCAG AA standards
 - Primary color ring for focus: yellow-500 (mobile), primary-500 (desktop)
 
@@ -168,6 +199,7 @@ dist/assets/index-g3jnl582.js   558.17 kB │ gzip: 171.41 kB
 ```
 
 **No changes to `package.json`** - All features implemented using existing dependencies:
+
 - React 19.1.0
 - Tailwind CSS 4.1.11
 - Leaflet 1.9.4
@@ -177,6 +209,7 @@ dist/assets/index-g3jnl582.js   558.17 kB │ gzip: 171.41 kB
 ## Summary of Implementation
 
 ### Components Enhanced:
+
 1. ✅ `FilterSidebar.jsx` - Two-column grid layout, rounded corners, enhanced accessibility
 2. ✅ `CraftList.jsx` - Micro-interactions, proper focus styling, aria-labels
 3. ✅ `FilterChips.jsx` - Smooth transitions, better focus states
@@ -187,9 +220,11 @@ dist/assets/index-g3jnl582.js   558.17 kB │ gzip: 171.41 kB
 8. ✅ `Home.jsx` - Comprehensive accessibility updates throughout
 
 ### CSS Enhancements:
+
 - ✅ `index.css` - Fade-in animations, shimmer effects, reduced-motion support
 
 ### Build & Validation:
+
 - ✅ Build succeeds with no errors
 - ✅ No new dependencies added
 - ✅ ESLint passes on modified files
@@ -201,12 +236,14 @@ dist/assets/index-g3jnl582.js   558.17 kB │ gzip: 171.41 kB
 ## Testing Recommendations
 
 ### Visual Testing:
+
 - [ ] Verify sidebar two-column layout on desktop (460px width)
 - [ ] Test rounded corners and shadows on all filter elements
 - [ ] Confirm fade-in animation when loading new results
 - [ ] Check micro-interactions (hover, focus) on cards
 
 ### Accessibility Testing:
+
 - [ ] Tab through all form elements (keyboard navigation)
 - [ ] Verify focus rings appear on all interactive elements
 - [ ] Test with screen reader (NVDA, JAWS, VoiceOver)
@@ -214,11 +251,13 @@ dist/assets/index-g3jnl582.js   558.17 kB │ gzip: 171.41 kB
 - [ ] Test with `prefers-reduced-motion: reduce` enabled
 
 ### Motion Testing:
+
 - [ ] Enable "Reduce motion" in OS settings
 - [ ] Verify animations are disabled
 - [ ] Confirm content is still accessible without animations
 
 ### Responsive Testing:
+
 - [ ] Desktop layout (> 768px)
 - [ ] Mobile layout (< 768px)
 - [ ] Tablet transitions

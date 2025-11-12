@@ -1,6 +1,7 @@
 # Commit Message Template
 
 ## Title
+
 ```
 feat(ui): polish interface with accessibility and micro-interactions
 
@@ -16,6 +17,7 @@ feat(ui): polish interface with accessibility and micro-interactions
 This PR implements all acceptance criteria for the Nakhsha platform UI polish:
 
 ### 🎨 Sidebar (سایدبار)
+
 - Redesigned FilterSidebar with two-column grid layout
 - All inputs have rounded corners (`rounded-xl`)
 - Added subtle shadows with backdrop blur
@@ -23,12 +25,14 @@ This PR implements all acceptance criteria for the Nakhsha platform UI polish:
 - Enhanced focus states with proper ring styling
 
 ### ✨ Animations
+
 - Implemented smooth fade-in-up animation for results (`fadeInUp` keyframes)
 - Added shimmer effect for skeleton loaders during loading
 - Staggered animation delays (0.05s per item) for visual appeal
 - All animations fully respect `prefers-reduced-motion` setting
 
 ### 🎯 Micro-Interactions
+
 - Subtle hover effects on cards with brightness and scale
 - Smooth color transitions on badges and buttons
 - Enhanced shadow effects on interaction
@@ -36,6 +40,7 @@ This PR implements all acceptance criteria for the Nakhsha platform UI polish:
 - Motion effects only apply when `prefers-reduced-motion` is not set
 
 ### ♿ Accessibility
+
 - Added `aria-label` to all form controls and buttons
 - Implemented focus-visible ring styling (`2px` rings with `4px` offset)
 - Proper semantic HTML with navigation landmarks
@@ -43,6 +48,7 @@ This PR implements all acceptance criteria for the Nakhsha platform UI polish:
 - Tested with reduced motion preferences
 
 ### ✅ Quality
+
 - Build succeeds with no errors or warnings
 - No new npm dependencies added
 - All CSS and animations are performant
@@ -50,6 +56,7 @@ This PR implements all acceptance criteria for the Nakhsha platform UI polish:
 - Linting passes on modified files
 
 ## Files Changed
+
 ```
 src/components/FilterSidebar.jsx      +45 -25   (Enhanced styling & A11y)
 src/components/CraftList.jsx          +35 -20   (Micro-interactions & A11y)
@@ -63,6 +70,7 @@ src/index.css                         +65 -5    (Animations & reduced-motion)
 ```
 
 ## Build Status
+
 ```
 ✓ 134 modules transformed
 ✓ Build output: 57.98 KB CSS + 558.17 KB JS
@@ -72,6 +80,7 @@ src/index.css                         +65 -5    (Animations & reduced-motion)
 ```
 
 ## PR Checklist
+
 - [x] Sidebar: two-column layout, rounded corners, subtle shadows
 - [x] Animations: smooth fade-in on results, shimmer on loading
 - [x] Micro-interactions: hover effects, smooth transitions
@@ -83,6 +92,7 @@ src/index.css                         +65 -5    (Animations & reduced-motion)
 - [x] Documentation provided
 
 ## Testing
+
 - [x] Visual inspection of sidebar layout
 - [x] Animation timing and smoothness
 - [x] Keyboard navigation (Tab, Enter, Space)
@@ -93,7 +103,9 @@ src/index.css                         +65 -5    (Animations & reduced-motion)
 - [x] No performance regressions
 
 ## Related Issues
+
 - Closes: #[issue-number]
 
 ## Notes
+
 All changes maintain backward compatibility. No database migrations or API changes required. The UI polish improves user experience while maintaining the current data behavior and architecture.

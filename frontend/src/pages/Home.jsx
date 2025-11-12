@@ -443,7 +443,9 @@ const Home = () => {
                   onClick={() => setPage((p) => p + 1)}
                   disabled={loading}
                   aria-busy={loading}
-                  aria-label={loading ? "در حال بارگذاری آثار بیشتر" : "دیدن آثار بیشتر"}
+                  aria-label={
+                    loading ? "در حال بارگذاری آثار بیشتر" : "دیدن آثار بیشتر"
+                  }
                 >
                   {loading ? "در حال بارگذاری…" : "نمایش بیشتر"}
                 </button>
@@ -670,7 +672,9 @@ const Home = () => {
                 onClick={() => setPage((p) => p + 1)}
                 disabled={loading}
                 aria-busy={loading}
-                aria-label={loading ? "در حال بارگذاری آثار بیشتر" : "دیدن آثار بیشتر"}
+                aria-label={
+                  loading ? "در حال بارگذاری آثار بیشتر" : "دیدن آثار بیشتر"
+                }
               >
                 {loading ? "در حال بارگذاری…" : "نمایش بیشتر"}
               </button>

@@ -45,7 +45,11 @@ const CraftCard = ({ craft }) => {
             {typeof craft.distanceMeters === "number" && (
               <span
                 className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-blue-100"
-                title={`${craft.distanceMeters < 1000 ? craft.distanceMeters + " متر" : (craft.distanceMeters / 1000).toFixed(1) + " کیلومتر"}`}
+                title={`${
+                  craft.distanceMeters < 1000
+                    ? craft.distanceMeters + " متر"
+                    : (craft.distanceMeters / 1000).toFixed(1) + " کیلومتر"
+                }`}
               >
                 {craft.distanceMeters < 1000
                   ? `${Math.round(craft.distanceMeters)} متر`
