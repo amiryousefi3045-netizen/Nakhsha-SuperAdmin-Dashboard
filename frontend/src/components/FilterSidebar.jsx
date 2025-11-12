@@ -1,3 +1,5 @@
+import PriceRange from "./PriceRange";
+
 const FilterSidebar = ({ filters, setFilters }) => {
   const craftTypes = [
     "قالی و گلیم",
@@ -8,13 +10,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
     "مینیاتور و نقاشی",
     "چرم‌دوزی",
     "سایر",
-  ];
-
-  const priceRanges = [
-    { value: "0-100", label: "زیر ۱۰۰٬۰۰۰ تومان" },
-    { value: "100-500", label: "۱۰۰٬۰۰۰ - ۵۰۰٬۰۰۰ تومان" },
-    { value: "500-1000", label: "۵۰۰٬۰۰۰ - ۱٬۰۰۰٬۰۰۰ تومان" },
-    { value: "1000+", label: "بیش از ۱٬۰۰۰٬۰۰۰ تومان" },
   ];
 
   return (
@@ -70,30 +65,17 @@ const FilterSidebar = ({ filters, setFilters }) => {
           </select>
         </div>
 
-        {/* Price Range Filter */}
-        <div>
-          <label
-            className="block text-xs font-semibold text-gray-700 mb-2 text-right"
-            htmlFor="filter-price-range"
-          >
+        {/* Price Range Filter - Dual Slider */}
+        <div className="col-span-2">
+          <label className="block text-xs font-semibold text-gray-700 mb-3 text-right">
             محدوده قیمت
           </label>
-          <select
-            id="filter-price-range"
-            className="w-full p-2.5 border border-gray-200 rounded-xl bg-white text-sm hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 appearance-none"
-            value={filters.priceRange}
-            onChange={(e) =>
-              setFilters({ ...filters, priceRange: e.target.value })
-            }
-            aria-label="فیلتر بر اساس محدوده قیمت"
-          >
-            <option value="">همه</option>
-            {priceRanges.map((range) => (
-              <option key={range.value} value={range.value}>
-                {range.label}
-              </option>
-            ))}
-          </select>
+          <PriceRange
+            value={filters.priceRange || [0, 5000000]}
+            onChange={(range) => setFilters({ ...filters, priceRange: range })}
+            minCap={0}
+            maxCap={5000000}
+          />
         </div>
 
         {/* For Sale Filter - Full Width Checkbox */}

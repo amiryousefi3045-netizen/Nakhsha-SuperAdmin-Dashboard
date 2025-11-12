@@ -3,8 +3,18 @@ const FilterChips = ({ filters, onClear }) => {
   if (filters.city) items.push({ key: "city", label: filters.city });
   if (filters.craftType)
     items.push({ key: "craftType", label: filters.craftType });
-  if (filters.priceRange)
-    items.push({ key: "priceRange", label: filters.priceRange });
+  if (filters.priceRange && Array.isArray(filters.priceRange)) {
+    const [min, max] = filters.priceRange;
+    // Only show chip if range is not the full default range
+    if (min !== 0 || max !== 5000000) {
+      items.push({
+        key: "priceRange",
+        label: `${min.toLocaleString("fa-IR")} - ${max.toLocaleString(
+          "fa-IR"
+        )} تومان`,
+      });
+    }
+  }
   if (filters.forSale) items.push({ key: "forSale", label: "برای فروش" });
 
   if (items.length === 0) return null;

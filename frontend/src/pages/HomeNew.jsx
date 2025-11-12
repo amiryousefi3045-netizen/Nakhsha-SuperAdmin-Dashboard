@@ -21,7 +21,7 @@ const HomeNew = () => {
   const [filters, setFilters] = useState({
     city: "",
     craftType: "",
-    priceRange: "",
+    priceRange: [0, 5000000],
     forSale: false,
   });
 
@@ -185,12 +185,14 @@ const HomeNew = () => {
           radiusKm,
           q: query,
           category: filters.craftType,
-          min: filters.priceRange
-            ? parseInt(filters.priceRange.split("-")[0], 10)
-            : undefined,
-          max: filters.priceRange
-            ? parseInt(filters.priceRange.split("-")[1], 10)
-            : undefined,
+          min:
+            filters.priceRange && Array.isArray(filters.priceRange)
+              ? filters.priceRange[0]
+              : undefined,
+          max:
+            filters.priceRange && Array.isArray(filters.priceRange)
+              ? filters.priceRange[1]
+              : undefined,
         });
         res = { items, total: items.length };
       } else {
@@ -329,13 +331,18 @@ const HomeNew = () => {
                   setFilters({
                     city: "",
                     craftType: "",
-                    priceRange: "",
+                    priceRange: [0, 5000000],
                     forSale: false,
                   });
                 } else {
                   setFilters({
                     ...filters,
-                    [key]: key === "forSale" ? false : "",
+                    [key]:
+                      key === "forSale"
+                        ? false
+                        : key === "priceRange"
+                        ? [0, 5000000]
+                        : "",
                   });
                 }
               }}
@@ -484,13 +491,18 @@ const HomeNew = () => {
                     setFilters({
                       city: "",
                       craftType: "",
-                      priceRange: "",
+                      priceRange: [0, 5000000],
                       forSale: false,
                     });
                   } else {
                     setFilters({
                       ...filters,
-                      [key]: key === "forSale" ? false : "",
+                      [key]:
+                        key === "forSale"
+                          ? false
+                          : key === "priceRange"
+                          ? [0, 5000000]
+                          : "",
                     });
                   }
                 }}

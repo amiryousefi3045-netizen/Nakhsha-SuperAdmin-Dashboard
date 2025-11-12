@@ -1,4 +1,4 @@
-const BreadcrumbBar = ({ city = "تهران", category = "همه دستور پخت‌ها" }) => {
+const BreadcrumbBar = ({ city = "تهران", category = "همه صنایع دستی" }) => {
   return (
     <nav
       className="flex items-center justify-between text-xs text-gray-600"
