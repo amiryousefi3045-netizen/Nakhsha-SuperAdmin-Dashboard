@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import Map from "../components/Map";
 import CraftList from "../components/CraftList";
+import SkeletonCard from "../components/SkeletonCard";
 import MobileBottomSheet from "../components/MobileBottomSheet";
 import FilterSidebar from "../components/FilterSidebar";
 import FilterToolbar from "../components/FilterToolbar";
@@ -45,6 +46,8 @@ const Home = () => {
   const [selectingLocation, setSelectingLocation] = useState(false);
   const [manualError, setManualError] = useState(null);
   const [manualSelectedPos, setManualSelectedPos] = useState(null);
+  const [filterHeaderHasShadow, setFilterHeaderHasShadow] = useState(false);
+  const sidebarScrollRef = useRef(null);
 
   // Convert geolocation position to userPos
   const userPos = useMemo(() => {
@@ -249,11 +252,17 @@ const Home = () => {
             <FilterToolbar filters={filters} setFilters={setFilters} />
           </div>
 
-          {/* Search & Sort Section - Redesigned */}
-          <div className="px-6 py-5 border-b border-gray-200/80 space-y-4">
+          {/* Search & Sort Section - Sticky Header */}
+          <div
+            className={`sticky top-0 z-10 px-6 py-5 border-b border-gray-200/80 space-y-4 backdrop-blur bg-white/90 rounded-t-2xl transition-shadow duration-200 ${
+              filterHeaderHasShadow ? "shadow-md" : ""
+            }`}
+          >
             {/* Title & Result Count */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">آثار هنری</h2>
+            <div className="flex items-center justify-between text-right">
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900">
+                آثار هنری
+              </h2>
               <div className="text-sm font-semibold text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
                 {toFa(total)}
               </div>
@@ -262,9 +271,10 @@ const Home = () => {
             {/* Sort & Search Controls */}
             <div className="flex items-center gap-3">
               <select
-                className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white hover:border-gray-400 focus:border-primary-500 focus:outline-none transition-colors"
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
+                aria-label="مرتب‌سازی آثار"
               >
                 <option value="newest">جدیدترین</option>
                 <option value="oldest">قدیمی‌تر</option>
@@ -274,10 +284,11 @@ const Home = () => {
                 <option value="distance">نزدیک‌ترین</option>
               </select>
               <input
-                className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white placeholder:text-gray-400 hover:border-gray-400 focus:border-primary-500 focus:outline-none transition-colors"
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white placeholder:text-gray-400 hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
                 placeholder="جستجو…"
                 value={typingQuery}
                 onChange={(e) => setTypingQuery(e.target.value)}
+                aria-label="جستجوی عنوان اثر"
               />
             </div>
 
@@ -303,16 +314,20 @@ const Home = () => {
           </div>
 
           {/* Content Area - Items Grid */}
-          <div className="flex-1 overflow-y-auto thin-scrollbar">
+          <div
+            ref={sidebarScrollRef}
+            onScroll={(e) => {
+              const scrollTop = e.currentTarget.scrollTop;
+              setFilterHeaderHasShadow(scrollTop > 2);
+            }}
+            className="flex-1 overflow-y-auto thin-scrollbar"
+          >
             <div className="p-6">
               {loading ? (
-                // Loading skeleton in grid layout
+                // Loading skeleton in grid layout - matches final card design
                 <div className="grid grid-cols-2 gap-4">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="bg-gray-200 rounded-2xl h-48 animate-pulse"
-                    />
+                    <SkeletonCard key={i} />
                   ))}
                 </div>
               ) : items.length === 0 ? (
@@ -329,10 +344,10 @@ const Home = () => {
                     <a
                       key={craft.id || idx}
                       href={`/craft/${craft.id}`}
-                      className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer"
+                      className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-[1.01] will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500 cursor-pointer"
                     >
                       {/* Image Container */}
-                      <div className="relative w-full h-32 bg-gray-200 overflow-hidden">
+                      <div className="relative w-full aspect-[4/3] bg-gray-200 overflow-hidden rounded-2xl">
                         <img
                           src={
                             craft.image ||
@@ -340,8 +355,9 @@ const Home = () => {
                             "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='128' viewBox='0 0 160 128'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3Cg fill='%239ca3af' font-family='sans-serif' font-size='12' text-anchor='middle'%3E%3Ctext x='80' y='64'%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E"
                           }
                           alt={craft.title}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                          className="w-full h-full object-cover motion-safe:group-hover:scale-110 transition-transform duration-300 motion-reduce:transition-none"
                           loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
                             e.currentTarget.onerror = null;
@@ -352,18 +368,18 @@ const Home = () => {
                       </div>
 
                       {/* Card Content */}
-                      <div className="p-4 space-y-3">
+                      <div className="p-3 md:p-4 space-y-3">
                         {/* Title */}
-                        <div>
-                          <h3 className="font-semibold text-sm text-gray-900 line-clamp-2">
+                        <div className="text-right">
+                          <h3 className="text-sm md:text-base font-bold text-gray-900 line-clamp-2 leading-6">
                             {craft.title}
                           </h3>
                         </div>
 
                         {/* Category Badge */}
                         {craft.type && (
-                          <div>
-                            <span className="inline-block px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-full">
+                          <div className="flex justify-end">
+                            <span className="inline-block px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-full motion-reduce:transition-none hover:bg-gray-200 transition-colors duration-150">
                               {craft.type}
                             </span>
                           </div>
@@ -372,8 +388,8 @@ const Home = () => {
                         {/* Location & Distance */}
                         <div className="text-xs text-gray-600 space-y-1">
                           {typeof craft.distanceMeters === "number" && (
-                            <div className="flex items-center gap-2">
-                              <span className="inline-block px-2 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium">
+                            <div className="flex justify-end items-center gap-2">
+                              <span className="inline-block px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium motion-reduce:transition-none hover:bg-blue-100 transition-colors duration-150">
                                 {craft.distanceMeters < 1000
                                   ? `${Math.round(craft.distanceMeters)} متر`
                                   : `${(craft.distanceMeters / 1000).toFixed(
@@ -383,7 +399,7 @@ const Home = () => {
                             </div>
                           )}
                           {craft.location && (
-                            <div className="flex items-center gap-1 text-gray-600">
+                            <div className="flex justify-end items-center gap-1 text-gray-600">
                               <svg
                                 className="w-3 h-3"
                                 fill="currentColor"
@@ -391,7 +407,7 @@ const Home = () => {
                               >
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
                               </svg>
-                              <span className="line-clamp-1">
+                              <span className="line-clamp-1 text-xs leading-5">
                                 {typeof craft.location === "string"
                                   ? craft.location
                                   : craft.location?.city || "موقعیت نامشخص"}
@@ -400,9 +416,15 @@ const Home = () => {
                           )}
                         </div>
 
-                        {/* CTA Button - Subtle */}
+                        {/* CTA Button - Enhanced */}
                         <div className="pt-2">
-                          <button className="w-full text-xs font-semibold text-primary-600 py-1.5 px-3 rounded-lg border border-primary-200 bg-primary-50 hover:bg-primary-100 transition-colors">
+                          <button
+                            className="w-full text-xs md:text-sm font-semibold text-white bg-primary-600 py-2.5 px-3 rounded-full hover:bg-primary-700 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 shadow-sm hover:shadow-md"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              window.location.href = `/craft/${craft.id}`;
+                            }}
+                          >
                             مشاهده جزئیات
                           </button>
                         </div>
@@ -417,9 +439,11 @@ const Home = () => {
             {hasMore && (
               <div className="px-6 pb-6 flex justify-center">
                 <button
-                  className="px-6 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                  className="px-6 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={loading}
+                  aria-busy={loading}
+                  aria-label={loading ? "در حال بارگذاری آثار بیشتر" : "دیدن آثار بیشتر"}
                 >
                   {loading ? "در حال بارگذاری…" : "نمایش بیشتر"}
                 </button>
@@ -429,20 +453,20 @@ const Home = () => {
         </aside>
         {/* Map Section */}
         <section className="relative h-full min-h-0 rounded-tl-3xl overflow-hidden shadow-lg">
-          <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-gray-900">
+          <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-gray-900 text-right">
             {total.toLocaleString("fa-IR")} اثر در این محدوده
           </div>
           {usedIpFallback && (
-            <div className="absolute top-16 left-4 z-10 bg-amber-50 text-amber-800 text-xs px-3 py-2 rounded-lg shadow-md font-medium">
+            <div className="absolute top-16 left-4 z-10 bg-amber-50 text-amber-800 text-xs px-3 py-2 rounded-lg shadow-md font-medium text-right">
               موقعیت تقریبی (IP)
             </div>
           )}
           {(providerBlocked || geoError?.includes("403")) && (
-            <div className="absolute top-28 left-4 right-4 z-20 bg-red-50 text-red-700 text-xs px-4 py-3 rounded-lg shadow-md max-w-sm">
+            <div className="absolute top-28 left-4 right-4 z-20 bg-red-50 text-red-700 text-xs px-4 py-3 rounded-lg shadow-md max-w-sm text-right">
               <div className="font-semibold mb-2">
                 سرویس موقعیت‌یابی در دسترس نیست
               </div>
-              <div className="text-xs mb-3 text-red-600">
+              <div className="text-xs mb-3 text-red-600 leading-5">
                 سرویس شبکه‌ای موقعیت در این مرورگر قابل دسترس نیست. Firefox یا
                 Safari را امتحان کنید.
               </div>
@@ -533,15 +557,17 @@ const Home = () => {
               </div>
               <div className="flex gap-2 items-center text-sm">
                 <input
-                  className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm flex-1 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none"
+                  className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm flex-1 placeholder:text-gray-400 hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
                   placeholder="جستجو…"
                   value={typingQuery}
                   onChange={(e) => setTypingQuery(e.target.value)}
+                  aria-label="جستجوی عنوان اثر"
                 />
                 <select
-                  className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:border-primary-500 focus:outline-none"
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none appearance-none"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
+                  aria-label="مرتب‌سازی آثار"
                 >
                   <option value="newest">جدیدترین</option>
                   <option value="distance">نزدیک‌ترین</option>
@@ -549,7 +575,7 @@ const Home = () => {
                 </select>
               </div>
               <details id="mobile-filters-inline" className="text-sm">
-                <summary className="cursor-pointer font-semibold text-gray-700 hover:text-gray-900 transition-colors">
+                <summary className="cursor-pointer font-semibold text-gray-700 hover:text-gray-900 transition-colors py-2">
                   فیلترهای پیشرفته
                 </summary>
                 <div className="pt-3 mt-3 space-y-3 border-t border-gray-200">
@@ -578,20 +604,17 @@ const Home = () => {
           }
         >
           {/* Mobile items grid */}
-          <div className="px-4 py-4">
+          <div className="px-4 py-6">
             {loading ? (
               <div className="grid grid-cols-2 gap-3">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-gray-200 rounded-xl h-40 animate-pulse"
-                  />
+                  <SkeletonCard key={i} />
                 ))}
               </div>
             ) : items.length === 0 ? (
               <div className="flex items-center justify-center h-40">
-                <div className="text-center text-gray-500">
-                  <p className="text-sm">نتیجه‌ای پیدا نشد</p>
+                <div className="text-center text-gray-600">
+                  <p className="text-sm leading-6">نتیجه‌ای پیدا نشد</p>
                 </div>
               </div>
             ) : (
@@ -600,9 +623,9 @@ const Home = () => {
                   <a
                     key={craft.id || idx}
                     href={`/craft/${craft.id}`}
-                    className="group block bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200"
+                    className="group block bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500"
                   >
-                    <div className="relative w-full h-28 bg-gray-200">
+                    <div className="relative w-full aspect-[4/3] bg-gray-200">
                       <img
                         src={
                           craft.image ||
@@ -610,8 +633,9 @@ const Home = () => {
                           "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='112' viewBox='0 0 140 112'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3Cg fill='%239ca3af' font-family='sans-serif' font-size='11' text-anchor='middle'%3E%3Ctext x='70' y='56'%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E"
                         }
                         alt={craft.title}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover motion-safe:group-hover:scale-110 transition-transform duration-300 motion-reduce:transition-none"
                         loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           e.currentTarget.onerror = null;
@@ -620,14 +644,16 @@ const Home = () => {
                         }}
                       />
                     </div>
-                    <div className="p-3 space-y-2">
-                      <h3 className="font-semibold text-xs text-gray-900 line-clamp-2">
+                    <div className="p-3 space-y-2 text-right">
+                      <h3 className="text-xs font-bold text-gray-900 line-clamp-2 leading-5">
                         {craft.title}
                       </h3>
                       {craft.type && (
-                        <span className="inline-block px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg">
-                          {craft.type}
-                        </span>
+                        <div className="flex justify-end">
+                          <span className="inline-block px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-full motion-reduce:transition-none hover:bg-gray-200 transition-colors duration-150">
+                            {craft.type}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </a>
@@ -638,11 +664,13 @@ const Home = () => {
 
           {/* Load More Button */}
           {hasMore && (
-            <div className="px-4 pb-4 flex justify-center">
+            <div className="px-4 pb-6 flex justify-center">
               <button
-                className="px-4 py-2 text-xs font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2.5 text-xs font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => setPage((p) => p + 1)}
                 disabled={loading}
+                aria-busy={loading}
+                aria-label={loading ? "در حال بارگذاری آثار بیشتر" : "دیدن آثار بیشتر"}
               >
                 {loading ? "در حال بارگذاری…" : "نمایش بیشتر"}
               </button>
@@ -651,7 +679,7 @@ const Home = () => {
 
           {/* Error Messages */}
           {geoError && (
-            <div className="mx-4 mb-4 bg-red-50 text-red-700 text-xs px-4 py-2 rounded-lg shadow text-center font-medium">
+            <div className="mx-4 mb-4 bg-red-50 text-red-700 text-xs px-4 py-2 rounded-lg shadow text-center font-medium leading-5">
               {geoError}
             </div>
           )}

@@ -52,16 +52,26 @@ const Map = forwardRef(
     const containerRef = useRef(null);
     const mapRef = useRef(null);
     const handlerRef = useRef(onMoveEnd);
+    const onMapClickRef = useRef(onMapClick);
+    const selectingLocationRef = useRef(selectingLocation);
     const timeoutsRef = useRef([]);
     const boundaryLayerRef = useRef(null);
     const outsideMaskRef = useRef(null);
     const markersLayerRef = useRef(null);
     const currentCityRef = useRef(null);
 
-    // Keep latest callback without re-initializing the map
+    // Keep latest callbacks without re-initializing the map
     useEffect(() => {
       handlerRef.current = onMoveEnd;
     }, [onMoveEnd]);
+
+    useEffect(() => {
+      onMapClickRef.current = onMapClick;
+    }, [onMapClick]);
+
+    useEffect(() => {
+      selectingLocationRef.current = selectingLocation;
+    }, [selectingLocation]);
 
     const userMarkerRef = useRef(null);
     const selectedMarkerRef = useRef(null);
@@ -83,20 +93,26 @@ const Map = forwardRef(
       },
     }));
 
-    const initMap = () => {
+    useEffect(() => {
       if (!containerRef.current || mapRef.current) return;
       // Inject pulsing marker CSS once
       if (!document.getElementById("pulse-marker-style")) {
         const style = document.createElement("style");
         style.id = "pulse-marker-style";
-        style.textContent = `@keyframes pulseMapMarker{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1);opacity:.15}100%{transform:scale(.6);opacity:0}}.pulse-pin{position:relative;width:16px;height:16px}.pulse-pin span{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;background:#2563eb;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 1px rgba(0,0,0,.15)}.pulse-pin:after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;background:rgba(37,99,235,.35);border-radius:9999px;animation:pulseMapMarker 1.6s ease-out infinite}`;
+        style.textContent = `@keyframes pulseMapMarker{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1);opacity:.15}100%{transform:scale(.6);opacity:0}}.pulse-pin{position:relative;width:16px;height:16px}.pulse-pin span{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;background:#2563eb;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 1px rgba(0,0,0,.15)}.pulse-pin:after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;background:rgba(37,99,235,.35);border-radius:9999px;animation:pulseMapMarker 1.6s ease-out infinite}.leaflet-control-zoom{position:absolute !important;bottom:16px;right:16px;background:transparent !important;border:none !important;box-shadow:none !important}.leaflet-control-zoom-in,.leaflet-control-zoom-out{width:36px;height:36px;background:white !important;border:none !important;border-radius:9999px !important;font-size:16px;font-weight:bold;color:#1f2937 !important;box-shadow:0 2px 8px rgba(0,0,0,0.1) !important;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s ease}.leaflet-control-zoom-in:hover,.leaflet-control-zoom-out:hover{background:white !important;box-shadow:0 4px 12px rgba(0,0,0,0.15) !important}.leaflet-control-zoom-in{margin-bottom:8px}`;
         document.head.appendChild(style);
       }
       const c = initialCenterRef.current;
       const startCenter =
         c && c.lat && c.lng ? [c.lat, c.lng] : [32.4279, 53.688];
-      const map = L.map(containerRef.current).setView(startCenter, c ? 13 : 6);
+      const map = L.map(containerRef.current, {
+        zoomControl: true,
+      }).setView(startCenter, c ? 13 : 6);
       mapRef.current = map;
+
+      // Position zoom controls to bottom-right with styling
+      map.zoomControl.setPosition("bottomright");
+
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
@@ -133,8 +149,8 @@ const Map = forwardRef(
 
       // Manual location selection: if selectingLocation is true, allow click to select coords
       const handleMapClick = (e) => {
-        if (selectingLocation && onMapClick) {
-          onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+        if (selectingLocationRef.current && onMapClickRef.current) {
+          onMapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
         }
       };
 
@@ -149,13 +165,10 @@ const Map = forwardRef(
         timeoutsRef.current.forEach(clearTimeout);
         timeoutsRef.current = [];
         map.off("moveend", emit);
+        map.off("click", handleMapClick);
         map.remove();
         mapRef.current = null;
       };
-    };
-
-    useEffect(() => {
-      initMap();
     }, []);
 
     // Update markers when items change
@@ -178,16 +191,40 @@ const Map = forwardRef(
         .forEach((it) => {
           const marker = L.marker([it.lat, it.lng], {
             icon: defaultIcon,
-          }).bindPopup(
-            `<div style="min-width:160px"><strong>${String(
-              it.title || it.name || ""
-            ).replace(
-              /</g,
-              "&lt;"
-            )}</strong><div style="font-size:12px;margin-top:6px;color:#444">${String(
-              it.location || ""
-            ).replace(/</g, "&lt;")}</div></div>`
-          );
+          });
+
+          // Build tooltip content with optional distance
+          let popupContent = `<div style="min-width:160px"><strong>${String(
+            it.title || it.name || ""
+          ).replace(
+            /</g,
+            "&lt;"
+          )}</strong><div style="font-size:12px;margin-top:6px;color:#444">${String(
+            it.location || ""
+          ).replace(/</g, "&lt;")}</div>`;
+
+          // Add distance tooltip if available (convert meters to km with 1 decimal)
+          if (it.distanceMeters && typeof it.distanceMeters === "number") {
+            const distanceKm = (it.distanceMeters / 1000).toFixed(1);
+            popupContent += `<div style="font-size:11px;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;color:#666">📍 ${distanceKm} کیلومتر</div>`;
+          }
+
+          popupContent += "</div>";
+
+          marker.bindPopup(popupContent);
+
+          // Add tooltip (hover text) with distance
+          let tooltipText = it.title || it.name || "";
+          if (it.distanceMeters && typeof it.distanceMeters === "number") {
+            const distanceKm = (it.distanceMeters / 1000).toFixed(1);
+            tooltipText += ` (${distanceKm} km)`;
+          }
+          marker.bindTooltip(tooltipText, {
+            permanent: false,
+            direction: "top",
+            offset: [0, -10],
+          });
+
           layer.addLayer(marker);
         });
     }, [items]);
@@ -354,7 +391,8 @@ const Map = forwardRef(
           <button
             type="button"
             onClick={onLocate}
-            className="absolute top-3 right-3 bg-white/90 backdrop-blur px-3 py-1.5 shadow rounded-full text-xs hover:bg-white transition"
+            className="absolute top-3 right-3 bg-white/90 backdrop-blur px-3 py-1.5 shadow rounded-full text-xs hover:bg-white transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 font-medium"
+            aria-label="استفاده از موقعیت فعلی"
           >
             موقعیت من
           </button>
