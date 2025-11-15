@@ -317,7 +317,7 @@ const Home = () => {
 
         {/* Right Sidebar Container - Floating Panel */}
         <div
-          className="fixed right-4 top-24 w-[440px] z-10 pointer-events-auto"
+          className="fixed right-4 top-24 w-[450px] z-10 pointer-events-auto"
           style={{ height: "calc(100vh - 80px - 32px)" }}
         >
           {/* Dotted Divider - Left Edge */}
@@ -518,16 +518,74 @@ const Home = () => {
                             )}
                           </div>
 
-                          {/* CTA Button - Enhanced */}
-                          <div className="pt-2">
+                          {/* CTA Footer */}
+                          <div className="mt-3 flex items-center gap-2">
+                            {/* Primary CTA - View Details */}
                             <button
-                              className="w-full text-xs md:text-sm font-semibold text-white bg-primary-600 py-2.5 px-3 rounded-full hover:bg-primary-700 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 shadow-sm hover:shadow-md"
                               onClick={(e) => {
                                 e.preventDefault();
                                 window.location.href = `/craft/${craft.id}`;
                               }}
+                              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-normal hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900"
+                              title="مشاهده جزئیات"
                             >
-                              مشاهده جزئیات
+                              مشاهده
+                            </button>
+
+                            {/* Secondary CTA - Save */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                // TODO: Implement save functionality
+                                console.log("Save craft:", craft.id);
+                              }}
+                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-300 flex items-center justify-center flex-shrink-0"
+                              title="ذخیره"
+                              aria-label="ذخیره این اثر"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                              >
+                                <path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 19V5z" />
+                              </svg>
+                            </button>
+
+                            {/* Secondary CTA - Share */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                // TODO: Implement share functionality
+                                if (navigator.share) {
+                                  navigator.share({
+                                    title: craft.title,
+                                    text: craft.description || craft.title,
+                                    url: `/craft/${craft.id}`,
+                                  });
+                                } else {
+                                  console.log("Share craft:", craft.id);
+                                }
+                              }}
+                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-300 flex items-center justify-center flex-shrink-0"
+                              title="اشتراک"
+                              aria-label="اشتراک این اثر"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8.684 13.342C9.589 12.938 10.45 12.5 11.3 12.1m0 0a6 6 0 11-8.485 2.936m8.485-2.936l6.364 3.686m0 0l1.364.682a1 1 0 001.364-1.366L19 15"
+                                />
+                              </svg>
                             </button>
                           </div>
                         </div>
