@@ -1,6 +1,9 @@
+import { useState } from "react";
 import PriceRange from "./PriceRange";
 
 const FilterSidebar = ({ filters, setFilters }) => {
+  const [showMaterialsPopover, setShowMaterialsPopover] = useState(false);
+
   const craftTypes = [
     "قالی و گلیم",
     "سفال و سرامیک",
@@ -22,6 +25,17 @@ const FilterSidebar = ({ filters, setFilters }) => {
     { id: "carpet", label: "قالیبافی", displayName: "قالی و گلیم" },
   ];
 
+  const materials = [
+    "پنبه",
+    "پشم",
+    "ابریشم",
+    "چرم",
+    "چوب",
+    "فلز",
+    "سفال",
+    "شیشه",
+  ];
+
   const handleCategoryToggle = (categoryDisplayName) => {
     if (filters.craftType === categoryDisplayName) {
       setFilters({ ...filters, craftType: "" });
@@ -33,41 +47,36 @@ const FilterSidebar = ({ filters, setFilters }) => {
   return (
     <div className="bg-gradient-to-b from-white to-gray-50/50 h-full flex flex-col">
       {/* Sticky Filter Header with Category Chips */}
-      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur px-4 py-3 border-b border-gray-200/60 space-y-4 flex-shrink-0">
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur px-4 py-3 border-b border-gray-200/60 space-y-3 flex-shrink-0">
         {/* Title */}
         <h2 className="text-sm font-semibold text-gray-900 text-right">
           فیلترها
         </h2>
 
         {/* Category Chips */}
-        <div className="space-y-2">
-          <label className="block text-xs font-semibold text-gray-700 text-right">
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-gray-600 text-right">
             صنایع دستی
           </label>
-          <div className="flex flex-wrap gap-2 justify-end max-h-16 overflow-y-auto">
+          <div className="flex flex-wrap gap-2 justify-end max-h-14 overflow-y-auto pb-1">
             {craftCategories.map((category) => (
               <button
                 key={category.id}
                 onClick={() => handleCategoryToggle(category.displayName)}
                 data-active={filters.craftType === category.displayName}
-                className="px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer flex-shrink-0"
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer whitespace-nowrap flex-shrink-0"
                 style={{
                   backgroundColor:
                     filters.craftType === category.displayName
                       ? "#111827"
-                      : "#f3f4f6",
+                      : "#e5e7eb",
                   color:
                     filters.craftType === category.displayName
                       ? "#ffffff"
                       : "#374151",
-                  borderWidth: "1px",
-                  borderColor:
-                    filters.craftType === category.displayName
-                      ? "#111827"
-                      : "transparent",
                 }}
                 aria-pressed={filters.craftType === category.displayName}
-                title={`${category.label} را انتخاب کنید`}
+                title={`انتخاب ${category.label}`}
               >
                 {category.label}
               </button>
@@ -75,49 +84,84 @@ const FilterSidebar = ({ filters, setFilters }) => {
           </div>
         </div>
 
-        {/* For Sale Toggle Pill */}
-        <div className="flex justify-end">
+        {/* For Sale Toggle + More Options Row */}
+        <div className="flex items-center justify-end gap-2 pt-1">
+          {/* For Sale Toggle Pill */}
           <button
             onClick={() =>
               setFilters({ ...filters, forSale: !filters.forSale })
             }
             data-active={filters.forSale}
-            className="px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer"
+            className="px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer whitespace-nowrap"
             style={{
-              backgroundColor: filters.forSale ? "#111827" : "#f3f4f6",
+              backgroundColor: filters.forSale ? "#111827" : "#e5e7eb",
               color: filters.forSale ? "#ffffff" : "#374151",
-              borderWidth: "1px",
-              borderColor: filters.forSale ? "#111827" : "transparent",
             }}
             aria-pressed={filters.forSale}
-            title="فقط اثرهای برای فروش"
+            title="تغییر وضعیت برای فروش"
           >
             {filters.forSale ? "✓ برای فروش" : "برای فروش"}
           </button>
+
+          {/* More Options Popover */}
+          <div className="relative">
+            <button
+              onClick={() => setShowMaterialsPopover(!showMaterialsPopover)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
+              title="گزینه‌های بیشتر"
+            >
+              بیشتر
+            </button>
+
+            {/* Materials Popover */}
+            {showMaterialsPopover && (
+              <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-20 min-w-max">
+                <p className="text-xs font-semibold text-gray-700 text-right mb-2">
+                  مواد اولیه
+                </p>
+                <div className="flex flex-wrap gap-2 justify-end max-w-xs">
+                  {materials.map((material) => (
+                    <button
+                      key={material}
+                      onClick={() => {
+                        console.log("Selected material:", material);
+                        setShowMaterialsPopover(false);
+                      }}
+                      className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors duration-150 cursor-pointer"
+                      title={material}
+                    >
+                      {material}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Active Filters Summary */}
-        {(filters.city || filters.priceRange) && (
-          <div className="pt-2 border-t border-gray-200/40 space-y-1">
+        {(filters.city ||
+          filters.priceRange[0] !== 0 ||
+          filters.priceRange[1] !== 5000000) && (
+          <div className="pt-2 border-t border-gray-200/40 space-y-0.5">
             {filters.city && (
               <div className="text-xs text-gray-600 text-right">
-                🏙️ شهر:{" "}
+                🏙️{" "}
                 <span className="font-medium text-gray-900">
                   {filters.city}
                 </span>
               </div>
             )}
-            {filters.priceRange &&
-              (filters.priceRange[0] !== 0 ||
-                filters.priceRange[1] !== 5000000) && (
-                <div className="text-xs text-gray-600 text-right">
-                  💰 قیمت:{" "}
-                  <span className="font-medium text-gray-900">
-                    {filters.priceRange[0].toLocaleString("fa-IR")} -{" "}
-                    {filters.priceRange[1].toLocaleString("fa-IR")} تومان
-                  </span>
-                </div>
-              )}
+            {(filters.priceRange[0] !== 0 ||
+              filters.priceRange[1] !== 5000000) && (
+              <div className="text-xs text-gray-600 text-right">
+                💰{" "}
+                <span className="font-medium text-gray-900">
+                  {filters.priceRange[0].toLocaleString("fa-IR")} -{" "}
+                  {filters.priceRange[1].toLocaleString("fa-IR")}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
