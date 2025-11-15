@@ -49,6 +49,20 @@ const Home = () => {
   const [filterHeaderHasShadow, setFilterHeaderHasShadow] = useState(false);
   const sidebarScrollRef = useRef(null);
 
+  // Prevent page scrolling on desktop layout
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+    const bodyElement = document.body;
+
+    htmlElement.style.overflow = "hidden";
+    bodyElement.style.overflow = "hidden";
+
+    return () => {
+      htmlElement.style.overflow = "";
+      bodyElement.style.overflow = "";
+    };
+  }, []);
+
   // Convert geolocation position to userPos
   const userPos = useMemo(() => {
     // Do not treat IP-fallback positions as userPos for centering.
@@ -243,9 +257,9 @@ const Home = () => {
   // Desktop layout
   return (
     <>
-      <div className="hidden md:grid h-full grid-rows-[1fr] grid-cols-[1fr]">
+      <div className="hidden md:grid h-[calc(100vh-80px)] grid-rows-[1fr] grid-cols-[1fr] overflow-hidden">
         {/* Full Screen Map */}
-        <section className="relative h-full min-h-0 overflow-hidden">
+        <section className="relative w-full h-full overflow-hidden rounded-tr-3xl">
           <div className="absolute top-4 right-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-gray-900 text-right">
             {total.toLocaleString("fa-IR")} اثر در این محدوده
           </div>
@@ -302,7 +316,13 @@ const Home = () => {
         </section>
 
         {/* Right Sidebar Container - Floating Panel */}
-        <div className="fixed right-4 top-[3.75rem] bottom-4 w-[440px] z-10 pointer-events-auto pt-7">
+        <div
+          className="fixed right-4 top-24 w-[440px] z-10 pointer-events-auto"
+          style={{ height: "calc(100vh - 80px - 32px)" }}
+        >
+          {/* Dotted Divider - Left Edge */}
+          <div className="absolute left-0 top-0 bottom-0 w-px border-l border-dotted border-gray-300/60"></div>
+
           {/* Apple-style Floating Sidebar */}
           <aside className="h-full rounded-3xl bg-white/95 backdrop-blur shadow-lg border border-gray-200/60 overflow-hidden flex flex-col">
             {/* Header Section */}

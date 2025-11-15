@@ -40,6 +40,20 @@ const HomeNew = () => {
   const [sort, setSort] = useState("newest");
   const [typingQuery, setTypingQuery] = useState("");
 
+  // Prevent page scrolling on desktop layout
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+    const bodyElement = document.body;
+
+    htmlElement.style.overflow = "hidden";
+    bodyElement.style.overflow = "hidden";
+
+    return () => {
+      htmlElement.style.overflow = "";
+      bodyElement.style.overflow = "";
+    };
+  }, []);
+
   // Convert geolocation position to userPos
   const userPos = useMemo(() => {
     if (!position?.coords) return null;
