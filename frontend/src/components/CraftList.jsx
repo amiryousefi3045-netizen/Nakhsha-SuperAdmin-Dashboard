@@ -18,7 +18,7 @@ const CraftCard = ({ craft }) => {
   return (
     <Link
       to={`/craft/${craft.id}`}
-      className="block p-3 hover:bg-gray-50 transition-colors duration-200 motion-reduce:transition-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
+      className="block p-3 hover:bg-gray-50 transition-colors duration-200 motion-reduce:transition-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
       aria-label={`دیدن جزئیات ${craft.title}`}
     >
       <div className="flex gap-3 items-start">
@@ -36,15 +36,17 @@ const CraftCard = ({ craft }) => {
         />
         <div className="flex-1 text-right">
           <div className="flex items-center justify-between">
-            <h3 className="font-medium text-sm text-gray-900">{craft.title}</h3>
-            <span className="text-[11px] text-gray-500">
+            <h3 className="font-semibold text-base text-gray-900">
+              {craft.title}
+            </h3>
+            <span className="text-xs font-medium text-gray-500">
               {craft.duration || craft.craftingTime || ""}
             </span>
           </div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-gray-500 flex-wrap">
+          <div className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-500 flex-wrap">
             {typeof craft.distanceMeters === "number" && (
               <span
-                className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-blue-100"
+                className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-blue-100"
                 title={`${
                   craft.distanceMeters < 1000
                     ? craft.distanceMeters + " متر"
@@ -88,7 +90,7 @@ const CraftCard = ({ craft }) => {
             </svg>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2 flex-wrap">
-            <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[11px] text-gray-700 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-gray-200">
+            <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-500 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-gray-200">
               {craft.type}
             </span>
             {craft.hasImage === false && (
@@ -128,8 +130,8 @@ const CraftCard = ({ craft }) => {
                 e.preventDefault();
                 window.location.href = `/craft/${craft.id}`;
               }}
-              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900"
-              title="مشاهده جزئیات"
+              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
+              aria-label={`دیدن جزئیات ${craft.title}`}
             >
               دیدن جزئیات
             </button>
@@ -141,7 +143,7 @@ const CraftCard = ({ craft }) => {
                 // TODO: Implement save functionality
                 console.log("Save craft:", craft.id);
               }}
-              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-300 flex items-center justify-center"
+              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center"
               title="ذخیره"
               aria-label="ذخیره این اثر"
             >
@@ -170,7 +172,7 @@ const CraftCard = ({ craft }) => {
                   console.log("Share craft:", craft.id);
                 }
               }}
-              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-300 flex items-center justify-center"
+              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center"
               title="اشتراک"
               aria-label="اشتراک این اثر"
             >

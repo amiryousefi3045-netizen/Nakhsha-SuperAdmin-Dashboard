@@ -108,8 +108,83 @@ export async function fetchCraftById(
         params: buildQuery({ _: Date.now() }),
       }
     );
-    return data.data || null;
+    // Backend sometimes returns the craft object directly, and some
+    // older clients expect a `{ data: craft }` envelope. Support both.
+    if (data && (data as any).data) return (data as any).data;
+    // If backend returned a plain object, return it; otherwise null
+    const plain = (data as any) || null;
+    if (plain) return plain;
+    // If running in dev, fallback to local mock crafts for non-ObjectId ids
+    if (import.meta.env.DEV) {
+      const found = mockCrafts.find((c) => c.id === id);
+      if (found) {
+        // adapt mock to CraftResponse shape expected by consumers
+        return {
+          id: found.id,
+          title: found.title,
+          description: (found as any).description || "",
+          images: found.images || [],
+          artisan: found.artisanId
+            ? { id: found.artisanId, name: "" }
+            : undefined,
+          craftType: (found as any).craftType || "",
+          price: (found as any).price,
+          forSale: !!found.forSale,
+          tags: found.tags || [],
+          location:
+            found.location && typeof found.location === "object"
+              ? { ...found.location }
+              : { city: String(found.location || "") },
+          views: 0,
+          averageRating: 0,
+          totalLikes: 0,
+          totalDislikes: 0,
+          liked: false,
+          disliked: false,
+          createdAt: found.createdAt,
+          sale: {},
+          barter: {},
+          comments: [],
+          commentsCount: 0,
+        } as any;
+      }
+    }
+    return null;
   } catch {
+    // On error, if in DEV and id matches a mock, return it.
+    if (import.meta.env.DEV) {
+      const found = mockCrafts.find((c) => c.id === id);
+      if (found) {
+        return {
+          id: found.id,
+          title: found.title,
+          description: (found as any).description || "",
+          images: found.images || [],
+          artisan: found.artisanId
+            ? { id: found.artisanId, name: "" }
+            : undefined,
+          craftType: (found as any).craftType || "",
+          price: (found as any).price,
+          forSale: !!found.forSale,
+          tags: found.tags || [],
+          location:
+            found.location && typeof found.location === "object"
+              ? { ...found.location }
+              : { city: String(found.location || "") },
+          views: 0,
+          averageRating: 0,
+          totalLikes: 0,
+          totalDislikes: 0,
+          liked: false,
+          disliked: false,
+          createdAt: found.createdAt,
+          sale: {},
+          barter: {},
+          comments: [],
+          commentsCount: 0,
+        } as any;
+      }
+    }
     return null;
   }
 }

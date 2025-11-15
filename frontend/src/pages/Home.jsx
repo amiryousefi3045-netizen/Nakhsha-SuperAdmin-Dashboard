@@ -342,7 +342,7 @@ const Home = () => {
                 <h2 className="text-xl md:text-2xl font-bold text-gray-900">
                   آثار هنری
                 </h2>
-                <div className="text-sm font-semibold text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                <div className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
                   {toFa(total)}
                 </div>
               </div>
@@ -445,7 +445,16 @@ const Home = () => {
                       <a
                         key={craft.id || idx}
                         href={`/craft/${craft.id}`}
-                        className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-[1.01] will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500 cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            window.location.href = `/craft/${craft.id}`;
+                          }
+                        }}
+                        className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-[1.01] will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 cursor-pointer"
+                        aria-label={`دیدن جزئیات ${craft.title}`}
                       >
                         {/* Image Container */}
                         <div className="relative w-full aspect-[4/3] bg-gray-200 overflow-hidden rounded-2xl">
@@ -473,7 +482,7 @@ const Home = () => {
                         <div className="p-3 md:p-4 space-y-3">
                           {/* Title */}
                           <div className="text-right">
-                            <h3 className="text-sm md:text-base font-bold text-gray-900 line-clamp-2 leading-6">
+                            <h3 className="text-base md:text-lg font-semibold text-gray-900 line-clamp-2 leading-6">
                               {craft.title}
                             </h3>
                           </div>
@@ -481,17 +490,17 @@ const Home = () => {
                           {/* Category Badge */}
                           {craft.type && (
                             <div className="flex justify-end">
-                              <span className="inline-block px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-full motion-reduce:transition-none hover:bg-gray-200 transition-colors duration-150">
+                              <span className="inline-block px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full motion-reduce:transition-none hover:bg-gray-200 transition-colors duration-150">
                                 {craft.type}
                               </span>
                             </div>
                           )}
 
                           {/* Location & Distance */}
-                          <div className="text-xs text-gray-600 space-y-1">
+                          <div className="text-xs text-gray-500 space-y-1.5">
                             {typeof craft.distanceMeters === "number" && (
                               <div className="flex justify-end items-center gap-2">
-                                <span className="inline-block px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium motion-reduce:transition-none hover:bg-blue-100 transition-colors duration-150">
+                                <span className="inline-block px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium text-xs motion-reduce:transition-none hover:bg-blue-100 transition-colors duration-150">
                                   {craft.distanceMeters < 1000
                                     ? `${Math.round(craft.distanceMeters)} متر`
                                     : `${(craft.distanceMeters / 1000).toFixed(
@@ -501,15 +510,15 @@ const Home = () => {
                               </div>
                             )}
                             {craft.location && (
-                              <div className="flex justify-end items-center gap-1 text-gray-600">
+                              <div className="flex justify-end items-center gap-1 text-gray-500">
                                 <svg
-                                  className="w-3 h-3"
+                                  className="w-3 h-3 text-gray-400"
                                   fill="currentColor"
                                   viewBox="0 0 24 24"
                                 >
                                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
                                 </svg>
-                                <span className="line-clamp-1 text-xs leading-5">
+                                <span className="line-clamp-1 text-xs leading-6">
                                   {typeof craft.location === "string"
                                     ? craft.location
                                     : craft.location?.city || "موقعیت نامشخص"}
@@ -526,8 +535,8 @@ const Home = () => {
                                 e.preventDefault();
                                 window.location.href = `/craft/${craft.id}`;
                               }}
-                              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-normal hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900"
-                              title="مشاهده جزئیات"
+                              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
+                              aria-label={`دیدن جزئیات ${craft.title}`}
                             >
                               مشاهده
                             </button>
@@ -539,8 +548,7 @@ const Home = () => {
                                 // TODO: Implement save functionality
                                 console.log("Save craft:", craft.id);
                               }}
-                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-300 flex items-center justify-center flex-shrink-0"
-                              title="ذخیره"
+                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center flex-shrink-0"
                               aria-label="ذخیره این اثر"
                             >
                               <svg
@@ -568,8 +576,7 @@ const Home = () => {
                                   console.log("Share craft:", craft.id);
                                 }
                               }}
-                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-300 flex items-center justify-center flex-shrink-0"
-                              title="اشتراک"
+                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center flex-shrink-0"
                               aria-label="اشتراک این اثر"
                             >
                               <svg

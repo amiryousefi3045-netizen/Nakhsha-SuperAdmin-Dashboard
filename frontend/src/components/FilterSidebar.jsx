@@ -49,13 +49,11 @@ const FilterSidebar = ({ filters, setFilters }) => {
       {/* Sticky Filter Header with Category Chips */}
       <div className="sticky top-0 z-10 bg-white/90 backdrop-blur px-4 py-3 border-b border-gray-200/60 space-y-3 flex-shrink-0">
         {/* Title */}
-        <h2 className="text-sm font-semibold text-gray-900 text-right">
-          فیلترها
-        </h2>
+        <h2 className="text-lg font-bold text-gray-900 text-right">فیلترها</h2>
 
         {/* Category Chips */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-gray-600 text-right">
+          <label className="block text-xs font-medium text-gray-500 text-right">
             صنایع دستی
           </label>
           <div className="flex flex-wrap gap-2 justify-end max-h-14 overflow-y-auto pb-1">
@@ -107,7 +105,7 @@ const FilterSidebar = ({ filters, setFilters }) => {
           <div className="relative">
             <button
               onClick={() => setShowMaterialsPopover(!showMaterialsPopover)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
               title="گزینه‌های بیشتر"
             >
               بیشتر
@@ -116,7 +114,7 @@ const FilterSidebar = ({ filters, setFilters }) => {
             {/* Materials Popover */}
             {showMaterialsPopover && (
               <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-20 min-w-max">
-                <p className="text-xs font-semibold text-gray-700 text-right mb-2">
+                <p className="text-xs font-semibold text-gray-900 text-right mb-2">
                   مواد اولیه
                 </p>
                 <div className="flex flex-wrap gap-2 justify-end max-w-xs">
@@ -127,7 +125,7 @@ const FilterSidebar = ({ filters, setFilters }) => {
                         console.log("Selected material:", material);
                         setShowMaterialsPopover(false);
                       }}
-                      className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors duration-150 cursor-pointer"
+                      className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-150 cursor-pointer"
                       title={material}
                     >
                       {material}

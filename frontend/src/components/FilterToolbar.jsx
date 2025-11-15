@@ -12,7 +12,7 @@ const FilterToolbar = ({ filters, setFilters }) => {
 
       <select
         className="w-28 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-sm hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none appearance-none"
-        value={filters.craftType}
+        value={typeof filters.craftType === "string" ? filters.craftType : ""}
         onChange={(e) => setFilters({ ...filters, craftType: e.target.value })}
         aria-label="فیلتر بر اساس نوع اثر"
       >
@@ -27,7 +27,7 @@ const FilterToolbar = ({ filters, setFilters }) => {
 
       <select
         className="w-28 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-sm hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none appearance-none"
-        value={filters.priceRange}
+        value={typeof filters.priceRange === "string" ? filters.priceRange : ""}
         onChange={(e) => setFilters({ ...filters, priceRange: e.target.value })}
         aria-label="فیلتر بر اساس محدوده قیمت"
       >

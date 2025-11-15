@@ -9,7 +9,7 @@ export async function checkHealth() {
     const { data } = await axios.get(`${BASE}/health`, {
       timeout: 2500,
     });
-    return !!data?.status;
+    return !!data?.ok;
   } catch {
     return false;
   }
