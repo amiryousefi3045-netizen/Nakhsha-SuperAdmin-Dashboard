@@ -443,7 +443,7 @@ const Home = () => {
                   <div className="grid grid-cols-2 gap-4">
                     {items.map((craft, idx) => (
                       <a
-                        key={craft.id || idx}
+                        key={`main-${craft.id || idx}`}
                         href={`/craft/${craft.id}`}
                         role="button"
                         tabIndex={0}
@@ -737,7 +737,7 @@ const Home = () => {
               <div className="grid grid-cols-2 gap-3">
                 {items.map((craft, idx) => (
                   <a
-                    key={craft.id || idx}
+                    key={`mobile-${craft.id || idx}`}
                     href={`/craft/${craft.id}`}
                     className="group block bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500"
                   >

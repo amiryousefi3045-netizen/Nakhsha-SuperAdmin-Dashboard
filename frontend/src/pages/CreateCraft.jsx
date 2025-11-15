@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createCraft, uploadImage, reverseGeocode } from "../services/crafts";
+import { createCraft, uploadImage } from "../services/crafts";
+import { reverseGeocode } from "../services/media";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 

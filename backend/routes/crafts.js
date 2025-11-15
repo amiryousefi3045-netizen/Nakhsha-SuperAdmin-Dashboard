@@ -458,17 +458,23 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
   }
 });
 
-// Development seed endpoint
+// Development seed endpoint (enhanced): supports `count` query param
 router.get("/seed/dev", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ message: "Not available in production" });
   }
+  console.log("[seed] /seed/dev called with query:", req.query);
+
+  const count = Math.min(
+    Math.max(parseInt(req.query.count || "2", 10) || 2, 1),
+    1000
+  );
 
   try {
-    // Delete existing test data first
+    // Delete small set of test data first to avoid large accidental wipes
     await Promise.all([
       User.deleteMany({ email: "artisan@test.com" }),
-      Artisan.deleteMany({ craftType: "سفالگری" }),
+      Artisan.deleteMany({}),
       Craft.deleteMany({}),
     ]);
 
@@ -483,16 +489,15 @@ router.get("/seed/dev", async (req, res) => {
           email: "artisan@test.com",
           password: hashedPassword,
           role: "artisan",
-          phone: "09123456789", // اضافه کردن شماره تلفن
+          phone: "09123456789",
           location: {
             city: "یزد",
             province: "یزد",
-            coordinates: [54.3675, 31.8974], // Yazd coordinates
+            coordinates: [54.3675, 31.8974],
           },
           isVerified: true,
         });
       } catch (e) {
-        // If another process created the user concurrently, fall back to existing
         if (e && e.code === 11000) {
           user = await User.findOne({ email: "artisan@test.com" });
         } else {
@@ -501,13 +506,23 @@ router.get("/seed/dev", async (req, res) => {
       }
 
       try {
-        artisan = await Artisan.create({
+        const artisanPayload = {
           userId: user._id,
-          craftType: "سفالگری",
-          bio: "استاد سفالگری با بیش از ۳۰ سال تجربه در ساخت ظروف سنتی یزد",
+          name: "کارگاه استاد حسین",
+          craftType: "سفال و سرامیک",
+          otherCraftTypes: ["سفال و سرامیک"],
+          bio: "استاد سفالگری با بیش از ۳۰ سال تجربه",
           stars: 4.5,
           verified: true,
-        });
+          location: {
+            city: "یزد",
+            neighborhood: "فهادان",
+            coordinates: [54.3675, 31.8974],
+          },
+          contactInfo: { phone: "09123456789" },
+        };
+        console.log("[seed] Creating artisan with payload:", artisanPayload);
+        artisan = await Artisan.create(artisanPayload);
       } catch (e) {
         if (e && e.code === 11000) {
           artisan = await Artisan.findOne({ userId: user._id });
@@ -517,53 +532,86 @@ router.get("/seed/dev", async (req, res) => {
       }
     }
 
-    // Sample craft data
-    const sampleCrafts = [
-      {
-        title: "کوزه سفالی دست‌ساز",
-        description:
-          "کوزه سفالی سنتی با نقوش اسلیمی، مناسب برای تزئین و استفاده",
-        artisanId: artisan._id,
-        craftType: "سفالگری",
-        price: 850000, // 850,000 Tomans
-        forSale: true,
-        images: ["https://source.unsplash.com/featured/?pottery,vase"],
-        location: {
-          city: "یزد",
-          neighborhood: "فهادان",
-          coordinates: [54.3675, 31.8974],
-        },
-        tags: ["سفال", "دست‌ساز", "تزئینی"],
-        culturalStory: "این طرح برگرفته از نقوش تاریخی مسجد جامع یزد است",
-        isPublished: true,
-      },
-      {
-        title: "گلدان سفالی مینیاتوری",
-        description: "گلدان ظریف با تزئینات سنتی، مناسب برای گل‌های آپارتمانی",
-        artisanId: artisan._id,
-        craftType: "سفالگری",
-        price: 450000,
-        forSale: true,
-        location: {
-          city: "یزد",
-          neighborhood: "فهادان",
-          coordinates: [54.3675, 31.8974],
-        },
-        tags: ["سفال", "گلدان", "تزئینی", "مینیاتوری"],
-        isPublished: true,
-      },
+    // Helper pools
+    const titles = [
+      "گلدان سنتی",
+      "کوزه سفالی",
+      "جاشمعی مسی",
+      "تابلو مینیاتور",
+      "گلیم کوچک",
+      "پیش‌بند دست‌باف",
+      "سینی قلم‌زنی",
+      "جقه چوبی",
+      "لیوان سفالی",
+      "گوشواره ملیله",
+    ];
+    // Use backend canonical craftType keys
+    const craftTypes = [
+      "pottery",
+      "carpet",
+      "metalwork",
+      "woodwork",
+      "textile",
+      "leather",
+      "other",
+    ];
+    const cities = [
+      { city: "تهران", coords: [51.41, 35.69] },
+      { city: "شیراز", coords: [52.54, 29.61] },
+      { city: "اصفهان", coords: [51.67, 32.64] },
+      { city: "تبریز", coords: [46.29, 38.08] },
+      { city: "یزد", coords: [54.36, 31.89] },
+      { city: "مشهد", coords: [59.6, 36.31] },
     ];
 
-    // Clear existing crafts and insert samples
+    const sampleCrafts = [];
+    for (let i = 0; i < count; i++) {
+      const isEducational = i < 20; // first 20 educational
+      const title = `${titles[i % titles.length]} ${i + 1}`;
+      const type = craftTypes[i % craftTypes.length];
+      const cityInfo = cities[i % cities.length];
+      const price = isEducational
+        ? 0
+        : Math.floor(200000 + Math.random() * 5000000);
+      const images = [
+        `https://source.unsplash.com/collection/190727/800x600?sig=${i}`,
+      ];
+
+      sampleCrafts.push({
+        title,
+        description: isEducational
+          ? `دوره آموزشی ${title} — مناسب برای علاقه‌مندان و هنرجویان.`
+          : `محصول ${title} ساخته شده توسط هنرمند محلی، مناسب برای خرید.`,
+        artisanId: artisan._id,
+        craftType: type,
+        kind: isEducational ? "class" : "artwork",
+        author: user ? user._id : artisan._id,
+        price: price,
+        forSale: !isEducational,
+        images,
+        location: {
+          city: cityInfo.city,
+          neighborhood: "بازار سنتی",
+          geometry: { type: "Point", coordinates: cityInfo.coords },
+        },
+        tags: isEducational ? ["آموزشی", "دوره"] : ["فروش", type],
+        culturalStory: isEducational
+          ? "دوره آموزشی با تمرکز بر تکنیک‌های سنتی"
+          : "محصولی با پیشینه محلی",
+        isPublished: true,
+        createdAt: new Date(),
+      });
+    }
+
     const crafts = await Craft.create(sampleCrafts);
 
     res.json({
-      message: "Development seed data created",
-      artisan: { id: artisan._id },
-      crafts: crafts.map((c) => ({ id: c._id })),
+      message: `Created ${crafts.length} sample crafts`,
+      crafted: crafts.slice(0, 50).map((c) => ({ id: c._id })),
+      count: crafts.length,
     });
   } catch (err) {
-    console.error("Seed error:", err);
+    console.error("Seed mass error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });

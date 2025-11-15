@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  fetchCraftById,
-  updateCraft,
-  uploadImage,
-  reverseGeocode,
-} from "../services/crafts";
+import { fetchCraftById, updateCraft, uploadImage } from "../services/crafts";
+import { reverseGeocode } from "../services/media";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 

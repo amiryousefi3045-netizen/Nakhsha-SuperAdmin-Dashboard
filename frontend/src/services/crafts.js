@@ -1,4 +1,6 @@
 import { http } from "../lib/http";
+// Re-export some media helpers for convenience
+import { uploadImage, reverseGeocode } from "./media";
 
 // Fetch all crafts with optional filters, bounds, search, etc.
 export async function fetchCrafts(params = {}) {
@@ -105,6 +107,18 @@ export async function deleteComment(id, commentId) {
   }
 }
 
+// Fetch crafts that belong to the current authenticated user
+export async function fetchMyCrafts() {
+  try {
+    const response = await http.get("/crafts/mine/list");
+    // Normalize to an array if backend uses { items: [...] }
+    return Array.isArray(response.data?.items) ? response.data.items : [];
+  } catch (error) {
+    console.error("fetchMyCrafts error:", error?.message || error);
+    throw error;
+  }
+}
+
 // Fetch crafts near a location (geospatial search)
 export async function fetchCraftsNear(params = {}) {
   try {
@@ -126,3 +140,6 @@ export async function seedDev() {
     throw error;
   }
 }
+
+// Re-export media helpers so consumers can import them from this module
+export { uploadImage, reverseGeocode };

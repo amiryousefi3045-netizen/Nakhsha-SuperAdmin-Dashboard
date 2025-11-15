@@ -21,35 +21,272 @@ const SERVER_ORIGIN =
 const mockCrafts: Craft[] = [
   {
     id: "dev-1",
-    title: "گلیم دست‌باف",
-    artisanId: "mock-artisan-1",
-    images: [`${SERVER_ORIGIN}/uploads/carpet.jpg`],
-    price: 1500000,
+    title: "گلیم دست‌باف سنتی اصفهان",
+    description:
+      "گلیمی دست‌باف با نقش‌های سنتی و رنگ‌های طبیعی، بافته‌شده توسط یک خانواده صنعتگر در محله جلفای اصفهان.",
+    artisanId: "artisan-atif-1",
+    images: [
+      `${SERVER_ORIGIN}/uploads/dev-1.svg`,
+      `${SERVER_ORIGIN}/uploads/dev-1-2.svg`,
+    ],
+    price: 1850000,
     forSale: true,
     location: {
-      city: "اصفهان، جلفا",
+      city: "اصفهان",
       coordinates: [51.67, 32.64],
     },
-    tags: ["گلیم", "فرش"],
+    tags: ["گلیم", "قالی", "دست‌باف"],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    comments: [
+      {
+        id: "c1",
+        user: { id: "u1", name: "مریم حسینی" },
+        text: "کیفیت رنگ‌ها بسیار خوب است.",
+        rating: 5,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "c2",
+        user: { id: "u2", name: "علی رستمی" },
+        text: "بافت محکم و ظریف، پیشنهاد می‌کنم.",
+        rating: 4,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    posts: [
+      {
+        id: "p1",
+        title: "روند بافت گلیم",
+        body: "عکس‌ها و توضیحات مرحله‌ای از بافت گلیم توسط آتِف گلچین.",
+        images: [`${SERVER_ORIGIN}/uploads/dev-1-2.svg`],
+        createdAt: new Date().toISOString(),
+      },
+    ],
   },
   {
     id: "dev-2",
-    title: "سفال لعابی",
-    artisanId: "mock-artisan-2",
+    title: "سفال لعابی مینایی",
+    description:
+      "ظروف سفالی لعاب‌کاری شده با نقوش مینایی، مناسب برای سرو دکور و کادو. ساخته شده در کارگاه کوچک در بازار تهران.",
+    artisanId: "artisan-sofali-2",
     images: [
-      "https://images.unsplash.com/photo-1545239351-1141bd82e8a6?w=800&q=60",
+      `${SERVER_ORIGIN}/uploads/dev-2.svg`,
+      `${SERVER_ORIGIN}/uploads/dev-2-2.svg`,
     ],
-    price: 850000,
+    price: 750000,
     forSale: true,
     location: {
       city: "تهران، بازار",
       coordinates: [51.41, 35.73],
     },
-    tags: ["سفال", "لعاب"],
+    tags: ["سفال", "سرامیک", "هنر دستی"],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    comments: [
+      {
+        id: "c3",
+        user: { id: "u3", name: "فاطمه آقایی" },
+        text: "لعاب بسیار شفاف و رنگ‌ها زیبا هستند.",
+        rating: 5,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    posts: [
+      {
+        id: "p2",
+        title: "نمونه ظروف جدید",
+        body: "چند طرح جدید مینایی برای پذیرایی؛ آماده ارسال به سراسر کشور.",
+        images: [`${SERVER_ORIGIN}/uploads/dev-2-2.svg`],
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  },
+  {
+    id: "dev-3",
+    title: "جام مسی قلم‌زنی اصفهان",
+    description:
+      "جام مسی با نقوش قلم‌زنی شده دستی؛ مناسب کلکسیون و تزئینات داخلی. ساخته شده از مس مرغوب و پرداخت سنتی.",
+    artisanId: "artisan-mesi-3",
+    images: [`${SERVER_ORIGIN}/uploads/dev-3.svg`],
+    price: 2200000,
+    forSale: true,
+    location: {
+      city: "اصفهان، میدان نقش‌جهان",
+      coordinates: [51.6776, 32.6572],
+    },
+    tags: ["مس", "قلم‌زنی", "فلزکاری"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    comments: [
+      {
+        id: "c4",
+        user: { id: "u4", name: "حسین براتی" },
+        text: "کار استادانه و ظریف؛ قیمت منطقی است.",
+        rating: 5,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    posts: [
+      {
+        id: "p3",
+        title: "قلم‌زنی سنتی",
+        body: "نمایش مراحل قلم‌زنی و پرداخت جام مسی؛ سفارش‌های سفارشی پذیرفته می‌شود.",
+        images: [],
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  },
+  {
+    id: "dev-4",
+    title: "تابلو خط نستعلیق با مرکب طبیعی",
+    description:
+      "تابلوی نستعلیق با مرکب طبیعی و کاغذ دست‌ساز؛ مناسب هدیه و دکور هنری. نوشته شاعرانه‌ای با طراحی ظریف.",
+    artisanId: "artisan-khat-4",
+    images: [`${SERVER_ORIGIN}/uploads/dev-4.svg`],
+    price: 450000,
+    forSale: true,
+    location: {
+      city: "یزد",
+      coordinates: [54.3675, 31.8974],
+    },
+    tags: ["خوشنویسی", "هنر سنتی"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    comments: [
+      {
+        id: "c5",
+        user: { id: "u5", name: "لیلا نوربخش" },
+        text: "خط زیبا و مرکب خوش‌نویسانه؛ درخشان و بافت‌دار.",
+        rating: 5,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    posts: [
+      {
+        id: "p4",
+        title: "تابلوی سفارشی خوشنویسی",
+        body: "نمونه سفارشی با بندگی شعر حافظ؛ مناسب هدیهٔ خاص.",
+        images: [],
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  },
+  {
+    id: "dev-5",
+    title: "کابینت‌سازی دست‌ساز چوب گردو",
+    description:
+      "کابینت سفارشی از چوب گردوی ایرانی، طراحی مدرن با جزئیات سنتی؛ ساخته شده به سفارش با ضمانت کیفیت.",
+    artisanId: "artisan-wood-5",
+    images: [`${SERVER_ORIGIN}/uploads/dev-5.svg`],
+    price: 4200000,
+    forSale: false,
+    location: {
+      city: "شیراز",
+      coordinates: [52.5837, 29.5918],
+    },
+    tags: ["نجاری", "چوب", "دکور"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    comments: [
+      {
+        id: "c6",
+        user: { id: "u6", name: "مهدی صفوی" },
+        text: "نمونه کار با جزئیات تمیز و پرداخت عالی.",
+        rating: 5,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    posts: [
+      {
+        id: "p5",
+        title: "پروژه کابینت سفارشی",
+        body: "تحویل پروژه کابینت آشپزخانه با چوب گردوی ایرانی؛ عکس‌ها و جزئیات.",
+        images: [],
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  },
+  {
+    id: "dev-6",
+    title: "روسری ابریشمی نقاشی دستی",
+    description:
+      "روسری ابریشمی با طرح نقاشی دستی، مناسب استفاده روزمره و مجالس؛ رنگ‌های ثابت و دوخت تمیز.",
+    artisanId: "artisan-textile-6",
+    images: [`${SERVER_ORIGIN}/uploads/dev-6.svg`],
+    price: 650000,
+    forSale: true,
+    location: {
+      city: "تبریز",
+      coordinates: [46.2919, 38.0962],
+    },
+    tags: ["نساجی", "ابریشم", "نقاشی"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    comments: [
+      {
+        id: "c7",
+        user: { id: "u7", name: "سارا کاظمی" },
+        text: "پارچه نرم و نقش دقیق؛ عالی برای هدیه.",
+        rating: 5,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    posts: [
+      {
+        id: "p6",
+        title: "مراحل نقاشی روی ابریشم",
+        body: "همراه با ویدیو کوتاه از مراحل نقاشی دستی روی روسری ابریشمی.",
+        images: [],
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  },
+];
+
+// Small mock artisans list for dev mode to show names, bios & avatars
+const mockArtisans = [
+  {
+    id: "artisan-atif-1",
+    name: "آتِف گلچین",
+    avatar: `${SERVER_ORIGIN}/uploads/artisan-1.svg`,
+    city: "اصفهان",
+    bio: "خانواده‌ای با نسل‌ها تجربه در بافت گلیم و قالی. کارگاه کوچک در جلفای اصفهان.",
+  },
+  {
+    id: "artisan-sofali-2",
+    name: "نسرین صوفالی",
+    avatar: `${SERVER_ORIGIN}/uploads/artisan-2.svg`,
+    city: "تهران",
+    bio: "سفال‌گر مستقل، تمرکز روی لعاب‌های مینایی و طرح‌های سنتی با ماندگاری بالا.",
+  },
+  {
+    id: "artisan-mesi-3",
+    name: "سلمان مسگری",
+    avatar: `${SERVER_ORIGIN}/uploads/artisan-3.svg`,
+    city: "اصفهان",
+    bio: "فلزکار و قلم‌زن با بیش از ۲۰ سال تجربه در اثرسازی و نگهداری آثار سنتی.",
+  },
+  {
+    id: "artisan-khat-4",
+    name: "مریم شکیبا",
+    avatar: `${SERVER_ORIGIN}/uploads/artisan-4.svg`,
+    city: "یزد",
+    bio: "خوشنویس حرفه‌ای، سازنده تابلوهای سفارشی و آموزگار خط نستعلیق.",
+  },
+  {
+    id: "artisan-wood-5",
+    name: "کیان نجفی",
+    avatar: `${SERVER_ORIGIN}/uploads/artisan-5.svg`,
+    city: "شیراز",
+    bio: "نجار سفارشی‌ساز؛ ساخت کابینت و مبلمان با چوب گردوی ایرانی و اتصال سنتی.",
+  },
+  {
+    id: "artisan-textile-6",
+    name: "رها تبریزی",
+    avatar: `${SERVER_ORIGIN}/uploads/artisan-6.svg`,
+    city: "تبریز",
+    bio: "طراح پارچه و روسری ابریشمی؛ نقاشی دستی و تثبیت رنگ با تکنیک‌های سنتی.",
   },
 ];
 
@@ -70,11 +307,20 @@ export async function fetchCrafts(opts: CraftFilters = {}): Promise<{
       Array.isArray(data.items) &&
       data.items.length === 0
     ) {
+      const itemsWithArtisan = mockCrafts.map((c) => {
+        const artisan = mockArtisans.find((a) => a.id === c.artisanId);
+        return {
+          ...c,
+          artisan: artisan
+            ? { id: artisan.id, name: artisan.name, avatar: artisan.avatar }
+            : undefined,
+        } as any;
+      });
       return {
-        items: mockCrafts,
-        total: mockCrafts.length,
+        items: itemsWithArtisan,
+        total: itemsWithArtisan.length,
         page: opts.page || 1,
-        limit: opts.limit || mockCrafts.length,
+        limit: opts.limit || itemsWithArtisan.length,
       };
     }
 
@@ -89,11 +335,20 @@ export async function fetchCrafts(opts: CraftFilters = {}): Promise<{
       "/api/crafts failed, using mock data",
       err instanceof Error ? err.message : err
     );
+    const itemsWithArtisan = mockCrafts.map((c) => {
+      const artisan = mockArtisans.find((a) => a.id === c.artisanId);
+      return {
+        ...c,
+        artisan: artisan
+          ? { id: artisan.id, name: artisan.name, avatar: artisan.avatar }
+          : undefined,
+      } as any;
+    });
     return {
-      items: mockCrafts,
-      total: mockCrafts.length,
+      items: itemsWithArtisan,
+      total: itemsWithArtisan.length,
       page: opts.page || 1,
-      limit: opts.limit || mockCrafts.length,
+      limit: opts.limit || itemsWithArtisan.length,
     };
   }
 }
@@ -119,13 +374,18 @@ export async function fetchCraftById(
       const found = mockCrafts.find((c) => c.id === id);
       if (found) {
         // adapt mock to CraftResponse shape expected by consumers
+        const artisan = mockArtisans.find((a) => a.id === found.artisanId);
         return {
           id: found.id,
           title: found.title,
           description: (found as any).description || "",
           images: found.images || [],
           artisan: found.artisanId
-            ? { id: found.artisanId, name: "" }
+            ? {
+                id: found.artisanId,
+                name: artisan?.name || "",
+                avatar: artisan?.avatar,
+              }
             : undefined,
           craftType: (found as any).craftType || "",
           price: (found as any).price,
@@ -144,8 +404,10 @@ export async function fetchCraftById(
           createdAt: found.createdAt,
           sale: {},
           barter: {},
-          comments: [],
-          commentsCount: 0,
+          comments: (found as any).comments || [],
+          commentsCount: Array.isArray((found as any).comments)
+            ? (found as any).comments.length
+            : 0,
         } as any;
       }
     }
@@ -187,6 +449,31 @@ export async function fetchCraftById(
     }
     return null;
   }
+}
+
+export async function fetchArtisanById(artisanId: string): Promise<any> {
+  if (!import.meta.env.DEV) {
+    const { data } = await http.get<ApiResponse<any>>(`/artisans/${artisanId}`);
+    return data?.data || data;
+  }
+  const a = mockArtisans.find((x) => x.id === artisanId);
+  if (!a) return null;
+  const crafts = mockCrafts
+    .filter((c) => c.artisanId === artisanId)
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      images: c.images?.slice(0, 1) || [],
+      price: c.price,
+    }));
+  return {
+    id: a.id,
+    name: a.name,
+    avatar: a.avatar,
+    bio: a.bio,
+    city: a.city,
+    crafts,
+  };
 }
 
 export async function createCraft(payload: CraftCreateRequest): Promise<Craft> {
