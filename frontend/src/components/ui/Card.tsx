@@ -13,7 +13,7 @@ export const Card: React.FC<CardProps> = ({
   return (
     <div
       className={cn(
-        "bg-white rounded-lg shadow-sm border border-gray-200",
+        "bg-white rounded-lg shadow-sm border border-nakhsha-border",
         className
       )}
       {...props}

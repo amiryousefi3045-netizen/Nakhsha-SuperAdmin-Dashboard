@@ -4,14 +4,14 @@ const FilterToolbar = ({ filters, setFilters }) => {
       <input
         type="text"
         placeholder="شهر"
-        className="w-28 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-sm hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
+        className="w-28 border border-nakhsha-border rounded-lg px-2.5 py-1.5 bg-white text-sm text-nakhsha-text placeholder:text-gray-400 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none"
         value={filters.city}
         onChange={(e) => setFilters({ ...filters, city: e.target.value })}
         aria-label="فیلتر بر اساس شهر"
       />
 
       <select
-        className="w-28 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-sm hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none appearance-none"
+        className="w-28 border border-nakhsha-border rounded-lg px-2.5 py-1.5 bg-white text-sm text-nakhsha-text hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none appearance-none"
         value={typeof filters.craftType === "string" ? filters.craftType : ""}
         onChange={(e) => setFilters({ ...filters, craftType: e.target.value })}
         aria-label="فیلتر بر اساس نوع اثر"
@@ -26,7 +26,7 @@ const FilterToolbar = ({ filters, setFilters }) => {
       </select>
 
       <select
-        className="w-28 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-sm hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none appearance-none"
+        className="w-28 border border-nakhsha-border rounded-lg px-2.5 py-1.5 bg-white text-sm text-nakhsha-text hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none appearance-none"
         value={typeof filters.priceRange === "string" ? filters.priceRange : ""}
         onChange={(e) => setFilters({ ...filters, priceRange: e.target.value })}
         aria-label="فیلتر بر اساس محدوده قیمت"
@@ -41,14 +41,14 @@ const FilterToolbar = ({ filters, setFilters }) => {
       <label className="inline-flex items-center gap-1 mr-2 cursor-pointer group">
         <input
           type="checkbox"
-          className="rounded text-primary-600 focus:ring-primary-500 focus:ring-offset-0 border-gray-300 cursor-pointer"
+          className="rounded text-primary-500 focus:ring-primary-500 focus:ring-offset-0 border-primary-300 cursor-pointer accent-primary-500"
           checked={filters.forSale}
           onChange={(e) =>
             setFilters({ ...filters, forSale: e.target.checked })
           }
           aria-label="فقط اثرهای برای فروش"
         />
-        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors motion-reduce:transition-none">
+        <span className="text-sm font-medium text-nakhsha-text group-hover:text-primary-600 transition-colors motion-reduce:transition-none">
           برای فروش
         </span>
       </label>

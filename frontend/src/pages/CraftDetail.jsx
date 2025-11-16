@@ -77,13 +77,13 @@ export default function CraftDetail() {
 
   if (loading)
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
+      <div className="p-6 text-center text-sm text-nakhsha-text/60">
         در حال بارگذاری…
       </div>
     );
   if (!data)
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
+      <div className="p-6 text-center text-sm text-nakhsha-text/60">
         محصول پیدا نشد.{" "}
         <Link className="text-primary-600" to="/">
           بازگشت
@@ -204,23 +204,25 @@ export default function CraftDetail() {
     return (
       <li
         key={c.id}
-        className="border rounded p-2 text-[11px] bg-gray-50 flex flex-col gap-1"
+        className="border rounded p-2 text-[11px] border-nakhsha-border bg-nakhsha-bg flex flex-col gap-1"
       >
         <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-700 truncate max-w-[120px]">
+          <span className="font-medium text-nakhsha-text truncate max-w-[120px]">
             {String(c.user).slice(0, 10)}
           </span>
           {c.rating && (
             <span className="text-amber-600 font-medium">
               {"★".repeat(c.rating)}
-              <span className="text-gray-400">{"★".repeat(5 - c.rating)}</span>
+              <span className="text-nakhsha-text/40">
+                {"★".repeat(5 - c.rating)}
+              </span>
             </span>
           )}
-          <span className="text-gray-400 ml-auto">
+          <span className="text-nakhsha-text/40 ml-auto">
             {new Date(c.createdAt).toLocaleDateString("fa-IR")}
           </span>
         </div>
-        <div className="text-gray-700 leading-5 whitespace-pre-wrap">
+        <div className="text-nakhsha-text leading-5 whitespace-pre-wrap">
           {c.text}
         </div>
         {canDelete && (
@@ -293,7 +295,7 @@ export default function CraftDetail() {
           />
         </div>
 
-        <p className="text-sm text-gray-700 mt-4 leading-7">
+        <p className="text-sm text-nakhsha-text mt-4 leading-7">
           {data.description}
         </p>
 
@@ -302,7 +304,7 @@ export default function CraftDetail() {
           {(data.materials || []).map((mat, i) => (
             <li key={i} className="flex justify-between border-b pb-1">
               <span>{mat.name}</span>
-              <span className="text-gray-600">
+              <span className="text-nakhsha-text/60">
                 {mat.amount} {mat.unit}
               </span>
             </li>
@@ -316,12 +318,14 @@ export default function CraftDetail() {
               <div className="font-medium">
                 مرحله {st.step}
                 {st.title ? (
-                  <span className="mx-2 text-gray-900 font-semibold">
+                  <span className="mx-2 text-nakhsha-text font-semibold">
                     : {st.title}
                   </span>
                 ) : null}
               </div>
-              <div className="text-gray-700 leading-7">{st.description}</div>
+              <div className="text-nakhsha-text leading-7">
+                {st.description}
+              </div>
               {st.image && (
                 <img
                   src={st.image}
@@ -337,12 +341,12 @@ export default function CraftDetail() {
       <aside className="space-y-4">
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-200" />
-            <div>
+            <div className="w-10 h-10 rounded-full bg-nakhsha-border/30" />
+            <div className="flex-1">
               <div className="text-sm font-medium">
                 {data.artisan?.name || "—"}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-nakhsha-text/60">
                 ثبت شده در{" "}
                 {new Date(data.createdAt).toLocaleDateString("fa-IR")}
               </div>
@@ -368,9 +372,9 @@ export default function CraftDetail() {
         </div>
 
         <div className="bg-white rounded-lg border p-4">
-          <div className="text-sm text-gray-700">محل تولید اثر</div>
-          <div className="text-sm text-gray-700">محل عرضه محصول</div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-sm text-nakhsha-text">محل تولید اثر</div>
+          <div className="text-sm text-nakhsha-text">محل عرضه محصول</div>
+          <div className="text-xs text-nakhsha-text/60 mt-1">
             {data.location?.city}
             {data.location?.neighborhood
               ? `، ${data.location.neighborhood}`
@@ -393,7 +397,7 @@ export default function CraftDetail() {
             {(data.tags || []).map((t, i) => (
               <span
                 key={i}
-                className="px-2 py-1 rounded-full bg-gray-100 text-gray-700"
+                className="px-2 py-1 rounded-full bg-primary-50 text-primary-700"
               >
                 {t}
               </span>
@@ -404,7 +408,9 @@ export default function CraftDetail() {
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">نظرات کاربران</h3>
-            <span className="text-[11px] text-gray-500">{comments.length}</span>
+            <span className="text-[11px] text-nakhsha-text/60">
+              {comments.length}
+            </span>
           </div>
           {user ? (
             <form onSubmit={submitComment} className="space-y-2 mb-4">
@@ -438,14 +444,16 @@ export default function CraftDetail() {
               </div>
             </form>
           ) : (
-            <div className="text-xs text-gray-500 mb-3">
+            <div className="text-xs text-nakhsha-text/60 mb-3">
               برای ثبت نظر وارد شوید.
             </div>
           )}
 
           <ul className="space-y-3 max-h-80 overflow-y-auto thin-scrollbar pr-1">
             {comments.length === 0 ? (
-              <li className="text-[11px] text-gray-400">هنوز نظری ثبت نشده.</li>
+              <li className="text-[11px] text-nakhsha-text/40">
+                هنوز نظری ثبت نشده.
+              </li>
             ) : (
               comments.map(renderComment)
             )}

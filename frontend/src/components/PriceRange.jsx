@@ -56,11 +56,11 @@ const PriceRange = ({
   const maxPercent = getPercent(localMax);
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm border border-gray-200/60 space-y-4">
+    <div className="rounded-2xl bg-white p-4 shadow-sm border border-nakhsha-border space-y-4">
       {/* Dual Range Slider */}
       <div className="relative pt-2 pb-6">
         {/* Track Background */}
-        <div className="absolute top-5 left-0 right-0 h-2 bg-gray-200 rounded-full pointer-events-none" />
+        <div className="absolute top-5 left-0 right-0 h-2 bg-nakhsha-border rounded-full pointer-events-none" />
 
         {/* Highlighted Track Between Thumbs */}
         <div
@@ -121,19 +121,19 @@ const PriceRange = ({
             height: 20px;
             border-radius: 50%;
             background: white;
-            border: 3px solid #3b82f6;
+            border: 3px solid #1A5F7A;
             cursor: pointer;
             pointer-events: auto;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 2px 8px rgba(26, 95, 122, 0.15);
             transition: box-shadow 0.2s;
           }
 
           input[type="range"]::-webkit-slider-thumb:hover {
-            box-shadow: 0 2px 12px rgba(59, 130, 246, 0.4);
+            box-shadow: 0 2px 12px rgba(26, 95, 122, 0.4);
           }
 
           input[type="range"]::-webkit-slider-thumb:active {
-            box-shadow: 0 2px 16px rgba(59, 130, 246, 0.6);
+            box-shadow: 0 2px 16px rgba(26, 95, 122, 0.6);
           }
 
           input[type="range"]::-moz-range-thumb {
@@ -141,19 +141,19 @@ const PriceRange = ({
             height: 20px;
             border-radius: 50%;
             background: white;
-            border: 3px solid #3b82f6;
+            border: 3px solid #1A5F7A;
             cursor: pointer;
             pointer-events: auto;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 2px 8px rgba(26, 95, 122, 0.15);
             transition: box-shadow 0.2s;
           }
 
           input[type="range"]::-moz-range-thumb:hover {
-            box-shadow: 0 2px 12px rgba(59, 130, 246, 0.4);
+            box-shadow: 0 2px 12px rgba(26, 95, 122, 0.4);
           }
 
           input[type="range"]::-moz-range-thumb:active {
-            box-shadow: 0 2px 16px rgba(59, 130, 246, 0.6);
+            box-shadow: 0 2px 16px rgba(26, 95, 122, 0.6);
           }
 
           input[type="range"]::-moz-range-track {
@@ -171,11 +171,13 @@ const PriceRange = ({
       <div className="grid grid-cols-2 gap-3">
         {/* Min Price Input */}
         <div className="text-right">
-          <label className="block text-xs font-semibold text-gray-700 mb-2">
+          <label className="block text-xs font-semibold text-nakhsha-text mb-2">
             از
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-600 flex-shrink-0">تومان</span>
+            <span className="text-xs text-nakhsha-text/60 flex-shrink-0">
+              تومان
+            </span>
             <input
               type="number"
               min={minCap}
@@ -184,7 +186,7 @@ const PriceRange = ({
               onChange={(e) =>
                 handleMinChange(parseInt(e.target.value, 10) || 0)
               }
-              className="flex-1 p-2.5 border border-gray-300 rounded-lg bg-white text-sm text-left placeholder:text-gray-400 hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 font-tabular"
+              className="flex-1 p-2.5 border border-nakhsha-border rounded-lg bg-white text-sm text-left text-nakhsha-text placeholder:text-gray-400 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 font-tabular"
               placeholder="0"
               aria-label="قیمت کمینه"
             />
@@ -193,11 +195,13 @@ const PriceRange = ({
 
         {/* Max Price Input */}
         <div className="text-right">
-          <label className="block text-xs font-semibold text-gray-700 mb-2">
+          <label className="block text-xs font-semibold text-nakhsha-text mb-2">
             تا
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-600 flex-shrink-0">تومان</span>
+            <span className="text-xs text-nakhsha-text/60 flex-shrink-0">
+              تومان
+            </span>
             <input
               type="number"
               min={localMin + 1}
@@ -206,7 +210,7 @@ const PriceRange = ({
               onChange={(e) =>
                 handleMaxChange(parseInt(e.target.value, 10) || maxCap)
               }
-              className="flex-1 p-2.5 border border-gray-300 rounded-lg bg-white text-sm text-left placeholder:text-gray-400 hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 font-tabular"
+              className="flex-1 p-2.5 border border-nakhsha-border rounded-lg bg-white text-sm text-left text-nakhsha-text placeholder:text-gray-400 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 font-tabular"
               placeholder={String(maxCap)}
               aria-label="قیمت بیشینه"
             />
@@ -215,12 +219,12 @@ const PriceRange = ({
       </div>
 
       {/* Price Summary */}
-      <div className="pt-2 text-center text-xs text-gray-600 bg-gray-50 rounded-lg p-2">
-        <span className="font-semibold text-gray-900">
+      <div className="pt-2 text-center text-xs text-nakhsha-text/60 bg-nakhsha-bg rounded-lg p-2">
+        <span className="font-semibold text-nakhsha-text">
           {toFa(localMin.toLocaleString("fa-IR"))} تومان
         </span>
         <span className="mx-1 opacity-50">تا</span>
-        <span className="font-semibold text-gray-900">
+        <span className="font-semibold text-nakhsha-text">
           {toFa(localMax.toLocaleString("fa-IR"))} تومان
         </span>
       </div>

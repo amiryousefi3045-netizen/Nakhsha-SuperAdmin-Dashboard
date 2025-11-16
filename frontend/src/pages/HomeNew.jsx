@@ -282,12 +282,14 @@ const HomeNew = () => {
           </div>
           <div className="px-3 pb-2 border-b">
             <div className="flex items-center justify-between py-2">
-              <h2 className="text-sm font-medium text-gray-700">همه آثار</h2>
-              <div className="text-[11px] text-gray-500">
+              <h2 className="text-sm font-medium text-nakhsha-text">
+                همه آثار
+              </h2>
+              <div className="text-[11px] text-nakhsha-text/60">
                 {toFa(total)} نتیجه
               </div>
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-gray-600">
+            <div className="flex items-center gap-2 text-[11px] text-nakhsha-text/60">
               <select
                 className="border rounded-full px-3 py-1 text-[11px]"
                 value={sort}
@@ -303,7 +305,7 @@ const HomeNew = () => {
               {/* Search Input with Icon */}
               <div className="ml-auto relative">
                 <svg
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-nakhsha-text/40 pointer-events-none"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -317,7 +319,7 @@ const HomeNew = () => {
                   />
                 </svg>
                 <input
-                  className="w-full pl-3 pr-8 py-1 border rounded-full text-[11px] placeholder:text-gray-400 bg-gray-50 focus:bg-white focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300/50 transition-all duration-200"
+                  className="w-full pl-3 pr-8 py-1 border rounded-full text-[11px] placeholder:text-nakhsha-text/40 bg-nakhsha-bg focus:bg-white focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200"
                   placeholder="جستجو"
                   value={typingQuery}
                   onChange={(e) => setTypingQuery(e.target.value)}
@@ -349,7 +351,7 @@ const HomeNew = () => {
                     onChange={(e) => setRadiusKm(parseInt(e.target.value, 10))}
                     className="w-24"
                   />
-                  <span className="text-gray-600">
+                  <span className="text-nakhsha-text/60">
                     {toFa(radiusKm)} کیلومتر
                   </span>
                 </div>
@@ -384,7 +386,7 @@ const HomeNew = () => {
             <div className="p-3 flex justify-center">
               {hasMore && (
                 <button
-                  className="border rounded-full px-4 py-2 text-sm hover:bg-gray-50"
+                  className="border rounded-full px-4 py-2 text-sm border-nakhsha-border text-nakhsha-text hover:bg-primary-50 transition-colors"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={loading}
                 >
@@ -409,7 +411,7 @@ const HomeNew = () => {
             }}
           />
           {mapDirty && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 text-gray-700 text-xs px-4 py-1 rounded-full shadow animate-pulse">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 text-nakhsha-text text-xs px-4 py-1 rounded-full shadow animate-pulse">
               بروزرسانی خودکار…
             </div>
           )}
@@ -435,7 +437,7 @@ const HomeNew = () => {
             }}
           />
           {mapDirty && (
-            <div className="absolute top-3 left-3 bg-white/95 text-gray-800 px-3 py-1 rounded-full text-[10px] shadow animate-pulse">
+            <div className="absolute top-3 left-3 bg-white/95 text-nakhsha-text px-3 py-1 rounded-full text-[10px] shadow animate-pulse">
               بروزرسانی…
             </div>
           )}
@@ -444,7 +446,7 @@ const HomeNew = () => {
           initial="collapsed"
           header={
             <div className="space-y-3">
-              <div className="text-center text-xs text-gray-700 font-medium">
+              <div className="text-center text-xs text-nakhsha-text font-medium">
                 {toFa(total)} اثر در این محدوده
               </div>
               <div className="flex gap-2 items-center text-[11px]">
@@ -465,7 +467,7 @@ const HomeNew = () => {
                 </select>
                 <button
                   type="button"
-                  className="text-[11px] px-2 py-1 rounded-full border bg-gray-50"
+                  className="text-[11px] px-2 py-1 rounded-full border border-nakhsha-border bg-nakhsha-bg text-nakhsha-text/70"
                   onClick={() => {
                     const el = document.getElementById("mobile-filters-inline");
                     if (el) el.open = !el.open;
@@ -476,7 +478,7 @@ const HomeNew = () => {
               </div>
 
               {/* Location-Based Filter */}
-              <div className="mt-3 p-2 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="mt-3 p-2 bg-nakhsha-bg rounded-lg border border-nakhsha-border">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -489,7 +491,7 @@ const HomeNew = () => {
                       }
                     }}
                   />
-                  <span className="text-xs font-medium text-gray-700">
+                  <span className="text-xs font-medium text-nakhsha-text">
                     استفاده از موقعیت من
                   </span>
                 </label>
@@ -503,9 +505,9 @@ const HomeNew = () => {
                       onChange={(e) =>
                         setRadiusKm(parseInt(e.target.value, 10))
                       }
-                      className="flex-1 h-1.5 rounded-full bg-gray-200"
+                      className="flex-1 h-1.5 rounded-full bg-nakhsha-border"
                     />
-                    <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+                    <span className="text-xs font-medium text-nakhsha-text/60 whitespace-nowrap">
                       {toFa(radiusKm)} کم
                     </span>
                   </div>
@@ -547,7 +549,7 @@ const HomeNew = () => {
           <div className="p-3 flex justify-center">
             {hasMore && (
               <button
-                className="border rounded-full px-4 py-2 text-sm hover:bg-gray-50"
+                className="border rounded-full px-4 py-2 text-sm border-nakhsha-border text-nakhsha-text hover:bg-primary-50 transition-colors"
                 onClick={() => setPage((p) => p + 1)}
                 disabled={loading}
               >

@@ -23,8 +23,8 @@ import { Alert } from "../components/ui/Alert";
 const PLACEHOLDER_SVG =
   "data:image/svg+xml;utf8,\
   <svg xmlns='http://www.w3.org/2000/svg' width='800' height='256' viewBox='0 0 800 256'>\
-    <rect width='100%' height='100%' fill='%23e5e7eb'/>\
-    <g fill='%239ca3af' font-family='sans-serif' font-size='20' text-anchor='middle'>\
+    <rect width='100%' height='100%' fill='%23FAFAF7'/>\
+    <g fill='%232E2E2E' font-family='sans-serif' font-size='20' text-anchor='middle'>\
       <text x='400' y='132'>بدون تصویر</text>\
     </g>\
   </svg>";
@@ -283,7 +283,7 @@ export const CraftDetail: React.FC = () => {
 
   return (
     <div className="max-w-[1100px] mx-auto grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 p-4">
-      <Card className="bg-white rounded-lg border p-4">
+      <Card className="bg-nakhsha-bg rounded-lg border border-nakhsha-border p-4">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-xl font-bold">{data.title}</h1>
           <CraftMeta
@@ -341,15 +341,18 @@ export const CraftDetail: React.FC = () => {
           alt={data.title}
         />
 
-        <div className="prose prose-sm mt-4 text-gray-700">
+        <div className="prose prose-sm mt-4 text-nakhsha-text">
           <p className="leading-7">{data.description}</p>
 
           <h2 className="text-base font-semibold mt-6">مواد و متریال</h2>
           <ul className="mt-2 space-y-2">
             {(data.materials || []).map((mat, i) => (
-              <li key={i} className="flex justify-between border-b pb-1">
+              <li
+                key={i}
+                className="flex justify-between border-b pb-1 border-nakhsha-border"
+              >
                 <span>{mat.name}</span>
-                <span className="text-gray-600">
+                <span className="text-nakhsha-text/60">
                   {mat.amount} {mat.unit}
                 </span>
               </li>
@@ -363,12 +366,14 @@ export const CraftDetail: React.FC = () => {
                 <div className="font-medium">
                   مرحله {st.step}
                   {st.title && (
-                    <span className="mx-2 text-gray-900 font-semibold">
+                    <span className="mx-2 text-nakhsha-text font-semibold">
                       : {st.title}
                     </span>
                   )}
                 </div>
-                <div className="text-gray-700 leading-7">{st.description}</div>
+                <div className="text-nakhsha-text leading-7">
+                  {st.description}
+                </div>
                 {st.image && (
                   <img
                     src={st.image}
@@ -385,13 +390,13 @@ export const CraftDetail: React.FC = () => {
       <aside className="space-y-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-200" />
+            <div className="w-10 h-10 rounded-full bg-nakhsha-border/30" />
             <div>
               <div className="text-sm font-medium">
                 {data.artisan?.name || "—"}
               </div>
               <time
-                className="text-xs text-gray-500"
+                className="text-xs text-nakhsha-text/60"
                 dateTime={data.createdAt || ""}
               >
                 ثبت شده در{" "}
@@ -423,9 +428,9 @@ export const CraftDetail: React.FC = () => {
         </Card>
 
         <Card className="p-4">
-          <div className="text-sm text-gray-700">محل تولید اثر</div>
-          <div className="text-sm text-gray-700">محل عرضه محصول</div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-sm text-nakhsha-text">محل تولید اثر</div>
+          <div className="text-sm text-nakhsha-text">محل عرضه محصول</div>
+          <div className="text-xs text-nakhsha-text/60 mt-1">
             {(data.location as any)?.city}
             {(data.location as any)?.neighborhood &&
               `، ${(data.location as any).neighborhood}`}
@@ -447,7 +452,7 @@ export const CraftDetail: React.FC = () => {
             {(data.tags || []).map((tag, i) => (
               <span
                 key={i}
-                className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700"
+                className="px-2 py-1 text-xs rounded-full bg-primary-50 text-primary-700"
               >
                 {tag}
               </span>
@@ -458,7 +463,9 @@ export const CraftDetail: React.FC = () => {
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">نظرات کاربران</h3>
-            <span className="text-[11px] text-gray-500">{comments.length}</span>
+            <span className="text-[11px] text-nakhsha-text/60">
+              {comments.length}
+            </span>
           </div>
 
           {user ? (
@@ -507,7 +514,9 @@ export const CraftDetail: React.FC = () => {
 
           <ul className="space-y-3 max-h-80 overflow-y-auto thin-scrollbar pr-1">
             {comments.length === 0 ? (
-              <li className="text-[11px] text-gray-400">هنوز نظری ثبت نشده.</li>
+              <li className="text-[11px] text-nakhsha-text/40">
+                هنوز نظری ثبت نشده.
+              </li>
             ) : (
               comments.map((c) => {
                 const canDelete =
@@ -519,31 +528,31 @@ export const CraftDetail: React.FC = () => {
                 return (
                   <li
                     key={c.id}
-                    className="border rounded p-2 text-[11px] bg-gray-50 flex flex-col gap-1"
+                    className="border rounded p-2 text-[11px] border-nakhsha-border bg-nakhsha-bg flex flex-col gap-1"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-700 truncate max-w-[120px]">
+                      <span className="font-medium text-nakhsha-text truncate max-w-[120px]">
                         {String(c.user).slice(0, 10)}
                       </span>
 
                       {c.rating && (
                         <span className="text-amber-600 font-medium">
                           {"★".repeat(c.rating)}
-                          <span className="text-gray-400">
+                          <span className="text-nakhsha-text/40">
                             {"★".repeat(5 - c.rating)}
                           </span>
                         </span>
                       )}
 
                       <time
-                        className="text-gray-400 ml-auto"
+                        className="text-nakhsha-text/40 ml-auto"
                         dateTime={c.createdAt}
                       >
                         {new Date(c.createdAt).toLocaleDateString("fa-IR")}
                       </time>
                     </div>
 
-                    <div className="text-gray-700 leading-5 whitespace-pre-wrap">
+                    <div className="text-nakhsha-text leading-5 whitespace-pre-wrap">
                       {c.text}
                     </div>
 

@@ -25,7 +25,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
 
   return (
     <div className="mt-4 space-y-2">
-      <div className="relative aspect-video overflow-hidden rounded-lg bg-gray-100">
+      <div className="relative aspect-video overflow-hidden rounded-lg bg-nakhsha-border/30">
         <img
           src={displayedImage}
           alt={alt || "تصویر محصول"}
@@ -33,7 +33,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
         />
 
         {showFallbackBadge && (
-          <div className="absolute top-2 right-2 px-2 py-1 text-xs bg-gray-900/75 text-white rounded">
+          <div className="absolute top-2 right-2 px-2 py-1 text-xs bg-nakhsha-text/80 text-white rounded">
             تصویر نمونه
           </div>
         )}
@@ -46,9 +46,9 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
               key={idx}
               onClick={() => onIndexChange(idx)}
               className={cn(
-                "relative aspect-square overflow-hidden rounded bg-gray-100",
-                "hover:ring-2 hover:ring-blue-500 transition-all",
-                idx === currentIndex && "ring-2 ring-blue-600"
+                "relative aspect-square overflow-hidden rounded bg-nakhsha-border/30",
+                "hover:ring-2 hover:ring-primary-500 transition-all",
+                idx === currentIndex && "ring-2 ring-primary-600"
               )}
             >
               <img

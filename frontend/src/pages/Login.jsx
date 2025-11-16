@@ -57,14 +57,14 @@ export default function Login() {
         <label className="text-sm block">
           ایمیل یا تلفن
           <input
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
           />
         </label>
         <label className="text-sm block">
           رمز عبور
-          <div className="mt-1 flex items-center rounded-lg border border-gray-300 bg-white">
+          <div className="mt-1 flex items-center rounded-lg border border-nakhsha-border bg-white hover:border-primary-400 focus-within:border-primary-500">
             <input
               type={showPwd ? "text" : "password"}
               className="flex-1 rounded-l-lg px-3 py-2 outline-none border-0"
@@ -74,7 +74,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowPwd((v) => !v)}
-              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+              className="px-3 py-2 text-sm text-nakhsha-text/60 hover:text-nakhsha-text transition-colors"
               aria-label={showPwd ? "پنهان کردن رمز" : "نمایش رمز"}
             >
               {showPwd ? "پنهان" : "نمایش"}
@@ -88,7 +88,7 @@ export default function Login() {
           {loading ? "در حال ورود…" : "ورود"}
         </button>
       </form>
-      <div className="text-sm text-gray-600 mt-3">
+      <div className="text-sm text-nakhsha-text/60 mt-3">
         حساب ندارید؟{" "}
         <Link to="/register" className="text-primary-600">
           ثبت‌نام

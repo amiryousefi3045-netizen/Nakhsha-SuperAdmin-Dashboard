@@ -18,7 +18,7 @@ const CraftCard = ({ craft }) => {
   return (
     <Link
       to={`/craft/${craft.id}`}
-      className="block p-3 hover:bg-gray-50 transition-colors duration-200 motion-reduce:transition-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
+      className="block p-3 hover:bg-primary-50 transition-colors duration-200 motion-reduce:transition-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
       aria-label={`دیدن جزئیات ${craft.title}`}
     >
       <div className="flex gap-3 items-start">
@@ -36,17 +36,17 @@ const CraftCard = ({ craft }) => {
         />
         <div className="flex-1 text-right">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-base text-gray-900">
+            <h3 className="font-semibold text-base text-nakhsha-text">
               {craft.title}
             </h3>
-            <span className="text-xs font-medium text-gray-500">
+            <span className="text-xs font-medium text-nakhsha-text/60">
               {craft.duration || craft.craftingTime || ""}
             </span>
           </div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-500 flex-wrap">
+          <div className="mt-1 flex items-center justify-end gap-1 text-xs text-nakhsha-text/60 flex-wrap">
             {typeof craft.distanceMeters === "number" && (
               <span
-                className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-blue-100"
+                className="px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-primary-100"
                 title={`${
                   craft.distanceMeters < 1000
                     ? craft.distanceMeters + " متر"
@@ -90,7 +90,7 @@ const CraftCard = ({ craft }) => {
             </svg>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2 flex-wrap">
-            <span className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-500 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-gray-200">
+            <span className="px-2 py-0.5 rounded-full bg-nakhsha-bg text-xs text-nakhsha-text/70 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-primary-50">
               {craft.type}
             </span>
             {craft.hasImage === false && (
@@ -130,7 +130,7 @@ const CraftCard = ({ craft }) => {
                 e.preventDefault();
                 window.location.href = `/craft/${craft.id}`;
               }}
-              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
+              className="flex-1 rounded-full h-9 px-4 bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
               aria-label={`دیدن جزئیات ${craft.title}`}
             >
               دیدن جزئیات
@@ -205,11 +205,11 @@ const MemoizedCraftCard = React.memo(CraftCard, (prevProps, nextProps) => {
 const Skeleton = () => (
   <div className="p-3">
     <div className="flex gap-3">
-      <div className="w-28 h-20 bg-gray-200 rounded-md animate-pulse" />
+      <div className="w-28 h-20 bg-nakhsha-border/30 rounded-md animate-pulse" />
       <div className="flex-1 space-y-2">
-        <div className="h-4 bg-gray-200 w-1/2 rounded animate-pulse" />
-        <div className="h-3 bg-gray-200 w-1/3 rounded animate-pulse" />
-        <div className="h-3 bg-gray-200 w-1/4 rounded animate-pulse" />
+        <div className="h-4 bg-nakhsha-border/30 w-1/2 rounded animate-pulse" />
+        <div className="h-3 bg-nakhsha-border/30 w-1/3 rounded animate-pulse" />
+        <div className="h-3 bg-nakhsha-border/30 w-1/4 rounded animate-pulse" />
       </div>
     </div>
   </div>
@@ -272,7 +272,10 @@ const CraftList = ({ items = [], loading = false }) => {
 
   if (!items.length) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500" role="status">
+      <div
+        className="p-6 text-center text-sm text-nakhsha-text/60"
+        role="status"
+      >
         نتیجه‌ای پیدا نشد.
       </div>
     );

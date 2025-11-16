@@ -73,7 +73,7 @@ export default function MobileBottomSheet({
   return (
     <div
       ref={sheetRef}
-      className="fixed bottom-0 inset-x-0 z-40 bg-white rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.08)] border-t flex flex-col overflow-hidden select-none will-change-[height]"
+      className="fixed bottom-0 inset-x-0 z-40 bg-white rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.08)] border-t border-nakhsha-border flex flex-col overflow-hidden select-none will-change-[height]"
       style={{
         height: height ? height + "px" : undefined,
         transition: "height .25s cubic-bezier(0.4,0,0.2,1)",
@@ -86,7 +86,7 @@ export default function MobileBottomSheet({
         className="cursor-grab active:cursor-grabbing pt-2 px-4"
         style={{ touchAction: "none" }}
       >
-        <div className="mx-auto w-10 h-1.5 rounded-full bg-gray-300 mb-2" />
+        <div className="mx-auto w-10 h-1.5 rounded-full bg-nakhsha-border/60 mb-2" />
         {header}
       </div>
       <div className="flex-1 overflow-y-auto -mb-px thin-scrollbar">

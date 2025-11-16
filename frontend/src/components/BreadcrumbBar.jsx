@@ -1,11 +1,11 @@
 const BreadcrumbBar = ({ city = "تهران", category = "همه صنایع دستی" }) => {
   return (
     <nav
-      className="flex items-center justify-between text-xs text-gray-600"
+      className="flex items-center justify-between text-xs text-nakhsha-text/60"
       aria-label="breadcrumb"
     >
       <div className="flex items-center gap-2">
-        <span className="text-gray-800 font-medium">{category}</span>
+        <span className="text-nakhsha-text font-medium">{category}</span>
         <span className="opacity-50" aria-hidden="true">
           /
         </span>

@@ -260,7 +260,7 @@ const Home = () => {
       <div className="hidden md:grid h-[calc(100vh-80px)] grid-rows-[1fr] grid-cols-[1fr] overflow-hidden">
         {/* Full Screen Map */}
         <section className="relative w-full h-full overflow-hidden rounded-tr-3xl">
-          <div className="absolute top-4 right-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-gray-900 text-right">
+          <div className="absolute top-4 right-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-nakhsha-text text-right">
             {total.toLocaleString("fa-IR")} اثر در این محدوده
           </div>
           {usedIpFallback && (
@@ -299,7 +299,7 @@ const Home = () => {
             }}
           />
           {mapDirty && (
-            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur text-gray-900 text-xs px-4 py-2 rounded-full shadow-md font-medium animate-pulse">
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur text-nakhsha-text text-xs px-4 py-2 rounded-full shadow-md font-medium animate-pulse">
               بروزرسانی خودکار…
             </div>
           )}
@@ -321,28 +321,28 @@ const Home = () => {
           style={{ height: "calc(100vh - 80px - 32px)" }}
         >
           {/* Dotted Divider - Left Edge */}
-          <div className="absolute left-0 top-0 bottom-0 w-px border-l border-dotted border-gray-300/60"></div>
+          <div className="absolute left-0 top-0 bottom-0 w-px border-l border-dotted border-nakhsha-border"></div>
 
           {/* Apple-style Floating Sidebar */}
-          <aside className="h-full rounded-3xl bg-white/95 backdrop-blur shadow-lg border border-gray-200/60 overflow-hidden flex flex-col">
+          <aside className="h-full rounded-3xl bg-white/95 backdrop-blur shadow-lg border border-nakhsha-border overflow-hidden flex flex-col">
             {/* Header Section */}
-            <div className="space-y-4 p-6 border-b border-gray-200/80">
+            <div className="space-y-4 p-6 border-b border-nakhsha-border">
               <BreadcrumbBar />
               <FilterToolbar filters={filters} setFilters={setFilters} />
             </div>
 
             {/* Search & Sort Section - Sticky Header */}
             <div
-              className={`sticky top-0 z-10 px-6 py-5 border-b border-gray-200/80 space-y-4 backdrop-blur bg-white/90 rounded-t-2xl transition-shadow duration-200 ${
+              className={`sticky top-0 z-10 px-6 py-5 border-b border-nakhsha-border space-y-4 backdrop-blur bg-white/90 rounded-t-2xl transition-shadow duration-200 ${
                 filterHeaderHasShadow ? "shadow-md" : ""
               }`}
             >
               {/* Title & Result Count */}
               <div className="flex items-center justify-between text-right">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-900">
+                <h2 className="text-xl md:text-2xl font-bold text-nakhsha-text">
                   آثار هنری
                 </h2>
-                <div className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
+                <div className="text-xs font-medium text-nakhsha-text bg-blue-50 px-3 py-1.5 rounded-full">
                   {toFa(total)}
                 </div>
               </div>
@@ -350,7 +350,7 @@ const Home = () => {
               {/* Sort & Search Controls */}
               <div className="flex items-center gap-3">
                 <select
-                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
+                  className="flex-1 border border-nakhsha-border rounded-xl px-4 py-2.5 text-sm bg-white text-nakhsha-text hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
                   aria-label="مرتب‌سازی آثار"
@@ -365,7 +365,7 @@ const Home = () => {
                 {/* Search Input with Icon */}
                 <div className="flex-1 relative">
                   <svg
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-nakhsha-text/40 pointer-events-none"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -379,7 +379,7 @@ const Home = () => {
                     />
                   </svg>
                   <input
-                    className="w-full h-11 rounded-full pl-4 pr-10 bg-gray-50 text-sm placeholder:text-gray-400 border border-gray-200 hover:border-gray-300 focus:bg-white focus:border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300/50 transition-all duration-200 motion-reduce:transition-none"
+                    className="w-full h-11 rounded-full pl-4 pr-10 bg-nakhsha-bg text-sm text-nakhsha-text placeholder:text-nakhsha-text/40 border border-nakhsha-border hover:border-primary-400 focus:bg-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none"
                     placeholder="جستجو…"
                     value={typingQuery}
                     onChange={(e) => setTypingQuery(e.target.value)}
@@ -434,7 +434,7 @@ const Home = () => {
                 ) : items.length === 0 ? (
                   // Empty state
                   <div className="flex items-center justify-center h-48">
-                    <div className="text-center text-gray-500">
+                    <div className="text-center text-nakhsha-text/60">
                       <p className="text-sm">نتیجه‌ای پیدا نشد</p>
                     </div>
                   </div>
@@ -453,11 +453,11 @@ const Home = () => {
                             window.location.href = `/craft/${craft.id}`;
                           }
                         }}
-                        className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-[1.01] will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 cursor-pointer"
+                        className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-[1.01] will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer"
                         aria-label={`دیدن جزئیات ${craft.title}`}
                       >
                         {/* Image Container */}
-                        <div className="relative w-full aspect-[4/3] bg-gray-200 overflow-hidden rounded-2xl">
+                        <div className="relative w-full aspect-[4/3] bg-nakhsha-border/30 overflow-hidden rounded-2xl">
                           <img
                             src={
                               craft.image ||
@@ -482,7 +482,7 @@ const Home = () => {
                         <div className="p-3 md:p-4 space-y-3">
                           {/* Title */}
                           <div className="text-right">
-                            <h3 className="text-base md:text-lg font-semibold text-gray-900 line-clamp-2 leading-6">
+                            <h3 className="text-base md:text-lg font-semibold text-nakhsha-text line-clamp-2 leading-6">
                               {craft.title}
                             </h3>
                           </div>
@@ -490,17 +490,17 @@ const Home = () => {
                           {/* Category Badge */}
                           {craft.type && (
                             <div className="flex justify-end">
-                              <span className="inline-block px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full motion-reduce:transition-none hover:bg-gray-200 transition-colors duration-150">
+                              <span className="inline-block px-3 py-1 text-xs font-medium text-nakhsha-text/70 bg-primary-50 rounded-full motion-reduce:transition-none hover:bg-primary-100 transition-colors duration-150">
                                 {craft.type}
                               </span>
                             </div>
                           )}
 
                           {/* Location & Distance */}
-                          <div className="text-xs text-gray-500 space-y-1.5">
+                          <div className="text-xs text-nakhsha-text/60 space-y-1.5">
                             {typeof craft.distanceMeters === "number" && (
                               <div className="flex justify-end items-center gap-2">
-                                <span className="inline-block px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium text-xs motion-reduce:transition-none hover:bg-blue-100 transition-colors duration-150">
+                                <span className="inline-block px-2 py-1 rounded-full bg-primary-50 text-primary-700 font-medium text-xs motion-reduce:transition-none hover:bg-primary-100 transition-colors duration-150">
                                   {craft.distanceMeters < 1000
                                     ? `${Math.round(craft.distanceMeters)} متر`
                                     : `${(craft.distanceMeters / 1000).toFixed(
@@ -510,9 +510,9 @@ const Home = () => {
                               </div>
                             )}
                             {craft.location && (
-                              <div className="flex justify-end items-center gap-1 text-gray-500">
+                              <div className="flex justify-end items-center gap-1 text-nakhsha-text/60">
                                 <svg
-                                  className="w-3 h-3 text-gray-400"
+                                  className="w-3 h-3 text-nakhsha-text/40"
                                   fill="currentColor"
                                   viewBox="0 0 24 24"
                                 >
@@ -535,7 +535,7 @@ const Home = () => {
                                 e.preventDefault();
                                 window.location.href = `/craft/${craft.id}`;
                               }}
-                              className="flex-1 rounded-full h-9 px-4 bg-gray-900 text-white text-sm font-medium hover:bg-black transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
+                              className="flex-1 rounded-full h-9 px-4 bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
                               aria-label={`دیدن جزئیات ${craft.title}`}
                             >
                               مشاهده
@@ -548,7 +548,7 @@ const Home = () => {
                                 // TODO: Implement save functionality
                                 console.log("Save craft:", craft.id);
                               }}
-                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center flex-shrink-0"
+                              className="rounded-full h-9 w-9 bg-primary-50 text-nakhsha-text/60 hover:bg-primary-100 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 flex items-center justify-center flex-shrink-0"
                               aria-label="ذخیره این اثر"
                             >
                               <svg
@@ -576,7 +576,7 @@ const Home = () => {
                                   console.log("Share craft:", craft.id);
                                 }
                               }}
-                              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center flex-shrink-0"
+                              className="rounded-full h-9 w-9 bg-primary-50 text-nakhsha-text/60 hover:bg-primary-100 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 flex items-center justify-center flex-shrink-0"
                               aria-label="اشتراک این اثر"
                             >
                               <svg
@@ -606,7 +606,7 @@ const Home = () => {
               {hasMore && (
                 <div className="px-6 pb-6 flex justify-center">
                   <button
-                    className="px-6 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-6 py-2.5 text-sm font-semibold text-primary-600 bg-white border-2 border-primary-500 rounded-xl hover:bg-primary-50 transition-all duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => setPage((p) => p + 1)}
                     disabled={loading}
                     aria-busy={loading}
@@ -656,7 +656,7 @@ const Home = () => {
             </div>
           )}
           {mapDirty && (
-            <div className="absolute top-3 left-3 bg-white/95 backdrop-blur text-gray-800 px-3 py-1 rounded-lg text-xs shadow-md font-medium animate-pulse">
+            <div className="absolute top-3 left-3 bg-white/95 backdrop-blur text-nakhsha-text px-3 py-1 rounded-lg text-xs shadow-md font-medium animate-pulse">
               بروزرسانی…
             </div>
           )}
@@ -665,19 +665,19 @@ const Home = () => {
           initial="collapsed"
           header={
             <div className="space-y-4 p-4">
-              <div className="text-center text-sm font-bold text-gray-900">
+              <div className="text-center text-sm font-bold text-nakhsha-text">
                 {toFa(total)} اثر در این محدوده
               </div>
               <div className="flex gap-2 items-center text-sm">
                 <input
-                  className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm flex-1 placeholder:text-gray-400 hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
+                  className="border border-nakhsha-border rounded-xl px-4 py-2.5 text-sm flex-1 text-nakhsha-text placeholder:text-nakhsha-text/40 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none"
                   placeholder="جستجو…"
                   value={typingQuery}
                   onChange={(e) => setTypingQuery(e.target.value)}
                   aria-label="جستجوی عنوان اثر"
                 />
                 <select
-                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white hover:border-gray-300 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none appearance-none"
+                  className="border border-nakhsha-border rounded-xl px-3 py-2.5 text-sm bg-white text-nakhsha-text hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none appearance-none"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
                   aria-label="مرتب‌سازی آثار"
@@ -689,7 +689,7 @@ const Home = () => {
               </div>
 
               {/* Always-Visible Filters */}
-              <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="mt-4 pt-4 border-t border-nakhsha-border">
                 <FilterSidebar filters={filters} setFilters={setFilters} />
               </div>
 
@@ -729,7 +729,7 @@ const Home = () => {
               </div>
             ) : items.length === 0 ? (
               <div className="flex items-center justify-center h-40">
-                <div className="text-center text-gray-600">
+                <div className="text-center text-nakhsha-text/60">
                   <p className="text-sm leading-6">نتیجه‌ای پیدا نشد</p>
                 </div>
               </div>
@@ -739,9 +739,9 @@ const Home = () => {
                   <a
                     key={`mobile-${craft.id || idx}`}
                     href={`/craft/${craft.id}`}
-                    className="group block bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500"
+                    className="group block bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-[transform,box-shadow] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
                   >
-                    <div className="relative w-full aspect-[4/3] bg-gray-200">
+                    <div className="relative w-full aspect-[4/3] bg-nakhsha-border/30">
                       <img
                         src={
                           craft.image ||
@@ -761,12 +761,12 @@ const Home = () => {
                       />
                     </div>
                     <div className="p-3 space-y-2 text-right">
-                      <h3 className="text-xs font-bold text-gray-900 line-clamp-2 leading-5">
+                      <h3 className="text-xs font-bold text-nakhsha-text line-clamp-2 leading-5">
                         {craft.title}
                       </h3>
                       {craft.type && (
                         <div className="flex justify-end">
-                          <span className="inline-block px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-full motion-reduce:transition-none hover:bg-gray-200 transition-colors duration-150">
+                          <span className="inline-block px-2 py-0.5 text-xs font-medium text-nakhsha-text/70 bg-primary-50 rounded-full motion-reduce:transition-none hover:bg-primary-100 transition-colors duration-150">
                             {craft.type}
                           </span>
                         </div>
@@ -782,7 +782,7 @@ const Home = () => {
           {hasMore && (
             <div className="px-4 pb-6 flex justify-center">
               <button
-                className="px-4 py-2.5 text-xs font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2.5 text-xs font-semibold text-primary-600 bg-white border-2 border-primary-500 rounded-lg hover:bg-primary-50 transition-all duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => setPage((p) => p + 1)}
                 disabled={loading}
                 aria-busy={loading}

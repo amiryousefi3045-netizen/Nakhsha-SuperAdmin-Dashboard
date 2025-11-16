@@ -74,7 +74,7 @@ const EditCraft = () => {
   const [submitError, setSubmitError] = useState("");
 
   const inputClass =
-    "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:border-primary-500 placeholder:text-gray-400";
+    "mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:border-primary-500 placeholder:text-nakhsha-text/40 hover:border-primary-400";
 
   useEffect(() => {
     let ignore = false;
@@ -303,7 +303,7 @@ const EditCraft = () => {
 
   if (loading || !form) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
+      <div className="p-6 text-center text-sm text-nakhsha-text/60">
         در حال بارگذاری…
       </div>
     );
@@ -314,27 +314,32 @@ const EditCraft = () => {
       <div className="max-w-[900px] mx-auto p-4">
         <h1 className="text-xl font-bold mb-4">ویرایش محصول / اثر</h1>
         <form onSubmit={onSubmit} className="space-y-6">
-          <div className="sticky top-0 z-10 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-b flex items-center justify-between shadow-sm">
-            <div className="text-sm font-medium text-gray-700">
+          <div className="sticky top-0 z-10 -mx-4 px-4 py-3 bg-nakhsha-bg/95 backdrop-blur border-b flex items-center justify-between shadow-sm border-nakhsha-border">
+            <div className="text-sm font-medium text-nakhsha-text">
               فرم ویرایش محصول
             </div>
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="shrink-0 whitespace-nowrap px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                className="shrink-0 whitespace-nowrap px-4 py-2 rounded-lg border border-nakhsha-border text-sm text-nakhsha-text hover:bg-nakhsha-bg transition-colors"
               >
                 انصراف
               </button>
               <button
                 type="submit"
                 disabled={submitting || uploading}
-                className="shrink-0 whitespace-nowrap px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-red-700"
+                className="shrink-0 whitespace-nowrap px-6 py-2 rounded-lg text-sm font-bold bg-[var(--color-destructive)] hover:bg-[var(--color-destructive-dark)] disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-[var(--color-destructive-dark)]"
                 style={{
                   backgroundColor:
-                    submitting || uploading ? "#9ca3af" : "#dc2626",
+                    submitting || uploading
+                      ? "var(--color-muted)"
+                      : "var(--color-destructive)",
                   color: "white",
-                  borderColor: submitting || uploading ? "#6b7280" : "#b91c1c",
+                  borderColor:
+                    submitting || uploading
+                      ? "var(--color-muted)"
+                      : "var(--color-destructive-dark)",
                 }}
               >
                 <span style={{ color: "white", fontWeight: "bold" }}>
@@ -349,7 +354,7 @@ const EditCraft = () => {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl shadow-sm border p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="text-sm">
               عنوان
               <input
@@ -413,7 +418,7 @@ const EditCraft = () => {
             </label>
           </div>
 
-          <label className="text-sm block bg-white rounded-2xl shadow-sm border p-4">
+          <label className="text-sm block bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4">
             توضیحات
             <textarea
               className={`${inputClass} h-28`}
@@ -429,7 +434,7 @@ const EditCraft = () => {
             )}
           </label>
 
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
+          <div className="bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-medium">مواد اولیه</div>
               <button
@@ -447,7 +452,7 @@ const EditCraft = () => {
                 <div key={i} className="grid grid-cols-3 gap-2">
                   <input
                     placeholder="نام"
-                    className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
+                    className="border border-nakhsha-border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={ing.name}
                     onChange={(e) =>
                       updateArrayField("ingredients", i, {
@@ -489,7 +494,7 @@ const EditCraft = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
+          <div className="bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-medium">مراحل ساخت / برنامه</div>
               <button
@@ -555,7 +560,7 @@ const EditCraft = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="text-sm">
               <div className="flex items-center justify-between">
                 <label>تصاویر</label>
@@ -563,12 +568,12 @@ const EditCraft = () => {
                   <button
                     type="button"
                     onClick={addImageByUrl}
-                    className="text-xs border rounded px-2 py-1 bg-gray-50"
+                    className="text-xs border rounded px-2 py-1 border-nakhsha-border bg-nakhsha-bg"
                   >
                     افزودن از لینک
                   </button>
                   <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
-                    <span className="border rounded px-2 py-1 bg-gray-50">
+                    <span className="border rounded px-2 py-1 border-nakhsha-border bg-nakhsha-bg">
                       آپلود
                     </span>
                     <input
@@ -582,7 +587,9 @@ const EditCraft = () => {
                 </div>
               </div>
               {uploading && (
-                <div className="text-xs text-gray-500 mt-1">در حال آپلود…</div>
+                <div className="text-xs text-nakhsha-text/60 mt-1">
+                  در حال آپلود…
+                </div>
               )}
               <div className="mt-2 grid grid-cols-3 gap-2">
                 {(form.images || []).map((u, i) => (
@@ -590,7 +597,7 @@ const EditCraft = () => {
                     <img
                       src={u}
                       alt="img"
-                      className="w-full h-24 object-cover rounded-lg border"
+                      className="w-full h-24 object-cover rounded-lg border border-nakhsha-border"
                     />
                     <div className="absolute inset-1 flex items-start justify-between opacity-0 group-hover:opacity-100 transition">
                       <button
@@ -656,7 +663,7 @@ const EditCraft = () => {
             </label>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border p-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+          <div className="bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div>
               <div className="text-sm font-medium mb-2">انتخاب موقعیت</div>
               <MapPicker
@@ -669,7 +676,7 @@ const EditCraft = () => {
                 }
               />
               {addressPreview && (
-                <div className="text-[11px] text-gray-600 mt-2">
+                <div className="text-[11px] text-nakhsha-text/60 mt-2">
                   {addressPreview}
                 </div>
               )}
@@ -716,12 +723,17 @@ const EditCraft = () => {
             <button
               type="submit"
               disabled={submitting || uploading}
-              className="px-8 py-4 rounded-lg text-base font-bold bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-red-700"
+              className="px-8 py-4 rounded-lg text-base font-bold bg-[var(--color-destructive)] hover:bg-[var(--color-destructive-dark)] disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-[var(--color-destructive-dark)]"
               style={{
                 backgroundColor:
-                  submitting || uploading ? "#9ca3af" : "#dc2626",
+                  submitting || uploading
+                    ? "var(--color-muted)"
+                    : "var(--color-destructive)",
                 color: "white",
-                borderColor: submitting || uploading ? "#6b7280" : "#b91c1c",
+                borderColor:
+                  submitting || uploading
+                    ? "var(--color-muted)"
+                    : "var(--color-destructive-dark)",
               }}
             >
               <span style={{ color: "white", fontWeight: "bold" }}>

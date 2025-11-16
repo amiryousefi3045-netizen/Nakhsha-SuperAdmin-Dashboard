@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* 🎨 Nakhsha Brand Color Palette - Persian Architecture / Luxury Minimalism */
+:root {
+  --color-primary: #1a5f7a; /* Persian Blue – main brand color */
+  --color-accent: #d9a441; /* Gold Accent – highlights, important actions */
+  --color-bg: #fafaf7; /* Marble White – main background */
+  --color-text: #2e2e2e; /* Deep Slate – all primary text */
+  --color-border: #c7ccd8; /* Cool Gray – borders, dividers, card outlines */
+  --color-destructive: #dc2626; /* Destructive / error */
+  --color-destructive-dark: #b91c1c;
+  --color-muted: #9ca3af; /* muted gray used for placeholders/secondary */
+}
+
 /* Base tweaks for full-height app and Persian text */
 html,
 body,
@@ -8,7 +20,8 @@ body,
 }
 body {
   margin: 0;
-  background: #f5f6f8; /* light gray like Divar */
+  background: var(--color-bg); /* Marble White */
+  color: var(--color-text); /* Deep Slate */
   font-family: Vazirmatn, system-ui, -apple-system, Segoe UI, Roboto,
     "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
 }
@@ -23,7 +36,7 @@ body {
   width: 8px;
 }
 .thin-scrollbar::-webkit-scrollbar-thumb {
-  background: #e5e7eb; /* gray-200 */
+  background: var(--color-border); /* Cool Gray */
   border-radius: 9999px;
 }
 

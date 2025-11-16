@@ -64,7 +64,7 @@ export default function Register() {
         <label className="text-sm block">
           نام
           <input
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -72,7 +72,7 @@ export default function Register() {
         <label className="text-sm block">
           ایمیل
           <input
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -80,7 +80,7 @@ export default function Register() {
         <label className="text-sm block">
           تلفن
           <input
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
@@ -89,7 +89,7 @@ export default function Register() {
           رمز عبور
           <input
             type="password"
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -101,7 +101,7 @@ export default function Register() {
           {loading ? "در حال ثبت…" : "ثبت‌نام"}
         </button>
       </form>
-      <div className="text-sm text-gray-600 mt-3">
+      <div className="text-sm text-nakhsha-text/60 mt-3">
         حساب دارید؟{" "}
         <Link to="/login" className="text-primary-600">
           ورود

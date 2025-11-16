@@ -21,7 +21,7 @@ const Layout = () => {
   const location = useLocation();
   const isHome = location.pathname === "/";
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-nakhsha-bg">
       <Navbar />
       {!apiUp && (
         <div className="bg-red-600 text-white text-center text-sm py-1">
