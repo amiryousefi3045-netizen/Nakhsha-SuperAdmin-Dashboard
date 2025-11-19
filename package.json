@@ -4,12 +4,15 @@
   "description": "نخشا — نقشهٔ هنرهای ایران؛ پلتفرم اشتراک و کشف محصولات صنایع‌دستی",
   "private": true,
   "scripts": {
-    "dev": "echo \"Use frontend and backend packages separately\"",
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
     "test": "echo \"No tests defined\" && exit 0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
-    "@vitejs/plugin-react": "^4.7.0"
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.0.0"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
