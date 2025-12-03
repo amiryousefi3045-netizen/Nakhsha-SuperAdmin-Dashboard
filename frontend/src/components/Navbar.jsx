@@ -1,9 +1,12 @@
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { logout } from "../services/auth";
+import AuthModal from "./auth/AuthModal";
 
 const Navbar = () => {
   const nav = useNavigate();
+  const [showAuth, setShowAuth] = useState(false);
   const { user, setUser } = useAuth();
   const onLogout = () => {
     logout();
@@ -218,13 +221,20 @@ const Navbar = () => {
               </>
             ) : (
               <>
-                <Link
-                  to="/login"
-                  className="hidden sm:block text-sm text-primary-700 hover:text-primary-800 focus-visible:ring-2 focus-visible:ring-primary-500 rounded px-3 py-2 transition-all duration-200"
-                  aria-label="ورود به حساب"
-                >
-                  ورود
-                </Link>
+                <>
+                  <button
+                    onClick={() => setShowAuth(true)}
+                    className="hidden sm:inline-block text-sm text-primary-700 hover:text-primary-800 focus-visible:ring-2 focus-visible:ring-primary-500 rounded px-3 py-2 transition-all duration-200"
+                    aria-label="ورود به حساب"
+                    title="ورود"
+                  >
+                    ورود
+                  </button>
+                  <AuthModal
+                    isOpen={showAuth}
+                    onClose={() => setShowAuth(false)}
+                  />
+                </>
                 <Link
                   to="/register"
                   className="bg-primary-600 text-white px-4 py-2 rounded-full hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium"
@@ -235,6 +245,7 @@ const Navbar = () => {
 
                 {/* Mobile Login Icon */}
                 <button
+                  onClick={() => setShowAuth(true)}
                   className="sm:hidden w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-nakhsha-text/60 focus-visible:ring-2 focus-visible:ring-primary-500 transition-all duration-200"
                   aria-label="ورود به حساب"
                   title="ورود به حساب"

@@ -36,6 +36,41 @@ export async function login(payload) {
   }
 }
 
+export async function otpStart(phone) {
+  try {
+    const { data } = await http.post(`/auth/otp/start`, { phone });
+    return {
+      success: true,
+      message: data?.message,
+      devCode: data?.devCode,
+      retryAfterSeconds: data?.retryAfterSeconds,
+    };
+  } catch (error) {
+    const status = error.response?.status;
+    const body = error.response?.data;
+    const e = new Error(body?.message || "OTP start failed");
+    e.status = status;
+    e.retryAfterSeconds = body?.retryAfterSeconds;
+    throw e;
+  }
+}
+
+export async function otpVerify(phone, code) {
+  try {
+    const { data } = await http.post(`/auth/otp/verify`, { phone, code });
+    if (data?.token) localStorage.setItem("token", data.token);
+    if (data?.user) localStorage.setItem("user", JSON.stringify(data.user));
+    return data;
+  } catch (error) {
+    const status = error.response?.status;
+    const body = error.response?.data;
+    const e = new Error(body?.message || "OTP verify failed");
+    e.status = status;
+    e.retryAfterSeconds = body?.retryAfterSeconds;
+    throw e;
+  }
+}
+
 export async function me() {
   const { data } = await http.get(`/auth/me`);
   return data?.user;

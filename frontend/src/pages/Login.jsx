@@ -1,44 +1,64 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { login } from "../services/auth";
+import { useNavigate } from "react-router-dom";
+import { otpStart, otpVerify } from "../services/auth";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Login() {
   const nav = useNavigate();
   const { setUser } = useAuth();
-  const [identifier, setIdentifier] = useState(""); // email or phone
-  const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
-  const [error, setError] = useState("");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState("PHONE"); // PHONE | CODE
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [devCode, setDevCode] = useState(null);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const phoneRegex = /^09\d{9}$/;
+
+  const sendCode = async (e) => {
+    e && e.preventDefault();
     setError("");
-    // Build payload: detect phone vs email
-    const trimmed = identifier.trim();
-    const digits = trimmed.replace(/\D/g, "");
-    const looksLikePhone = /^\d{10,15}$/.test(digits) && !trimmed.includes("@");
-    const payload = looksLikePhone
-      ? { phone: digits, password }
-      : { email: trimmed.toLowerCase(), password };
-
-    if (!trimmed || !password) {
-      setLoading(false);
-      setError("لطفاً ایمیل/تلفن و رمز عبور را وارد کنید.");
+    setInfo("");
+    const p = phone.trim();
+    if (!phoneRegex.test(p)) {
+      setError("فرمت شماره تلفن باید به صورت 09xxxxxxxxx باشد.");
       return;
     }
-
+    setLoading(true);
     try {
-      const { user } = await login(payload);
-      setUser(user);
+      const res = await otpStart(p);
+      if (res?.devCode) setDevCode(res.devCode);
+      setStep("CODE");
+      setInfo("کد ورود ارسال شد. لطفاً کد را وارد کنید.");
+    } catch (err) {
+      if (err?.status === 429 && err?.retryAfterSeconds) {
+        setError(
+          `لطفاً پس از ${err.retryAfterSeconds} ثانیه دوباره تلاش کنید.`
+        );
+      } else {
+        setError(err?.message || "ارسال کد ناموفق بود.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verify = async (e) => {
+    e && e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const { token, user } = await otpVerify(phone.trim(), code.trim());
+      if (user) setUser(user);
       nav("/");
     } catch (err) {
-      if (err?.status === 429) {
-        setError("تعداد تلاش‌ها زیاد است. لطفاً کمی بعد دوباره تلاش کنید.");
+      if (err?.status === 429 && err?.retryAfterSeconds) {
+        setError(
+          `لطفاً پس از ${err.retryAfterSeconds} ثانیه دوباره تلاش کنید.`
+        );
       } else {
-        setError(err?.message || "ورود ناموفق. ایمیل/رمز اشتباه است.");
+        setError(err?.message || "تأیید کد ناموفق بود.");
       }
     } finally {
       setLoading(false);
@@ -46,54 +66,79 @@ export default function Login() {
   };
 
   return (
-    <div className="max-w-sm mx-auto p-4">
-      <h1 className="text-xl font-bold mb-4">ورود</h1>
+    <div className="max-w-sm mx-auto p-4" dir="rtl">
+      <h1 className="text-xl font-bold mb-4">ورود با تلفن</h1>
+
       {error && (
-        <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-2">
+        <div className="text-[13px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-2">
           {error}
         </div>
       )}
-      <form onSubmit={submit} className="space-y-3">
-        <label className="text-sm block">
-          ایمیل یا تلفن
-          <input
-            className="mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-          />
-        </label>
-        <label className="text-sm block">
-          رمز عبور
-          <div className="mt-1 flex items-center rounded-lg border border-nakhsha-border bg-white hover:border-primary-400 focus-within:border-primary-500">
+
+      {info && (
+        <div className="text-[13px] text-[#1A5F7A] bg-[#FAFAF7] border border-[#C7CCD8] rounded-lg px-3 py-2 mb-2">
+          {info}
+        </div>
+      )}
+
+      {step === "PHONE" && (
+        <form onSubmit={sendCode} className="space-y-3">
+          <label className="text-sm block">
+            شماره تلفن
             <input
-              type={showPwd ? "text" : "password"}
-              className="flex-1 rounded-l-lg px-3 py-2 outline-none border-0"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              placeholder="09xxxxxxxxx"
+              className="mt-1 w-full rounded-lg border border-[#C7CCD8] px-3 py-2 focus:outline-none"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
             />
+          </label>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg py-2 text-white"
+            style={{ backgroundColor: "#1A5F7A" }}
+          >
+            {loading ? "لطفاً صبر کنید…" : "دریافت کد ورود"}
+          </button>
+        </form>
+      )}
+
+      {step === "CODE" && (
+        <form onSubmit={verify} className="space-y-3">
+          <label className="text-sm block">
+            کد ورود
+            <input
+              className="mt-1 w-full rounded-lg border border-[#C7CCD8] px-3 py-2 focus:outline-none"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </label>
+          {devCode && (
+            <div className="text-xs text-[#2E2E2E]">کد تست: {devCode}</div>
+          )}
+          <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setShowPwd((v) => !v)}
-              className="px-3 py-2 text-sm text-nakhsha-text/60 hover:text-nakhsha-text transition-colors"
-              aria-label={showPwd ? "پنهان کردن رمز" : "نمایش رمز"}
+              onClick={() => {
+                setStep("PHONE");
+                setCode("");
+              }}
+              className="flex-1 rounded-lg py-2"
+              style={{ backgroundColor: "#D9A441", color: "#2E2E2E" }}
             >
-              {showPwd ? "پنهان" : "نمایش"}
+              بازگشت
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 rounded-lg py-2 text-white"
+              style={{ backgroundColor: "#1A5F7A" }}
+            >
+              {loading ? "در حال بررسی…" : "ورود با کد"}
             </button>
           </div>
-        </label>
-        <button
-          disabled={loading}
-          className="w-full bg-primary-600 text-white rounded-lg py-2"
-        >
-          {loading ? "در حال ورود…" : "ورود"}
-        </button>
-      </form>
-      <div className="text-sm text-nakhsha-text/60 mt-3">
-        حساب ندارید؟{" "}
-        <Link to="/register" className="text-primary-600">
-          ثبت‌نام
-        </Link>
-      </div>
+        </form>
+      )}
     </div>
   );
 }

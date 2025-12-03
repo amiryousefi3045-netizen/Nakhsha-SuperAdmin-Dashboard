@@ -10,8 +10,7 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: true,
-      unique: true,
+      required: false,
       lowercase: true,
       trim: true,
     },
@@ -22,8 +21,9 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
+      required: false,
       minlength: 6,
+      select: false,
     },
     location: {
       city: String,
@@ -64,12 +64,23 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Hash password before saving
+// Partial unique index for email: only enforce uniqueness when a non-empty string is provided.
+userSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { email: { $exists: true, $ne: "" } },
+  }
+);
+
+// Hash password before saving — only when a password exists and was modified.
 userSchema.pre("save", async function (next) {
+  if (!this.password) return next();
   if (!this.isModified("password")) return next();
 
   try {
-    console.log("Hashing password for user:", this.email);
+    const identifier = this.email || this.phone || "<unknown>";
+    console.log("Hashing password for user:", identifier);
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
     console.log("Password hashed successfully");
@@ -80,8 +91,9 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-// Compare password method
+// Compare password method. If user has no password, return false.
 userSchema.methods.comparePassword = async function (password) {
+  if (!this.password) return false;
   return bcrypt.compare(password, this.password);
 };
 

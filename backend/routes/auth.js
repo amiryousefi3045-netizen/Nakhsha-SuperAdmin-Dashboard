@@ -1,10 +1,22 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const OtpCode = require("../models/OtpCode");
+const { generateCode, hashCode, verifyHash } = require("../utils/otp");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const TOKEN_TTL = process.env.JWT_TTL || "7d";
+const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
+const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
+const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "5", 10);
+
+function normalizePhone(phone) {
+  if (typeof phone !== "string") return phone;
+  return phone.trim();
+}
+
+const iranPhoneRegex = /^09\d{9}$/;
 
 function sign(user) {
   return jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
@@ -107,7 +119,7 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Missing credentials" });
     const user = await User.findOne(
       email ? { email: normEmail } : { phone: normPhone }
-    );
+    ).select("+password");
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
     const ok = await user.comparePassword(password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
@@ -143,6 +155,134 @@ router.get("/me", authMiddleware, async (req, res) => {
       },
     });
   } catch (e) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Start OTP flow: generate and store (hashed) code, enforce resend rate-limit
+router.post("/otp/start", async (req, res) => {
+  try {
+    // DB readiness guard
+    if (!req.app?.locals?.dbReady) {
+      console.warn("POST /auth/otp/start - DB not ready");
+      return res.status(503).json({ message: "Database unavailable" });
+    }
+    const { phone } = req.body || {};
+    const normPhone = normalizePhone(phone);
+    if (!normPhone || !iranPhoneRegex.test(normPhone))
+      return res.status(400).json({ message: "Invalid phone format" });
+
+    // Rate-limit: check lastSentAt
+    const existing = await OtpCode.findOne({ phone: normPhone });
+    if (existing && existing.lastSentAt) {
+      const delta = Date.now() - new Date(existing.lastSentAt).getTime();
+      if (delta < OTP_RESEND_SECONDS * 1000)
+        return res.status(429).json({
+          message: "Try again later",
+          retryAfterSeconds: Math.ceil(
+            (OTP_RESEND_SECONDS * 1000 - delta) / 1000
+          ),
+        });
+    }
+
+    // Generate code (5 or 6 digits). Use 6 by default.
+    const code = generateCode(6);
+    const codeHash = hashCode(code, normPhone);
+    const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000);
+
+    // Upsert the OTP record for the phone
+    await OtpCode.findOneAndUpdate(
+      { phone: normPhone },
+      { codeHash, expiresAt, attempts: 0, lastSentAt: new Date() },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+
+    // TODO: Integrate with SMS provider here. Keep it separate for testability.
+
+    const response = { success: true, message: "OTP sent" };
+    if ((process.env.NODE_ENV || "development") !== "production") {
+      // In non-production include the dev code to speed testing — do NOT enable in production
+      response.devCode = code;
+    }
+
+    res.json(response);
+  } catch (e) {
+    console.error("POST /auth/otp/start error", e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Verify OTP and issue JWT (auto-register if needed)
+router.post("/otp/verify", async (req, res) => {
+  try {
+    // DB readiness guard
+    if (!req.app?.locals?.dbReady) {
+      console.warn("POST /auth/otp/verify - DB not ready");
+      return res.status(503).json({ message: "Database unavailable" });
+    }
+    const { phone, code } = req.body || {};
+    const normPhone = normalizePhone(phone);
+    if (!normPhone || !iranPhoneRegex.test(normPhone) || !code)
+      return res.status(400).json({ message: "Invalid input" });
+
+    const record = await OtpCode.findOne({ phone: normPhone });
+    if (!record)
+      return res.status(400).json({ message: "OTP not found or expired" });
+    if (record.expiresAt && record.expiresAt.getTime() < Date.now())
+      return res.status(400).json({ message: "OTP expired" });
+
+    // Verify the code first using timing-safe compare
+    const ok = verifyHash(code, normPhone, record.codeHash);
+    if (!ok) {
+      // On mismatch, increment attempts and persist
+      record.attempts = (record.attempts || 0) + 1;
+      await record.save();
+      if (record.attempts >= OTP_MAX_ATTEMPTS)
+        return res.status(429).json({ message: "Too many attempts" });
+      return res.status(400).json({ message: "Invalid code" });
+    }
+
+    // Successful verification: delete OTP record to prevent reuse
+    await OtpCode.deleteOne({ _id: record._id });
+
+    // Find or create user. Current User model requires email & password, so create
+    // a minimal stub account with a placeholder email and random password.
+    let user = await User.findOne({ phone: normPhone });
+    if (!user) {
+      // Create a user without placeholder email/password for OTP-only signup
+      user = await User.create({
+        name: "کاربر نخشا",
+        phone: normPhone,
+      });
+      // Mark verified if schema supports it
+      try {
+        if (typeof user.isVerified !== "undefined") user.isVerified = true;
+        // If schema has phoneVerifiedAt, set it as well
+        if (
+          User.schema &&
+          User.schema.path &&
+          User.schema.path("phoneVerifiedAt")
+        ) {
+          user.phoneVerifiedAt = new Date();
+        }
+        if (user.save) await user.save();
+      } catch (e) {
+        console.warn("Failed to mark new user as verified", e);
+      }
+    }
+
+    const token = sign(user);
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (e) {
+    console.error("POST /auth/otp/verify error", e);
     res.status(500).json({ message: "Server error" });
   }
 });

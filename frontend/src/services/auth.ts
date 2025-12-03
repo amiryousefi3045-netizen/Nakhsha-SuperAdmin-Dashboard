@@ -13,6 +13,11 @@ interface ApiError extends Error {
   details?: string[];
 }
 
+interface OtpError extends Error {
+  status?: number;
+  retryAfterSeconds?: number;
+}
+
 export async function register(
   payload: RegisterRequest
 ): Promise<AuthResponse> {
@@ -60,6 +65,70 @@ export async function login(payload: LoginRequest): Promise<AuthResponse> {
     console.error("Login API error:", status, body || axiosError.message);
     const e = new Error(body?.message || "Login failed") as ApiError;
     e.status = status;
+    throw e;
+  }
+}
+
+export async function otpStart(
+  phone: string
+): Promise<{
+  success: boolean;
+  message?: string;
+  devCode?: string;
+  retryAfterSeconds?: number;
+}> {
+  try {
+    const { data } = await http.post<
+      ApiResponse<{
+        success: boolean;
+        message: string;
+        devCode?: string;
+        retryAfterSeconds?: number;
+      }>
+    >("/auth/otp/start", { phone });
+    return {
+      success: true,
+      message: data?.data?.message,
+      devCode: (data?.data as any)?.devCode,
+      retryAfterSeconds: (data?.data as any)?.retryAfterSeconds,
+    };
+  } catch (error) {
+    const axiosError = error as AxiosError<{
+      message?: string;
+      retryAfterSeconds?: number;
+    }>;
+    const status = axiosError.response?.status;
+    const body = axiosError.response?.data;
+    const e = new Error(body?.message || "OTP start failed") as OtpError;
+    e.status = status;
+    e.retryAfterSeconds = body?.retryAfterSeconds;
+    throw e;
+  }
+}
+
+export async function otpVerify(
+  phone: string,
+  code: string
+): Promise<{ token: string; user: any }> {
+  try {
+    const { data } = await http.post<ApiResponse<{ token: string; user: any }>>(
+      "/auth/otp/verify",
+      { phone, code }
+    );
+    const result = data?.data!;
+    if (result.token) localStorage.setItem("token", result.token);
+    if (result.user) localStorage.setItem("user", JSON.stringify(result.user));
+    return result;
+  } catch (error) {
+    const axiosError = error as AxiosError<{
+      message?: string;
+      retryAfterSeconds?: number;
+    }>;
+    const status = axiosError.response?.status;
+    const body = axiosError.response?.data;
+    const e = new Error(body?.message || "OTP verify failed") as OtpError;
+    e.status = status;
+    e.retryAfterSeconds = body?.retryAfterSeconds;
     throw e;
   }
 }
