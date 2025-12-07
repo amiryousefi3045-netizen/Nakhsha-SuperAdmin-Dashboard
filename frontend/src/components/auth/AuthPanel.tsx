@@ -28,7 +28,14 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const phoneRef = useRef<HTMLInputElement | null>(null);
 
   const phoneRegex = /^09\d{9}$/;
-  const isPhoneValid = phoneRegex.test(phone.trim());
+
+  const normalizePhone = (p: string) =>
+    p
+      .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+      .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632))
+      .replace(/[\s\-]/g, "");
+
+  const isPhoneValid = phoneRegex.test(normalizePhone(phone || ""));
 
   useEffect(() => {
     if (step === "CODE") {
@@ -58,23 +65,24 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handlePhoneSubmit = async () => {
+  const handleSendCode = async () => {
     setError(null);
     setDevCode(null);
-    if (!isPhoneValid) return setError("فرمت شماره تلفن صحیح نیست.");
+    const phoneNormalized = normalizePhone(phone.trim());
+    if (!phoneRegex.test(phoneNormalized))
+      return setError("شماره را با ۰۹ وارد کنید (مثلاً 09123456789).");
     setLoading(true);
     try {
-      const res = await otpStart(phone.trim());
-      // res may contain retryAfterSeconds
+      const res = await otpStart(phoneNormalized);
+      // If rate-limited, backend should return 429 which is thrown below.
+      // Only move to CODE step when start succeeds.
       setStep("CODE");
       setOtp("");
       setSecondsLeft(res?.retryAfterSeconds || 59);
-      if ((res as any)?.devCode) {
-        setDevCode((res as any).devCode);
-      }
+      if ((res as any)?.devCode) setDevCode((res as any).devCode);
     } catch (e: any) {
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        // start a live rate-limit countdown
+        // start a live rate-limit countdown and do NOT enter CODE step
         setError(null);
         setRateLimitActive(true);
         setCanAutoSubmit(false);
@@ -85,23 +93,22 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     }
   };
 
-  const handleVerify = async (code?: string) => {
+  const handleVerifyCode = async (code?: string) => {
     setError(null);
     const c = code ?? otp;
     if (c.length !== 6) return setError("لطفاً کد ۶ رقمی را وارد کنید.");
 
-    // Don't auto-submit if disabled or already verifying
     if (!canAutoSubmit) return;
     if (isVerifyingRef.current) return;
 
-    // Avoid resubmitting the same code repeatedly
     if (lastSubmittedCodeRef.current === c) return;
 
     isVerifyingRef.current = true;
     lastSubmittedCodeRef.current = c;
     setLoading(true);
     try {
-      const { token, user } = await otpVerify(phone.trim(), c);
+      const phoneNormalized = normalizePhone(phone.trim());
+      const { token, user } = await otpVerify(phoneNormalized, c);
       try {
         localStorage.setItem("token", token);
       } catch {}
@@ -110,16 +117,13 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       onClose();
     } catch (e: any) {
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        // rate limit: show live countdown and block auto-submit
         setError(null);
         setRateLimitActive(true);
         setCanAutoSubmit(false);
         setSecondsLeft(e.retryAfterSeconds);
       } else {
-        // Invalid code (400 or other client error): show once and stop auto-retries
         setError(e?.message || "کد واردشده نادرست است.");
         setCanAutoSubmit(false);
-        // keep lastSubmittedCodeRef to block re-submission until user changes digits
       }
     } finally {
       isVerifyingRef.current = false;
@@ -172,7 +176,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handlePhoneSubmit()}
+            onKeyPress={(e) => e.key === "Enter" && handleSendCode()}
             className="w-full px-3 py-3 rounded-lg border-2"
             style={{
               borderColor: phone ? "#1A5F7A" : "#C7CCD8",
@@ -194,7 +198,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
 
           <div className="mt-6">
             <button
-              onClick={handlePhoneSubmit}
+              onClick={handleSendCode}
               disabled={!isPhoneValid || loading}
               className="w-full py-3 rounded-lg text-white"
               style={{ backgroundColor: "#1A5F7A" }}
@@ -229,7 +233,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
               autoFocus={true}
               onComplete={(v) => {
                 // Only auto-submit if allowed
-                if (v && v.length === 6) handleVerify(v);
+                if (v && v.length === 6) handleVerifyCode(v);
               }}
               error={!!error}
               disabled={loading}
@@ -290,7 +294,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
               بازگشت
             </button>
             <button
-              onClick={() => handleVerify()}
+              onClick={() => handleVerifyCode()}
               disabled={otp.length !== 6 || loading}
               className="flex-1 py-2 rounded-lg text-white"
               style={{ backgroundColor: "#1A5F7A" }}

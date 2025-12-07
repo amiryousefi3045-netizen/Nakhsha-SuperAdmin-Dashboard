@@ -69,9 +69,7 @@ export async function login(payload: LoginRequest): Promise<AuthResponse> {
   }
 }
 
-export async function otpStart(
-  phone: string
-): Promise<{
+export async function otpStart(phone: string): Promise<{
   success: boolean;
   message?: string;
   devCode?: string;
