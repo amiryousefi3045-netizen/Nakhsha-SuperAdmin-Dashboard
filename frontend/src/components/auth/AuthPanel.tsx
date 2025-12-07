@@ -14,6 +14,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(59);
   const [loading, setLoading] = useState(false);
   const [canAutoSubmit, setCanAutoSubmit] = useState(true);
@@ -59,6 +60,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
 
   const handlePhoneSubmit = async () => {
     setError(null);
+    setDevCode(null);
     if (!isPhoneValid) return setError("فرمت شماره تلفن صحیح نیست.");
     setLoading(true);
     try {
@@ -68,8 +70,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       setOtp("");
       setSecondsLeft(res?.retryAfterSeconds || 59);
       if ((res as any)?.devCode) {
-        // show code briefly in dev for debugging
-        setError(`کد توسعه: ${(res as any).devCode}`);
+        setDevCode((res as any).devCode);
       }
     } catch (e: any) {
       if (e?.status === 429 && e?.retryAfterSeconds) {
@@ -160,7 +161,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       dir="rtl"
       style={{ backgroundColor: "#FAFAF7" }}
     >
-      <span style={{ paddingTop: "10rem" }}></span>
+      {/* Removed tab row and email logic */}
       {step === "PHONE" ? (
         <div>
           <label className="block text-sm mb-2" style={{ color: "#2E2E2E" }}>
@@ -188,8 +189,9 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
             <div className="mt-3 text-sm text-red-600">
               {`لطفاً پس از ${formatTimer(secondsLeft)} دوباره تلاش کنید.`}
             </div>
-          ) : (
-            error && <div className="mt-3 text-sm text-red-600">{error}</div>
+          ) : null}
+          {error && (
+            <div className="mt-3 text-sm text-red-600">{error}</div>
           )}
 
           <div className="mt-6">
@@ -209,8 +211,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
             کد ورود را وارد کنید
           </h3>
           <p className="text-sm mb-4" style={{ color: "#666" }}>
-            کد را به شماره <span className="font-medium">{phone}</span>{" "}
-            فرستادیم.
+            کد را به شماره <span className="font-medium">{phone}</span> فرستادیم.
           </p>
 
           <div className="mb-4">
@@ -235,6 +236,22 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
               disabled={loading}
             />
           </div>
+
+          {devCode && (
+            <div
+              className="mb-4 text-sm rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 font-mono text-blue-700 flex items-center gap-2"
+              style={{ direction: "ltr" }}
+            >
+              <span>کد توسعه: {devCode}</span>
+              <button
+                className="ml-2 px-2 py-1 text-xs bg-blue-100 rounded hover:bg-blue-200"
+                onClick={() => navigator.clipboard.writeText(devCode)}
+                type="button"
+              >
+                کپی
+              </button>
+            </div>
+          )}
 
           <div className="text-center mb-4">
             {secondsLeft > 0 ? (
