@@ -190,9 +190,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
               {`لطفاً پس از ${formatTimer(secondsLeft)} دوباره تلاش کنید.`}
             </div>
           ) : null}
-          {error && (
-            <div className="mt-3 text-sm text-red-600">{error}</div>
-          )}
+          {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
 
           <div className="mt-6">
             <button
@@ -211,7 +209,8 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
             کد ورود را وارد کنید
           </h3>
           <p className="text-sm mb-4" style={{ color: "#666" }}>
-            کد را به شماره <span className="font-medium">{phone}</span> فرستادیم.
+            کد را به شماره <span className="font-medium">{phone}</span>{" "}
+            فرستادیم.
           </p>
 
           <div className="mb-4">
