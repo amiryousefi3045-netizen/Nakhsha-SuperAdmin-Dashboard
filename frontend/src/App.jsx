@@ -11,6 +11,8 @@ import CreateCraft from "./pages/CreateCraft";
 import EditCraft from "./pages/EditCraft";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 import MyCrafts from "./pages/MyCrafts";
 import AuthProvider from "./components/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
@@ -48,7 +50,8 @@ function App() {
               }
             />
             <Route path="login" element={<Login />} />
-            <Route path="register" element={<Register />} />
+            <Route path="terms" element={<Terms />} />
+            <Route path="privacy" element={<Privacy />} />
             <Route
               path="my"
               element={

@@ -111,25 +111,11 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
 
   return (
     <div
-      className="w-full max-w-md mx-auto p-6"
+      className="w-full max-w-md mx-auto p-8"
       dir="rtl"
       style={{ backgroundColor: "#FAFAF7" }}
     >
-      <div className="flex items-center gap-3 mb-4">
-        <div
-          className="w-12 h-12 rounded-xl bg-white flex items-center justify-center"
-          style={{ color: "#1A5F7A" }}
-        >
-          ن
-        </div>
-        <div>
-          <div className="text-xl font-bold" style={{ color: "#2E2E2E" }}>
-            نخشا
-          </div>
-          <div className="text-xs text-gray-500">ورود با تلفن</div>
-        </div>
-      </div>
-
+      <span style={{ paddingTop: "10rem" }}></span>
       {step === "PHONE" ? (
         <div>
           <label className="block text-sm mb-2" style={{ color: "#2E2E2E" }}>

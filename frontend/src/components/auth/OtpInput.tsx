@@ -32,7 +32,8 @@ export default function OtpInput({
   }, [autoFocus]);
 
   useEffect(() => {
-    if (digits.length === length) onComplete && onComplete(digits.join(""));
+    if (digits.join("").length === length)
+      onComplete && onComplete(digits.join(""));
   }, [digits, length, onComplete]);
 
   const setAt = (idx: number, ch: string) => {
@@ -55,7 +56,7 @@ export default function OtpInput({
       } else if (idx > 0) {
         refs.current[idx - 1] && refs.current[idx - 1]!.focus();
         const arr2 = value.split("");
-        arr2[idx - 1] = "";
+
         onChange(arr2.join("").slice(0, length));
       }
     } else if (/^[0-9۰-۹٠-٩]$/.test(key)) {
@@ -82,7 +83,11 @@ export default function OtpInput({
   };
 
   return (
-    <div className="flex justify-center gap-2" onPaste={handlePaste}>
+    <div
+      className="flex justify-center gap-2 flex-row-reverse"
+      onPaste={handlePaste}
+      dir="rtl"
+    >
       {Array.from({ length }).map((_, i) => {
         const ch = digits[i] || "";
         return (
