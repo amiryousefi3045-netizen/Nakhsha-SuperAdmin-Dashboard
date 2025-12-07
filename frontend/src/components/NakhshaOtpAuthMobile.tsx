@@ -19,18 +19,25 @@ export default function NakhshaOtpAuthMobile() {
   const [loading, setLoading] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [otpFocused, setOtpFocused] = useState(false);
+  const [rateLimitActive, setRateLimitActive] = useState(false);
+
+  // prevent duplicate verify calls
+  const isVerifyingRef = {} as any as { current: boolean };
+  isVerifyingRef.current = false;
+  const lastSubmittedCodeRef = {} as any as { current: string | null };
+  lastSubmittedCodeRef.current = null;
 
   const phoneRegex = /^09\d{9}$/;
   const isPhoneValid = phoneRegex.test(phone.trim());
 
-  // Timer for code resend
+  // Run countdown whenever there are seconds left (covers rate-limit and normal resend timer)
   useEffect(() => {
-    if (step !== "CODE" || secondsLeft <= 0) return;
+    if (secondsLeft <= 0) return;
     const timer = setInterval(() => {
       setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
-  }, [step, secondsLeft]);
+  }, [secondsLeft]);
 
   const handlePhoneSubmit = async () => {
     setError(null);
@@ -47,7 +54,9 @@ export default function NakhshaOtpAuthMobile() {
     } catch (err) {
       const e = err as OtpError;
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        setError(`لطفاً پس از ${e.retryAfterSeconds} ثانیه دوباره تلاش کنید.`);
+        // start live countdown
+        setError(null);
+        setRateLimitActive(true);
         setSecondsLeft(e.retryAfterSeconds);
       } else {
         setError(e?.message || "خرابی در ارسال کد");
@@ -63,6 +72,15 @@ export default function NakhshaOtpAuthMobile() {
       setError("لطفاً کد ۶ رقمی را وارد کنید.");
       return;
     }
+    // block if rate-limited
+    if (rateLimitActive) return;
+    // avoid duplicate attempts
+    const c = otp;
+    if ((lastSubmittedCodeRef as any).current === c) return;
+    if ((isVerifyingRef as any).current) return;
+
+    (isVerifyingRef as any).current = true;
+    (lastSubmittedCodeRef as any).current = c;
     setLoading(true);
     try {
       const { token, user } = await otpVerify(phone.trim(), otp);
@@ -71,14 +89,19 @@ export default function NakhshaOtpAuthMobile() {
     } catch (err) {
       const e = err as OtpError;
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        setError(`لطفاً پس از ${e.retryAfterSeconds} ثانیه دوباره تلاش کنید.`);
+        // rate-limit: start live countdown and block auto-submit
+        setError(null);
+        setRateLimitActive(true);
+        setSecondsLeft(e.retryAfterSeconds);
       } else {
         setError(
           e?.message ||
             "کد واردشده اشتباه است. کد ارسال را بررسی و دوباره وارد کنید."
         );
+        // keep lastSubmittedCodeRef to prevent auto-resubmit until user edits
       }
     } finally {
+      (isVerifyingRef as any).current = false;
       setLoading(false);
     }
   };
@@ -93,7 +116,9 @@ export default function NakhshaOtpAuthMobile() {
     } catch (err) {
       const e = err as OtpError;
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        setError(`لطفاً پس از ${e.retryAfterSeconds} ثانیه دوباره تلاش کنید.`);
+        // start live countdown
+        setError(null);
+        setRateLimitActive(true);
         setSecondsLeft(e.retryAfterSeconds);
       } else {
         setError(e?.message || "خرابی در ارسال مجدد کد");
@@ -102,6 +127,15 @@ export default function NakhshaOtpAuthMobile() {
       setLoading(false);
     }
   };
+
+  // When rate-limit cooldown finishes, clear rate-limit state so user can retry
+  useEffect(() => {
+    if (rateLimitActive && secondsLeft <= 0) {
+      setRateLimitActive(false);
+      (lastSubmittedCodeRef as any).current = null;
+      setError(null);
+    }
+  }, [rateLimitActive, secondsLeft]);
 
   const handleBackClick = () => {
     if (step === "PHONE") {
@@ -310,6 +344,10 @@ export default function NakhshaOtpAuthMobile() {
             onChange={(e) => {
               const val = e.target.value.replace(/\D/g, "").slice(0, 6);
               setOtp(val);
+              // user edited digits: allow retrying different code
+              try {
+                (lastSubmittedCodeRef as any).current = null;
+              } catch {}
               if (val.length === 6) {
                 // Auto-submit when 6 digits entered
                 setTimeout(() => handleOtpSubmit(), 100);

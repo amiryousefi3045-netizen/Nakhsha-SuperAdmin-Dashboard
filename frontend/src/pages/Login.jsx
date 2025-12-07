@@ -23,6 +23,7 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [touched, setTouched] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [rateLimitActive, setRateLimitActive] = useState(false);
   const [devCode, setDevCode] = useState(null);
 
   const phoneRef = useRef(null);
@@ -34,14 +35,33 @@ export default function Login() {
     phoneRef.current && phoneRef.current.focus();
   }, []);
 
+  // run countdown whenever secondsLeft > 0 (covers rate-limit and resend)
   useEffect(() => {
-    if (step !== "CODE" || secondsLeft <= 0) return;
+    if (secondsLeft <= 0) return;
     const t = setInterval(
       () => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)),
       1000
     );
     return () => clearInterval(t);
-  }, [step, secondsLeft]);
+  }, [secondsLeft]);
+
+  // when rate-limit finishes, clear the flag and error
+  useEffect(() => {
+    if (rateLimitActive && secondsLeft <= 0) {
+      setRateLimitActive(false);
+      setError(null);
+    }
+  }, [rateLimitActive, secondsLeft]);
+
+  // while rate-limited, update the `error` message with a live mm:ss countdown
+  useEffect(() => {
+    if (!rateLimitActive) return;
+    setError(`لطفاً پس از ${formatTimer(secondsLeft)} دوباره تلاش کنید.`);
+  }, [rateLimitActive, secondsLeft]);
+
+  // prevent duplicate verify calls
+  const isVerifyingRef = React.useRef(false);
+  const lastSubmittedCodeRef = React.useRef(null);
 
   const isPhoneValid = phoneRegex.test(normalizePhone(phone));
 
@@ -59,11 +79,12 @@ export default function Login() {
       setSecondsLeft(res?.retryAfterSeconds || 59);
       if (res && res.devCode) setDevCode(res.devCode);
     } catch (err) {
-      if (err && err.status === 429 && err.retryAfterSeconds) {
-        setError(
-          `لطفاً پس از ${err.retryAfterSeconds} ثانیه دوباره تلاش کنید.`
-        );
-        setSecondsLeft(err.retryAfterSeconds);
+      if (err && err.status === 429) {
+        // show live countdown; fallback to 60s if server didn't provide a retryAfterSeconds
+        const retrySecs = err.retryAfterSeconds || 60;
+        setError(null);
+        setRateLimitActive(true);
+        setSecondsLeft(retrySecs);
       } else setError((err && err.message) || "خطا در ارسال کد");
     } finally {
       setLoading(false);
@@ -75,6 +96,13 @@ export default function Login() {
     const c = (code ?? otp).replace(/[^0-9]/g, "");
     if (c.length !== 6) return setError("لطفاً کد ۶ رقمی را وارد کنید.");
     setLoading(true);
+    // block if rate-limited
+    if (rateLimitActive) return;
+    if (isVerifyingRef.current) return;
+    if (lastSubmittedCodeRef.current === c) return;
+
+    isVerifyingRef.current = true;
+    lastSubmittedCodeRef.current = c;
     try {
       const ph = normalizePhone(phone);
       const { token, user } = await otpVerify(ph, c);
@@ -86,13 +114,14 @@ export default function Login() {
       }
       nav("/");
     } catch (err) {
-      if (err && err.status === 429 && err.retryAfterSeconds) {
-        setError(
-          `لطفاً پس از ${err.retryAfterSeconds} ثانیه دوباره تلاش کنید.`
-        );
-        setSecondsLeft(err.retryAfterSeconds);
+      if (err && err.status === 429) {
+        const retrySecs = err.retryAfterSeconds || 60;
+        setError(null);
+        setRateLimitActive(true);
+        setSecondsLeft(retrySecs);
       } else setError((err && err.message) || "کد وارد شده نادرست است.");
     } finally {
+      isVerifyingRef.current = false;
       setLoading(false);
     }
   };
@@ -106,11 +135,11 @@ export default function Login() {
       setSecondsLeft(res?.retryAfterSeconds || 59);
       setOtp("");
     } catch (err) {
-      if (err && err.status === 429 && err.retryAfterSeconds) {
-        setError(
-          `لطفاً پس از ${err.retryAfterSeconds} ثانیه دوباره تلاش کنید.`
-        );
-        setSecondsLeft(err.retryAfterSeconds);
+      if (err && err.status === 429) {
+        const retrySecs = err.retryAfterSeconds || 60;
+        setError(null);
+        setRateLimitActive(true);
+        setSecondsLeft(retrySecs);
       } else setError((err && err.message) || "خطا در ارسال مجدد کد");
     } finally {
       setLoading(false);
@@ -163,9 +192,18 @@ export default function Login() {
             </div>
           )}
 
+          {/* show rate-limit or error on the PHONE step as well */}
+          {rateLimitActive && secondsLeft > 0 ? (
+            <div className="mt-3 text-sm text-red-600">
+              {`لطفاً پس از ${formatTimer(secondsLeft)} دوباره تلاش کنید.`}
+            </div>
+          ) : (
+            error && <div className="mt-3 text-sm text-red-600">{error}</div>
+          )}
+
           <button
             type="submit"
-            disabled={!isPhoneValid || loading}
+            disabled={!isPhoneValid || loading || rateLimitActive}
             className="w-full rounded-lg py-2 text-white"
             style={{ backgroundColor: !isPhoneValid ? "#C7CCD8" : "#1A5F7A" }}
           >
@@ -186,6 +224,8 @@ export default function Login() {
               value={otp}
               onChange={(v) => {
                 setOtp(v);
+                lastSubmittedCodeRef.current = null;
+                setError(null);
               }}
               onComplete={(v) => onVerify(v)}
               autoFocus

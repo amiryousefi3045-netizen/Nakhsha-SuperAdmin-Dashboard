@@ -26,15 +26,29 @@ export default function OtpInput({
 }: Props) {
   const digits = value.split("").slice(0, length);
   const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const prevCompleteRef = useRef(false);
+  const prevCompleteValueRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (autoFocus && refs.current[0]) refs.current[0].focus();
   }, [autoFocus]);
 
+  // Call onComplete only when transitioning from not-complete -> complete
+  // and when the complete value differs from the last completed value.
   useEffect(() => {
-    if (digits.join("").length === length)
-      onComplete && onComplete(digits.join(""));
-  }, [digits, length, onComplete]);
+    if (disabled || !onComplete) return;
+    const current = digits.join("");
+    const isComplete = current.length === length;
+    if (isComplete && !prevCompleteRef.current) {
+      if (prevCompleteValueRef.current !== current) {
+        prevCompleteValueRef.current = current;
+        prevCompleteRef.current = true;
+        onComplete(current);
+      }
+    } else if (!isComplete) {
+      prevCompleteRef.current = false;
+    }
+  }, [digits, length, onComplete, disabled]);
 
   const setAt = (idx: number, ch: string) => {
     const arr = value.split("");
@@ -80,6 +94,8 @@ export default function OtpInput({
       .slice(0, length);
     if (!normalized) return;
     onChange(normalized);
+    // clear previous complete value so onComplete can fire for this new paste
+    prevCompleteValueRef.current = null;
   };
 
   return (

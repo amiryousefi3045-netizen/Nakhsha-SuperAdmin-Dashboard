@@ -16,6 +16,13 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(59);
   const [loading, setLoading] = useState(false);
+  const [canAutoSubmit, setCanAutoSubmit] = useState(true);
+  const [rateLimitActive, setRateLimitActive] = useState(false);
+
+  // Prevent duplicate/concurrent verify calls
+  const isVerifyingRef = useRef(false);
+  // Store last submitted code to avoid resubmitting the same failing code
+  const lastSubmittedCodeRef = useRef<string | null>(null);
 
   const phoneRef = useRef<HTMLInputElement | null>(null);
 
@@ -23,17 +30,21 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const isPhoneValid = phoneRegex.test(phone.trim());
 
   useEffect(() => {
-    if (step === "CODE") setSecondsLeft(59);
-  }, [step]);
+    if (step === "CODE") {
+      // don't overwrite an active rate-limit countdown
+      if (!rateLimitActive) setSecondsLeft(59);
+    }
+  }, [step, rateLimitActive]);
 
+  // Run countdown whenever there are seconds left (covers rate-limit and normal resend timer)
   useEffect(() => {
-    if (step !== "CODE" || secondsLeft <= 0) return;
+    if (secondsLeft <= 0) return;
     const t = setInterval(
       () => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)),
       1000
     );
     return () => clearInterval(t);
-  }, [step, secondsLeft]);
+  }, [secondsLeft]);
 
   useEffect(() => {
     // autofocus phone on mount
@@ -62,7 +73,10 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       }
     } catch (e: any) {
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        setError(`لطفاً پس از ${e.retryAfterSeconds} ثانیه دوباره تلاش کنید.`);
+        // start a live rate-limit countdown
+        setError(null);
+        setRateLimitActive(true);
+        setCanAutoSubmit(false);
         setSecondsLeft(e.retryAfterSeconds);
       } else setError(e?.message || "خطا در ارسال کد");
     } finally {
@@ -74,6 +88,16 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     setError(null);
     const c = code ?? otp;
     if (c.length !== 6) return setError("لطفاً کد ۶ رقمی را وارد کنید.");
+
+    // Don't auto-submit if disabled or already verifying
+    if (!canAutoSubmit) return;
+    if (isVerifyingRef.current) return;
+
+    // Avoid resubmitting the same code repeatedly
+    if (lastSubmittedCodeRef.current === c) return;
+
+    isVerifyingRef.current = true;
+    lastSubmittedCodeRef.current = c;
     setLoading(true);
     try {
       const { token, user } = await otpVerify(phone.trim(), c);
@@ -85,10 +109,19 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       onClose();
     } catch (e: any) {
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        setError(`لطفاً پس از ${e.retryAfterSeconds} ثانیه دوباره تلاش کنید.`);
+        // rate limit: show live countdown and block auto-submit
+        setError(null);
+        setRateLimitActive(true);
+        setCanAutoSubmit(false);
         setSecondsLeft(e.retryAfterSeconds);
-      } else setError(e?.message || "کد واردشده نادرست است.");
+      } else {
+        // Invalid code (400 or other client error): show once and stop auto-retries
+        setError(e?.message || "کد واردشده نادرست است.");
+        setCanAutoSubmit(false);
+        // keep lastSubmittedCodeRef to block re-submission until user changes digits
+      }
     } finally {
+      isVerifyingRef.current = false;
       setLoading(false);
     }
   };
@@ -101,13 +134,25 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       setSecondsLeft(res?.retryAfterSeconds || 59);
     } catch (e: any) {
       if (e?.status === 429 && e?.retryAfterSeconds) {
-        setError(`لطفاً پس از ${e.retryAfterSeconds} ثانیه دوباره تلاش کنید.`);
+        setError(null);
+        setRateLimitActive(true);
+        setCanAutoSubmit(false);
         setSecondsLeft(e.retryAfterSeconds);
       } else setError(e?.message || "خطا در ارسال مجدد کد");
     } finally {
       setLoading(false);
     }
   };
+
+  // When rate-limit cooldown finishes, re-enable auto-submit and clear rate-limit state
+  useEffect(() => {
+    if (rateLimitActive && secondsLeft <= 0) {
+      setRateLimitActive(false);
+      setCanAutoSubmit(true);
+      lastSubmittedCodeRef.current = null;
+      setError(null);
+    }
+  }, [rateLimitActive, secondsLeft]);
 
   return (
     <div
@@ -139,7 +184,13 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
             شماره را با ۰۹ وارد کنید (مثلاً 09123456789).
           </p>
 
-          {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+          {rateLimitActive && secondsLeft > 0 ? (
+            <div className="mt-3 text-sm text-red-600">
+              {`لطفاً پس از ${formatTimer(secondsLeft)} دوباره تلاش کنید.`}
+            </div>
+          ) : (
+            error && <div className="mt-3 text-sm text-red-600">{error}</div>
+          )}
 
           <div className="mt-6">
             <button
@@ -165,9 +216,21 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
           <div className="mb-4">
             <OtpInput
               value={otp}
-              onChange={(v) => setOtp(v)}
+              onChange={(v) => {
+                // normalize persian digits to english before storing
+                const normalized = v
+                  .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+                  .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+                setOtp(normalized);
+                // user edited digits: allow auto-submit again
+                setCanAutoSubmit(true);
+                lastSubmittedCodeRef.current = null;
+              }}
               autoFocus={true}
-              onComplete={(v) => handleVerify(v)}
+              onComplete={(v) => {
+                // Only auto-submit if allowed
+                if (v && v.length === 6) handleVerify(v);
+              }}
               error={!!error}
               disabled={loading}
             />
@@ -190,7 +253,13 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
             )}
           </div>
 
-          {error && <div className="text-sm text-red-600 mb-4">{error}</div>}
+          {rateLimitActive && secondsLeft > 0 ? (
+            <div className="text-sm text-red-600 mb-4">
+              {`لطفاً پس از ${formatTimer(secondsLeft)} دوباره تلاش کنید.`}
+            </div>
+          ) : (
+            error && <div className="text-sm text-red-600 mb-4">{error}</div>
+          )}
 
           <div className="flex gap-3">
             <button

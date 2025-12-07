@@ -238,8 +238,10 @@ router.post("/otp/verify", async (req, res) => {
       record.attempts = (record.attempts || 0) + 1;
       await record.save();
       if (record.attempts >= OTP_MAX_ATTEMPTS)
-        return res.status(429).json({ message: "Too many attempts" });
-      return res.status(400).json({ message: "Invalid code" });
+        return res
+          .status(429)
+          .json({ message: "تعداد تلاش‌ها بیش از حد مجاز است." });
+      return res.status(400).json({ message: "کد وارد شده صحیح نیست." });
     }
 
     // Successful verification: delete OTP record to prevent reuse
