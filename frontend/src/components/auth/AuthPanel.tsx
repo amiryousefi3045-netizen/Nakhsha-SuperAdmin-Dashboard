@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import OtpInput from "./OtpInput";
 import { otpStart, otpVerify } from "../../services/auth";
 import { useAuth } from "../../hooks/useAuth";

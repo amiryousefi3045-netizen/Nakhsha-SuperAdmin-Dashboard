@@ -83,7 +83,7 @@ export default function NakhshaOtpAuthMobile() {
     (lastSubmittedCodeRef as any).current = c;
     setLoading(true);
     try {
-      const { token, user } = await otpVerify(phone.trim(), otp);
+      const { user } = await otpVerify(phone.trim(), otp);
       if (user) setUser(user);
       nav("/");
     } catch (err) {

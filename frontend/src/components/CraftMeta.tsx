@@ -1,4 +1,4 @@
-import React from "react";
+import type { FC } from "react";
 
 interface CraftMetaProps {
   timeFa?: string;
@@ -7,7 +7,7 @@ interface CraftMetaProps {
   category?: string;
 }
 
-const CraftMeta: React.FC<CraftMetaProps> = ({
+const CraftMeta: FC<CraftMetaProps> = ({
   timeFa,
   type,
   size,

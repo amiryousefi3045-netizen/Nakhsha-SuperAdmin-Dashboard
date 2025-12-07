@@ -1,4 +1,4 @@
-import React from "react";
+import React, { type ElementType, type ReactNode, type ForwardedRef } from "react";
 import cn from "classnames";
 
 type ButtonVariant =
@@ -13,9 +13,9 @@ type ButtonSize = "xs" | "sm" | "md" | "lg";
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  as?: React.ElementType;
+  as?: ElementType;
   to?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 const variants: Record<ButtonVariant, string> = {
@@ -37,7 +37,7 @@ const sizes: Record<ButtonSize, string> = {
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  (
+  function Button(
     {
       variant = "primary",
       size = "md",
@@ -46,9 +46,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       children,
       disabled,
       ...props
-    },
-    ref
-  ) => {
+    }: ButtonProps,
+    ref: ForwardedRef<HTMLButtonElement>
+  ) {
     const classes = cn(
       "inline-flex items-center justify-center border rounded-md transition-colors",
       "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500",

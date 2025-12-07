@@ -1,15 +1,14 @@
-import React from "react";
+import type { ReactNode, FC } from "react";
 import cn from "classnames";
 
 type AlertVariant = "info" | "success" | "warning" | "error";
 
 interface AlertProps {
   variant: AlertVariant;
-  message: React.ReactNode;
+  message: ReactNode;
   className?: string;
   duration?: number;
 }
-
 const variants: Record<AlertVariant, string> = {
   info: "bg-blue-50 text-blue-800 border-blue-200",
   success: "bg-green-50 text-green-800 border-green-200",
@@ -17,7 +16,7 @@ const variants: Record<AlertVariant, string> = {
   error: "bg-red-50 text-red-800 border-red-200",
 };
 
-export const Alert: React.FC<AlertProps> & {
+export const Alert: FC<AlertProps> & {
   show: (props: AlertProps) => void;
 } = ({ variant, message, className }) => {
   return (

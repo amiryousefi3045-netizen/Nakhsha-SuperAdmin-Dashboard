@@ -18,7 +18,7 @@ const SERVER_ORIGIN =
     ? `${window.location.protocol}//${window.location.hostname}:5000`
     : "");
 
-const mockCrafts: Craft[] = [
+const mockCrafts: any[] = [
   {
     id: "dev-1",
     title: "گلیم دست‌باف سنتی اصفهان",

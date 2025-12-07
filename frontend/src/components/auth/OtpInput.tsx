@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ClipboardEvent } from "react";
 
 type Props = {
   value: string;
@@ -57,7 +57,7 @@ export default function OtpInput({
     onChange(next);
   };
 
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
+  const handleKey = (e: KeyboardEvent<HTMLInputElement>, idx: number) => {
     if (disabled) return;
     const key = e.key;
     if (key === "Backspace") {
@@ -86,7 +86,7 @@ export default function OtpInput({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (e: ClipboardEvent<HTMLInputElement>) => {
     if (disabled) return;
     const pasted = e.clipboardData.getData("text");
     const normalized = persianToEnglish(pasted)
@@ -109,7 +109,7 @@ export default function OtpInput({
         return (
           <input
             key={i}
-            ref={(el) => (refs.current[i] = el)}
+            ref={(el) => { refs.current[i] = el; }}
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={1}

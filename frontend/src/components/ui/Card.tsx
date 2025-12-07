@@ -1,15 +1,11 @@
-import React from "react";
+import type { FC, HTMLAttributes, ReactNode } from "react";
 import cn from "classnames";
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode;
 }
 
-export const Card: React.FC<CardProps> = ({
-  className,
-  children,
-  ...props
-}) => {
+export const Card: FC<CardProps> = ({ className, children, ...props }) => {
   return (
     <div
       className={cn(

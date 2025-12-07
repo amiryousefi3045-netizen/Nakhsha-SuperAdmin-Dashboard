@@ -1,4 +1,4 @@
-import React from "react";
+import type { FC } from "react";
 import cn from "classnames";
 
 interface ImageGalleryProps {
@@ -10,7 +10,7 @@ interface ImageGalleryProps {
   alt?: string;
 }
 
-export const ImageGallery: React.FC<ImageGalleryProps> = ({
+export const ImageGallery: FC<ImageGalleryProps> = ({
   images,
   currentIndex,
   onIndexChange,
