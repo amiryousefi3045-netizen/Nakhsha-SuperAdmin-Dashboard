@@ -7,12 +7,7 @@ interface CraftMetaProps {
   category?: string;
 }
 
-const CraftMeta: FC<CraftMetaProps> = ({
-  timeFa,
-  type,
-  size,
-  category,
-}) => {
+const CraftMeta: FC<CraftMetaProps> = ({ timeFa, type, size, category }) => {
   return (
     <div className="flex flex-wrap gap-2 text-xs text-gray-500">
       {type && (

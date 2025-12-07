@@ -1,4 +1,9 @@
-import { useEffect, useRef, type KeyboardEvent, type ClipboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type ClipboardEvent,
+} from "react";
 
 type Props = {
   value: string;
@@ -109,7 +114,9 @@ export default function OtpInput({
         return (
           <input
             key={i}
-            ref={(el) => { refs.current[i] = el; }}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={1}
