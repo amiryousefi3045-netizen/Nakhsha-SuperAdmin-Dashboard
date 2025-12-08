@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const OtpCode = require("../models/OtpCode");
 const { generateCode, hashCode, verifyHash } = require("../utils/otp");
+const logger = require("../utils/logger");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -41,19 +42,19 @@ router.post("/register", async (req, res) => {
   try {
     // If DB is not ready, return a clear 503 so client doesn't get a generic 500
     if (!req.app?.locals?.dbReady) {
-      console.warn("POST /auth/register - DB not ready");
+      logger.warn("POST /auth/register - DB not ready");
       return res.status(503).json({ message: "Database unavailable" });
     }
-    console.log("Register request received:", JSON.stringify(req.body));
+    logger.debug("Register request received", { body: req.body });
     const { name, email, phone, password, role } = req.body || {};
     const normEmail =
       typeof email === "string" ? email.toLowerCase().trim() : email;
     const normPhone = typeof phone === "string" ? phone.trim() : phone;
     if (!name || !email || !phone || !password) {
-      console.log("Missing required fields:", {
-        name,
-        email,
-        phone,
+      logger.warn("Missing required fields", {
+        name: !!name,
+        email: !!email,
+        phone: !!phone,
         password: !!password,
       });
       return res.status(400).json({ message: "Missing required fields" });
@@ -67,10 +68,10 @@ router.post("/register", async (req, res) => {
       $or: [{ email: normEmail }, { phone: normPhone }],
     });
     if (exists) {
-      console.log("User already exists:", { email, phone });
+      logger.warn("User already exists", { email, phone });
       return res.status(409).json({ message: "Email or phone already exists" });
     }
-    console.log("Creating new user:", { name, email, phone });
+    logger.info("Creating new user", { name, email, phone });
     const user = await User.create({
       name: String(name).trim(),
       email: normEmail,
@@ -78,7 +79,7 @@ router.post("/register", async (req, res) => {
       password,
       role,
     });
-    console.log("User created successfully:", user._id);
+    logger.info("User created successfully", { userId: user._id });
     const token = sign(user);
     res.status(201).json({
       token,
@@ -99,7 +100,10 @@ router.post("/register", async (req, res) => {
       const field = Object.keys(e.keyPattern || e.keyValue || {})[0] || "field";
       return res.status(409).json({ message: `${field} already exists` });
     }
-    console.error("POST /auth/register error", e);
+    logger.error("POST /auth/register error", {
+      error: e.message,
+      stack: e.stack,
+    });
     res.status(500).json({ message: "Server error", error: e.message });
   }
 });
@@ -108,7 +112,7 @@ router.post("/login", async (req, res) => {
   try {
     // If DB is not ready, return 503 to signal service unavailable
     if (!req.app?.locals?.dbReady) {
-      console.warn("POST /auth/login - DB not ready");
+      logger.warn("POST /auth/login - DB not ready");
       return res.status(503).json({ message: "Database unavailable" });
     }
     const { email, phone, password } = req.body || {};
@@ -134,7 +138,10 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (e) {
-    console.error("POST /auth/login error", e);
+    logger.error("POST /auth/login error", {
+      error: e.message,
+      stack: e.stack,
+    });
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -164,7 +171,7 @@ router.post("/otp/start", async (req, res) => {
   try {
     // DB readiness guard
     if (!req.app?.locals?.dbReady) {
-      console.warn("POST /auth/otp/start - DB not ready");
+      logger.warn("POST /auth/otp/start - DB not ready");
       return res.status(503).json({ message: "Database unavailable" });
     }
     const { phone } = req.body || {};
@@ -207,7 +214,10 @@ router.post("/otp/start", async (req, res) => {
 
     res.json(response);
   } catch (e) {
-    console.error("POST /auth/otp/start error", e);
+    logger.error("POST /auth/otp/start error", {
+      error: e.message,
+      stack: e.stack,
+    });
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -217,7 +227,7 @@ router.post("/otp/verify", async (req, res) => {
   try {
     // DB readiness guard
     if (!req.app?.locals?.dbReady) {
-      console.warn("POST /auth/otp/verify - DB not ready");
+      logger.warn("POST /auth/otp/verify - DB not ready");
       return res.status(503).json({ message: "Database unavailable" });
     }
     const { phone, code } = req.body || {};
@@ -269,7 +279,9 @@ router.post("/otp/verify", async (req, res) => {
         }
         if (user.save) await user.save();
       } catch (e) {
-        console.warn("Failed to mark new user as verified", e);
+        logger.warn("Failed to mark new user as verified", {
+          error: e.message,
+        });
       }
     }
 
@@ -284,7 +296,10 @@ router.post("/otp/verify", async (req, res) => {
       },
     });
   } catch (e) {
-    console.error("POST /auth/otp/verify error", e);
+    logger.error("POST /auth/otp/verify error", {
+      error: e.message,
+      stack: e.stack,
+    });
     res.status(500).json({ message: "Server error" });
   }
 });

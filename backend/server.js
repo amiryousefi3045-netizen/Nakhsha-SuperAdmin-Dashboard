@@ -7,13 +7,14 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
+const logger = require("./utils/logger");
 
 // Load environment variables
 dotenv.config();
 
 // Validate required environment variables
 if (!process.env.JWT_SECRET) {
-  console.error("خطای بحرانی: متغیر JWT_SECRET تنظیم نشده است");
+  logger.error("خطای بحرانی: متغیر JWT_SECRET تنظیم نشده است");
   process.exit(1);
 }
 
@@ -25,7 +26,7 @@ const allowedOrigins = (
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-console.log("Origins allowed for CORS:", allowedOrigins);
+logger.info("Origins allowed for CORS:", { origins: allowedOrigins });
 
 const app = express();
 app.locals.dbReady = false;
@@ -140,21 +141,22 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 2000,
     });
     app.locals.dbReady = true;
-    console.log("MongoDB connected successfully");
+    logger.info("MongoDB connected successfully");
 
     // Ensure geospatial index exists for Craft model
     try {
       await Craft.collection.createIndex({ "location.geometry": "2dsphere" });
-      console.log("Geospatial index ensured for crafts");
+      logger.info("Geospatial index ensured for crafts");
     } catch (indexErr) {
-      console.warn(
-        "Warning: Could not create geospatial index:",
-        indexErr.message
-      );
+      logger.warn("Warning: Could not create geospatial index", {
+        error: indexErr.message,
+      });
     }
   } catch (error) {
     app.locals.dbReady = false;
-    console.warn("MongoDB not available, continuing without DB (dev mode)");
+    logger.warn("MongoDB not available, continuing without DB (dev mode)", {
+      error: error.message,
+    });
   }
 };
 
@@ -167,7 +169,7 @@ const PORT = process.env.PORT || 5000;
 (async () => {
   await connectDB();
   app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    logger.info(`Server is running on port ${PORT}`);
   });
 })();
 

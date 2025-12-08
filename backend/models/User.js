@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const logger = require("../utils/logger");
 
 const userSchema = new mongoose.Schema(
   {
@@ -80,13 +81,13 @@ userSchema.pre("save", async function (next) {
 
   try {
     const identifier = this.email || this.phone || "<unknown>";
-    console.log("Hashing password for user:", identifier);
+    logger.debug("Hashing password for user", { identifier });
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    console.log("Password hashed successfully");
+    logger.debug("Password hashed successfully");
     next();
   } catch (error) {
-    console.error("Error hashing password:", error);
+    logger.error("Error hashing password", { error: error.message });
     next(error);
   }
 });
