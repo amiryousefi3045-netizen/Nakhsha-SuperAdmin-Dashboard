@@ -8,15 +8,16 @@ const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const logger = require("./utils/logger");
+const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./config/swagger");
 
 // Load environment variables
 dotenv.config();
 
-// Validate required environment variables
-if (!process.env.JWT_SECRET) {
-  logger.error("خطای بحرانی: متغیر JWT_SECRET تنظیم نشده است");
-  process.exit(1);
-}
+// Validate environment variables
+const validateEnv = require("./config/env");
+const env = validateEnv();
 
 // Parse CORS allowed origins
 const allowedOrigins = (
@@ -72,14 +73,47 @@ app.use(
     // Required for uploaded images to be accessible
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginEmbedderPolicy: false,
+
     // Content Security Policy
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Needed for Swagger UI
+        styleSrc: ["'self'", "'unsafe-inline'"], // Needed for Swagger UI
         imgSrc: ["'self'", "data:", "blob:", "https:"],
         connectSrc: ["'self'", ...allowedOrigins],
+        fontSrc: ["'self'", "data:"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
       },
     },
+
+    // HTTP Strict Transport Security (HSTS)
+    hsts: {
+      maxAge: 31536000, // 1 year
+      includeSubDomains: true,
+      preload: true,
+    },
+
+    // X-Frame-Options
+    frameguard: {
+      action: "deny", // محافظت در برابر clickjacking
+    },
+
+    // X-Content-Type-Options
+    noSniff: true, // جلوگیری از MIME-sniffing
+
+    // X-XSS-Protection
+    xssFilter: true,
+
+    // Referrer Policy
+    referrerPolicy: {
+      policy: "same-origin",
+    },
+
+    // Hide X-Powered-By header
+    hidePoweredBy: true,
   })
 );
 
@@ -133,6 +167,12 @@ app.use("/api/listings", listingsNearRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 
+// 404 handler - must be after all routes
+app.use(notFoundHandler);
+
+// Global error handler - must be last
+app.use(errorHandler);
+
 // MongoDB connection
 const connectDB = async () => {
   try {
@@ -163,6 +203,16 @@ const connectDB = async () => {
 // Import and use health routes
 const healthRoutes = require("./routes/health");
 app.use("/api/health", healthRoutes);
+
+// Swagger API Documentation
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCss: ".swagger-ui .topbar { display: none }",
+    customSiteTitle: "Nakhsha API Documentation",
+  })
+);
 
 const PORT = process.env.PORT || 5000;
 

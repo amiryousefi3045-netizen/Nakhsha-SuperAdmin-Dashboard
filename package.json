@@ -7,7 +7,13 @@
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "test": "echo \"No tests defined\" && exit 0"
+    "test": "npm test --prefix backend",
+    "test:coverage": "npm run test:coverage --prefix backend",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:restart": "docker-compose restart"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",

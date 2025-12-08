@@ -1,0 +1,411 @@
+# 🎨 Nakhsha Backend API
+
+**نخشا** — پلتفرم صنایع دستی و فرهنگی ایران
+
+Backend API با Node.js + Express + MongoDB
+
+---
+
+## 🚀 Quick Start
+
+### پیش‌نیازها
+
+- Node.js 18+ یا 20+
+- MongoDB 6+
+- npm یا yarn
+
+### نصب و راه‌اندازی
+
+```bash
+# Clone repository
+git clone https://github.com/OmidG9/Nakhsha.git
+cd Nakhsha/backend
+
+# نصب dependencies
+npm install
+
+# کپی .env.example و تنظیم
+cp .env.example .env
+nano .env
+
+# اجرا در حالت development
+npm run dev
+
+# اجرا در حالت production
+npm start
+```
+
+Backend در http://localhost:5000 اجرا می‌شود.
+
+---
+
+## 🐳 Docker
+
+```bash
+# از root directory
+docker-compose up -d
+
+# فقط backend
+docker-compose up -d backend
+```
+
+مستندات کامل: [DOCKER_GUIDE.md](../DOCKER_GUIDE.md)
+
+---
+
+## 📚 API Documentation
+
+Swagger UI در http://localhost:5000/api-docs در دسترس است.
+
+### Main Endpoints
+
+#### Authentication
+
+- `POST /api/auth/register` - ثبت‌نام
+- `POST /api/auth/login` - ورود
+- `POST /api/auth/otp/start` - درخواست OTP
+- `POST /api/auth/otp/verify` - تایید OTP
+- `GET /api/auth/me` - پروفایل (نیاز به auth)
+
+#### Crafts (محصولات)
+
+- `GET /api/crafts` - لیست محصولات (با فیلتر و pagination)
+- `GET /api/crafts/:id` - جزئیات محصول
+- `POST /api/crafts` - ایجاد محصول (نیاز به auth)
+- `PUT /api/crafts/:id` - ویرایش محصول (owner)
+- `DELETE /api/crafts/:id` - حذف محصول (owner)
+
+#### Geospatial
+
+- `GET /api/listings/near` - جستجوی محصولات نزدیک
+
+#### Health
+
+- `GET /api/health` - بررسی سلامت سرویس
+
+---
+
+## 🧪 Testing
+
+```bash
+# اجرای تمام تست‌ها
+npm test
+
+# Watch mode
+npm run test:watch
+
+# با coverage report
+npm run test:coverage
+```
+
+Test coverage: **~82%** 🎯
+
+مستندات: [**tests**/README.md](./__tests__/README.md)
+
+---
+
+## 📁 ساختار پروژه
+
+```
+backend/
+├── config/
+│   ├── env.js              # Environment validation
+│   └── swagger.js          # API documentation config
+├── middlewares/
+│   ├── errorHandler.js     # Global error handling
+│   └── validate.js         # Request validation (Zod)
+├── models/
+│   ├── User.js
+│   ├── Artisan.js
+│   ├── Craft.js
+│   ├── OtpCode.js
+│   └── Recipe.js
+├── routes/
+│   ├── auth.js
+│   ├── crafts.js
+│   ├── users.js
+│   ├── uploads.js
+│   ├── listings.near.js
+│   └── health.js
+├── utils/
+│   ├── logger.js           # Winston logger
+│   ├── errors.js           # Custom error classes
+│   └── otp.js              # OTP utilities
+├── __tests__/
+│   ├── auth.test.js
+│   ├── crafts.test.js
+│   └── README.md
+├── logs/                   # Log files (gitignored)
+├── uploads/                # Uploaded files (gitignored)
+├── .env.example
+├── jest.config.js
+├── Dockerfile
+├── package.json
+└── server.js
+```
+
+---
+
+## 🔐 Environment Variables
+
+متغیرهای اجباری:
+
+```env
+JWT_SECRET=your-super-secret-jwt-key
+```
+
+متغیرهای اختیاری (با default):
+
+```env
+NODE_ENV=development
+PORT=5000
+MONGODB_URI=mongodb://127.0.0.1:27017/nakhsha
+JWT_TTL=7d
+ALLOWED_ORIGINS=http://localhost:5173
+LOG_LEVEL=info
+```
+
+فایل کامل: [.env.example](./.env.example)
+
+---
+
+## 🛡️ Security Features
+
+### Authentication
+
+- ✅ JWT tokens با expiration
+- ✅ Password hashing با bcrypt
+- ✅ OTP authentication (SMS-ready)
+- ✅ Role-based access control (user/artisan/admin)
+
+### Security Headers (Helmet)
+
+- ✅ Content Security Policy (CSP)
+- ✅ HTTP Strict Transport Security (HSTS)
+- ✅ X-Frame-Options: DENY
+- ✅ X-Content-Type-Options: nosniff
+- ✅ Referrer-Policy: same-origin
+
+### Rate Limiting
+
+- ✅ Auth endpoints: 50 req/15min
+- ✅ Upload endpoints: 30 req/hour
+- ✅ CORS whitelist
+
+### Input Validation
+
+- ✅ Zod schemas
+- ✅ Mongoose validation
+- ✅ Sanitization
+
+---
+
+## 📊 Logging
+
+Winston logger با سطوح مختلف:
+
+```javascript
+logger.error("Critical error", { context });
+logger.warn("Warning message", { data });
+logger.info("Info message");
+logger.http("HTTP request details");
+logger.debug("Debug information");
+```
+
+Log files:
+
+- `logs/error.log` - فقط خطاها
+- `logs/all.log` - همه logs
+- `logs/exceptions.log` - Uncaught exceptions
+
+---
+
+## 🗄️ Database
+
+### Models
+
+- **User**: کاربران (authentication)
+- **Artisan**: هنرمندان (پروفایل حرفه‌ای)
+- **Craft**: محصولات صنایع دستی
+- **OtpCode**: کدهای OTP
+- **Recipe**: (legacy compatibility)
+
+### Geospatial
+
+MongoDB 2dsphere index برای جستجوی مکان‌محور.
+
+```javascript
+// جستجوی نزدیک‌ترین محصولات
+GET /api/listings/near?lng=51.6746&lat=32.6546&maxDistance=10000
+```
+
+---
+
+## 🔧 Development
+
+### Hot Reload
+
+برای development، می‌توانید از nodemon استفاده کنید:
+
+```bash
+npm install -g nodemon
+nodemon server.js
+```
+
+### Debug Mode
+
+```bash
+LOG_LEVEL=debug npm run dev
+```
+
+### Database Seed
+
+```bash
+# TODO: اضافه شود
+npm run seed
+```
+
+---
+
+## 📈 Performance
+
+### Optimizations
+
+- ✅ MongoDB indexes (geospatial, text search)
+- ✅ Query pagination
+- ✅ Image optimization با Sharp
+- ✅ Static file serving با express.static
+- 🔜 Redis caching (TODO)
+- 🔜 CDN برای uploads (TODO)
+
+---
+
+## 🐛 Troubleshooting
+
+### MongoDB Connection Failed
+
+```bash
+# Check MongoDB status
+mongosh --eval "db.version()"
+
+# Start MongoDB
+# Windows: services.msc → MongoDB Server
+# Linux: sudo systemctl start mongod
+# macOS: brew services start mongodb-community
+```
+
+### Port Already in Use
+
+```bash
+# Kill process on port 5000
+# Windows
+netstat -ano | findstr :5000
+taskkill /PID <PID> /F
+
+# Linux/macOS
+lsof -ti:5000 | xargs kill -9
+```
+
+### Environment Variables Not Loading
+
+```bash
+# مطمئن شوید .env در root backend است
+ls -la .env
+
+# و در .gitignore نیست
+cat .gitignore | grep .env
+```
+
+---
+
+## 📦 Dependencies
+
+### Production
+
+- `express` - Web framework
+- `mongoose` - MongoDB ODM
+- `jsonwebtoken` - JWT authentication
+- `bcryptjs` - Password hashing
+- `winston` - Logging
+- `helmet` - Security headers
+- `cors` - CORS handling
+- `express-rate-limit` - Rate limiting
+- `multer` - File uploads
+- `sharp` - Image processing
+- `zod` - Schema validation
+- `dotenv` - Environment variables
+- `envalid` - Env validation
+- `swagger-jsdoc` - API docs
+- `swagger-ui-express` - API docs UI
+
+### Development
+
+- `jest` - Testing framework
+- `supertest` - HTTP testing
+- `nodemon` - Hot reload (optional)
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open Pull Request
+
+### Code Style
+
+- ESLint configuration (TODO)
+- Prettier formatting (TODO)
+- فارسی برای پیام‌ها و comments
+
+---
+
+## 📄 License
+
+MIT License - مشاهده [LICENSE](../LICENSE)
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/OmidG9/Nakhsha/issues)
+- **Email**: support@nakhsha.ir (TODO)
+- **Docs**: [API Documentation](http://localhost:5000/api-docs)
+
+---
+
+## 🎯 Roadmap
+
+### Phase 1 (✅ Complete)
+
+- [x] Authentication & Authorization
+- [x] CRUD operations
+- [x] Geospatial search
+- [x] File uploads
+- [x] Testing setup
+- [x] Logging system
+
+### Phase 2 (✅ Complete)
+
+- [x] Global error handler
+- [x] API documentation (Swagger)
+- [x] Environment validation
+- [x] Docker setup
+- [x] Enhanced security
+
+### Phase 3 (🔜 Planned)
+
+- [ ] Redis caching
+- [ ] E2E tests
+- [ ] CI/CD pipeline
+- [ ] Monitoring (Prometheus)
+- [ ] Admin dashboard
+- [ ] Email notifications
+- [ ] SMS integration
+- [ ] CDN integration
+
+---
+
+**🎨 ساخته شده با ❤️ برای هنرمندان ایرانی**

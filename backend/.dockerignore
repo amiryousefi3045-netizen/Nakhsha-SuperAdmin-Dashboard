@@ -1,0 +1,46 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Testing
+coverage/
+__tests__/
+*.test.js
+*.spec.js
+jest.config.js
+
+# Logs
+logs/
+*.log
+
+# Development files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Uploads (will be volume-mounted)
+uploads/
+
+# Database
+*.db
+*.sqlite

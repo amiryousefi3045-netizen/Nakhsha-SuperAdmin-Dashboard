@@ -38,6 +38,62 @@ function authMiddleware(req, res, next) {
   }
 }
 
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: ثبت‌نام کاربر جدید
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - phone
+ *               - password
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: علی احمدی
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: ali@example.com
+ *               phone:
+ *                 type: string
+ *                 pattern: '^09\d{9}$'
+ *                 example: "09123456789"
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *                 example: password123
+ *               role:
+ *                 type: string
+ *                 enum: [user, artisan, admin]
+ *                 default: user
+ *     responses:
+ *       201:
+ *         description: ثبت‌نام موفق
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: داده‌های نامعتبر
+ *       409:
+ *         description: ایمیل یا شماره تلفن تکراری
+ *       503:
+ *         description: دیتابیس در دسترس نیست
+ */
 router.post("/register", async (req, res) => {
   try {
     // If DB is not ready, return a clear 503 so client doesn't get a generic 500
@@ -108,6 +164,50 @@ router.post("/register", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: ورود کاربر
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: ali@example.com
+ *               phone:
+ *                 type: string
+ *                 example: "09123456789"
+ *               password:
+ *                 type: string
+ *                 example: password123
+ *     responses:
+ *       200:
+ *         description: ورود موفق
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: اطلاعات ناقص
+ *       401:
+ *         description: نام کاربری یا رمز عبور اشتباه
+ *       503:
+ *         description: دیتابیس در دسترس نیست
+ */
 router.post("/login", async (req, res) => {
   try {
     // If DB is not ready, return 503 to signal service unavailable
