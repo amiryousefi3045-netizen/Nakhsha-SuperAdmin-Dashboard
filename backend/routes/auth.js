@@ -9,8 +9,8 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const TOKEN_TTL = process.env.JWT_TTL || "7d";
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
-const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
-const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "5", 10);
+const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "30", 10);
+const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "8", 10);
 
 function normalizePhone(phone) {
   if (typeof phone !== "string") return phone;
@@ -279,17 +279,30 @@ router.post("/otp/start", async (req, res) => {
     if (!normPhone || !iranPhoneRegex.test(normPhone))
       return res.status(400).json({ message: "Invalid phone format" });
 
-    // Rate-limit: check lastSentAt
+    // Rate-limit: check lastSentAt with more flexible logic
     const existing = await OtpCode.findOne({ phone: normPhone });
     if (existing && existing.lastSentAt) {
       const delta = Date.now() - new Date(existing.lastSentAt).getTime();
-      if (delta < OTP_RESEND_SECONDS * 1000)
+      const timeSinceLastSent = delta / 1000; // in seconds
+
+      // If less than 15 seconds, always block (prevent spam)
+      if (timeSinceLastSent < 15) {
         return res.status(429).json({
-          message: "Try again later",
-          retryAfterSeconds: Math.ceil(
-            (OTP_RESEND_SECONDS * 1000 - delta) / 1000
-          ),
+          message: `لطفاً ${Math.ceil(15 - timeSinceLastSent)} ثانیه صبر کنید`,
+          retryAfterSeconds: Math.ceil(15 - timeSinceLastSent),
         });
+      }
+
+      // If between 15-30 seconds and user hasn't tried to verify (attempts = 0), allow resend
+      // This handles the case where user goes back without trying to verify
+      if (timeSinceLastSent < OTP_RESEND_SECONDS && existing.attempts > 0) {
+        return res.status(429).json({
+          message: `لطفاً ${Math.ceil(
+            OTP_RESEND_SECONDS - timeSinceLastSent
+          )} ثانیه صبر کنید`,
+          retryAfterSeconds: Math.ceil(OTP_RESEND_SECONDS - timeSinceLastSent),
+        });
+      }
     }
 
     // Generate code (5 or 6 digits). Use 6 by default.
@@ -347,10 +360,28 @@ router.post("/otp/verify", async (req, res) => {
       // On mismatch, increment attempts and persist
       record.attempts = (record.attempts || 0) + 1;
       await record.save();
-      if (record.attempts >= OTP_MAX_ATTEMPTS)
-        return res
-          .status(429)
-          .json({ message: "تعداد تلاش‌ها بیش از حد مجاز است." });
+      if (record.attempts >= OTP_MAX_ATTEMPTS) {
+        // Reset attempts after some time to give user another chance
+        const timeSinceLastAttempt =
+          Date.now() - new Date(record.lastSentAt).getTime();
+        const resetTimeMinutes = 10; // Reset attempts after 10 minutes
+
+        if (timeSinceLastAttempt < resetTimeMinutes * 60 * 1000) {
+          const remainingMinutes = Math.ceil(
+            (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / (60 * 1000)
+          );
+          return res.status(429).json({
+            message: `تعداد تلاش‌ها بیش از حد. لطفاً ${remainingMinutes} دقیقه صبر کنید.`,
+            retryAfterSeconds: Math.ceil(
+              (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000
+            ),
+          });
+        } else {
+          // Reset attempts if enough time has passed
+          record.attempts = 1;
+          await record.save();
+        }
+      }
       return res.status(400).json({ message: "کد وارد شده صحیح نیست." });
     }
 

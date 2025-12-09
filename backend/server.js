@@ -156,8 +156,10 @@ const craftRoutes = require("./routes/crafts");
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 const listingsNearRoutes = require("./routes/listings.near");
+const healthRoutes = require("./routes/health");
 
 // Routes
+app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 // Mount canonical crafts API first
 app.use("/api/crafts", craftRoutes);
@@ -199,10 +201,6 @@ const connectDB = async () => {
     });
   }
 };
-
-// Import and use health routes
-const healthRoutes = require("./routes/health");
-app.use("/api/health", healthRoutes);
 
 // Swagger API Documentation
 app.use(

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type ClipboardEvent,
 } from "react";
@@ -13,6 +14,7 @@ type Props = {
   onComplete?: (v: string) => void;
   disabled?: boolean;
   error?: boolean;
+  loading?: boolean;
 };
 
 const persianToEnglish = (s: string) =>
@@ -28,11 +30,13 @@ export default function OtpInput({
   onComplete,
   disabled = false,
   error = false,
+  loading = false,
 }: Props) {
   const digits = value.split("").slice(0, length);
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const prevCompleteRef = useRef(false);
   const prevCompleteValueRef = useRef<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (autoFocus && refs.current[0]) refs.current[0].focus();
@@ -104,35 +108,134 @@ export default function OtpInput({
   };
 
   return (
-    <div
-      className="flex justify-center gap-2 flex-row-reverse"
-      onPaste={handlePaste}
-      dir="rtl"
-    >
-      {Array.from({ length }).map((_, i) => {
-        const ch = digits[i] || "";
-        return (
-          <input
-            key={i}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={1}
-            value={ch}
-            onChange={() => {}}
-            onKeyDown={(e) => handleKey(e, i)}
-            disabled={disabled}
-            aria-label={`رقم ${i + 1}`}
-            className="w-12 h-12 text-center text-lg font-semibold bg-transparent border-b-2 outline-none"
-            style={{
-              borderColor: error ? "#DC2626" : ch ? "#1A5F7A" : "#C7CCD8",
-              color: "#2E2E2E",
-            }}
-          />
-        );
-      })}
+    <div className="w-full">
+      {/* Progress indicator */}
+      <div className="mb-6">
+        <div className="flex justify-center gap-1 mb-2">
+          {Array.from({ length }).map((_, i) => (
+            <div
+              key={i}
+              className={`w-8 h-1 rounded-full transition-all duration-300 ${
+                i < digits.length ? "bg-[#1A5F7A] scale-110" : "bg-gray-200"
+              }`}
+            />
+          ))}
+        </div>
+        <p className="text-center text-sm text-gray-600">
+          {digits.length} از {length} رقم وارد شده
+        </p>
+      </div>
+
+      {/* OTP Input */}
+      <div
+        className="flex justify-center gap-3 flex-row-reverse relative"
+        onPaste={handlePaste}
+        dir="rtl"
+      >
+        {Array.from({ length }).map((_, i) => {
+          const ch = digits[i] || "";
+          const isFocused = focusedIndex === i;
+          const hasValue = !!ch;
+          const isError = error;
+
+          return (
+            <div key={i} className="relative">
+              <input
+                ref={(el) => {
+                  refs.current[i] = el;
+                }}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={1}
+                value={ch}
+                onChange={() => {}}
+                onKeyDown={(e) => handleKey(e, i)}
+                onFocus={() => setFocusedIndex(i)}
+                onBlur={() => setFocusedIndex(null)}
+                disabled={disabled || loading}
+                aria-label={`رقم ${i + 1}`}
+                className={`w-14 h-14 text-center text-xl font-bold rounded-xl border-2 outline-none transition-all duration-200 transform ${
+                  disabled || loading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:scale-105"
+                } ${
+                  isFocused
+                    ? "scale-110 shadow-lg"
+                    : hasValue
+                    ? "scale-105"
+                    : ""
+                } ${
+                  isError
+                    ? "border-red-500 bg-red-50 text-red-600 animate-pulse"
+                    : hasValue
+                    ? "border-[#1A5F7A] bg-blue-50 text-[#1A5F7A] shadow-md"
+                    : isFocused
+                    ? "border-[#1A5F7A] bg-blue-50"
+                    : "border-gray-300 bg-white hover:border-gray-400"
+                }`}
+                style={{
+                  color: isError
+                    ? "#DC2626"
+                    : hasValue || isFocused
+                    ? "#1A5F7A"
+                    : "#2E2E2E",
+                }}
+              />
+
+              {/* Loading spinner overlay */}
+              {loading && i === Math.floor(length / 2) && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-[#1A5F7A] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {/* Success checkmark animation */}
+              {hasValue && !isError && !loading && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center animate-bounce">
+                  <svg
+                    className="w-2 h-2 text-white"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Completion celebration effect */}
+        {digits.length === length && !error && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute inset-0 animate-ping bg-green-400 opacity-20 rounded-xl" />
+          </div>
+        )}
+      </div>
+
+      {/* Error message with animation */}
+      {error && (
+        <div className="mt-4 flex items-center justify-center gap-2 animate-shake">
+          <svg
+            className="w-5 h-5 text-red-500"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <p className="text-red-600 text-sm font-medium">
+            کد وارد شده صحیح نمی‌باشد
+          </p>
+        </div>
+      )}
     </div>
   );
 }
