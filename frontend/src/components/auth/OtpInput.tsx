@@ -188,33 +188,9 @@ export default function OtpInput({
                   <div className="w-5 h-5 border-2 border-[#1A5F7A] border-t-transparent rounded-full animate-spin" />
                 </div>
               )}
-
-              {/* Success checkmark animation */}
-              {hasValue && !isError && !loading && (
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center animate-bounce">
-                  <svg
-                    className="w-2 h-2 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-              )}
             </div>
           );
         })}
-
-        {/* Completion celebration effect */}
-        {digits.length === length && !error && (
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute inset-0 animate-ping bg-green-400 opacity-20 rounded-xl" />
-          </div>
-        )}
       </div>
 
       {/* Error message with animation */}

@@ -407,50 +407,6 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
                 </button>
               </div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm" style={{ color: "#666" }}>
-                    کد را به شماره{" "}
-                    <span className="font-medium text-[#1A5F7A]">{phone}</span>{" "}
-                    فرستادیم.
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: "#999" }}>
-                    اگر پیامک را دریافت نکردید، کمی صبر کنید
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    // Reset all states when changing phone
-                    setStep("PHONE");
-                    setOtp("");
-                    setError(null);
-                    setDevCode(null);
-                    setRateLimitActive(false);
-                    setCanAutoSubmit(true);
-                    setSecondsLeft(0);
-                    lastSubmittedCodeRef.current = null;
-                  }}
-                  className="flex items-center gap-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  style={{ color: "#1A5F7A" }}
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                    />
-                  </svg>
-                  تغییر
-                </button>
-              </div>
-            </div>
           </div>
 
           <div className="mb-6">
@@ -711,7 +667,25 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       )}
 
       <p className="text-xs mt-6 text-center" style={{ color: "#666" }}>
-        با ورود شما قوانین استفاده و حریم خصوصی نخشا را می‌پذیرید.
+        با ورود شما{" "}
+        <a
+          href="/terms"
+          className="text-[#1A5F7A] underline hover:no-underline transition-all"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          قوانین استفاده
+        </a>{" "}
+        و{" "}
+        <a
+          href="/privacy"
+          className="text-[#1A5F7A] underline hover:no-underline transition-all"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          حریم خصوصی
+        </a>{" "}
+        نخشا را می‌پذیرید.
       </p>
     </div>
   );
