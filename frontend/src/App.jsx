@@ -10,7 +10,6 @@ import CraftDetail from "./pages/CraftDetail";
 import CreateCraft from "./pages/CreateCraft";
 import EditCraft from "./pages/EditCraft";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import MyCrafts from "./pages/MyCrafts";

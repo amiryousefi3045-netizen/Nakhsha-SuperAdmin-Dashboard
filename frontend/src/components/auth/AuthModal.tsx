@@ -57,14 +57,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
       <div
         ref={modalRef}
-        className="relative w-full max-w-lg mx-4 rounded-2xl shadow-xl overflow-hidden"
-        style={{ backgroundColor: "#FAFAF7" }}
+        className="relative w-full max-w-lg mx-4 md:mx-auto md:my-8"
       >
-        {/* Responsive: on small screens cover full height */}
-        <div className="md:hidden h-screen overflow-auto">
-          <AuthPanel onClose={onClose} onSuccess={onSuccess} />
+        {/* Mobile: full height modal */}
+        <div
+          className="md:hidden fixed inset-0 overflow-auto"
+          style={{ backgroundColor: "#FAFAF7" }}
+        >
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <AuthPanel onClose={onClose} onSuccess={onSuccess} />
+          </div>
         </div>
-        <div className="hidden md:block">
+
+        {/* Desktop: centered modal */}
+        <div
+          className="hidden md:block rounded-2xl shadow-xl overflow-hidden"
+          style={{ backgroundColor: "#FAFAF7" }}
+        >
           <AuthPanel onClose={onClose} onSuccess={onSuccess} />
         </div>
       </div>

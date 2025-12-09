@@ -235,13 +235,6 @@ const Navbar = () => {
                     onClose={() => setShowAuth(false)}
                   />
                 </>
-                {/* <Link
-                  to="/register"
-                  className="bg-primary-600 text-white px-4 py-2 rounded-full hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium"
-                  aria-label="ثبت‌نام حساب جدید"
-                >
-                  ثبت‌نام
-                </Link> */}
 
                 {/* Mobile Login Icon */}
                 <button

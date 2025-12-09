@@ -81,19 +81,8 @@ export interface User {
   updatedAt?: string;
 }
 
-export interface LoginRequest {
-  email?: string;
-  phone?: string;
-  password: string;
-}
-export interface RegisterRequest
-  extends Omit<User, "id" | "isVerified" | "createdAt" | "updatedAt"> {
-  password: string;
-}
-export interface AuthResponse {
-  token: string;
-  user: User;
-}
+// Removed LoginRequest, RegisterRequest, and AuthResponse types
+// since the app now uses OTP-only authentication
 
 export type CraftResponse = Craft & {
   liked?: boolean;

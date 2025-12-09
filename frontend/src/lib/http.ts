@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getToken } from "../services/auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
@@ -7,14 +8,10 @@ export const http = axios.create({ baseURL: API_BASE });
 
 // Add token to all requests if it exists
 http.interceptors.request.use((config) => {
-  try {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    // Ignore storage errors
+  const token = getToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });

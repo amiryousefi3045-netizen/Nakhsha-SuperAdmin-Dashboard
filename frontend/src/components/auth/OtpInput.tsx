@@ -110,25 +110,25 @@ export default function OtpInput({
   return (
     <div className="w-full">
       {/* Progress indicator */}
-      <div className="mb-6">
+      <div className="mb-4">
         <div className="flex justify-center gap-1 mb-2">
           {Array.from({ length }).map((_, i) => (
             <div
               key={i}
-              className={`w-8 h-1 rounded-full transition-all duration-300 ${
+              className={`w-6 h-1 rounded-full transition-all duration-300 ${
                 i < digits.length ? "bg-[#1A5F7A] scale-110" : "bg-gray-200"
               }`}
             />
           ))}
         </div>
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-xs text-gray-600">
           {digits.length} از {length} رقم وارد شده
         </p>
       </div>
 
       {/* OTP Input */}
       <div
-        className="flex justify-center gap-3 flex-row-reverse relative"
+        className="flex justify-center gap-2 flex-row-reverse relative"
         onPaste={handlePaste}
         dir="rtl"
       >
@@ -154,7 +154,7 @@ export default function OtpInput({
                 onBlur={() => setFocusedIndex(null)}
                 disabled={disabled || loading}
                 aria-label={`رقم ${i + 1}`}
-                className={`w-14 h-14 text-center text-xl font-bold rounded-xl border-2 outline-none transition-all duration-200 transform ${
+                className={`w-10 h-10 text-center text-lg font-bold rounded-lg border-2 outline-none transition-all duration-200 transform ${
                   disabled || loading
                     ? "opacity-50 cursor-not-allowed"
                     : "hover:scale-105"
