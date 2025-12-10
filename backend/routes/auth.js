@@ -3,19 +3,19 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const OtpCode = require("../models/OtpCode");
 const { generateCode, hashCode, verifyHash } = require("../utils/otp");
+const { normalizePhone, isValidIranianPhone } = require("../utils/phone");
+const { sendOtpSms } = require("../services/sms/melipayamakSms");
 const logger = require("../utils/logger");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const TOKEN_TTL = process.env.JWT_TTL || "7d";
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
-const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "30", 10);
+const OTP_RESEND_COOLDOWN_SECONDS = parseInt(
+  process.env.OTP_RESEND_COOLDOWN_SECONDS || "120",
+  10
+);
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "8", 10);
-
-function normalizePhone(phone) {
-  if (typeof phone !== "string") return phone;
-  return phone.trim();
-}
 
 const iranPhoneRegex = /^09\d{9}$/;
 
@@ -274,54 +274,74 @@ router.post("/otp/start", async (req, res) => {
       logger.warn("POST /auth/otp/start - DB not ready");
       return res.status(503).json({ message: "Database unavailable" });
     }
+
     const { phone } = req.body || {};
     const normPhone = normalizePhone(phone);
-    if (!normPhone || !iranPhoneRegex.test(normPhone))
-      return res.status(400).json({ message: "Invalid phone format" });
 
-    // Rate-limit: check lastSentAt with more flexible logic
+    // Validate phone number
+    if (!normPhone || !isValidIranianPhone(normPhone)) {
+      return res.status(400).json({ message: "فرمت شماره تلفن نادرست است" });
+    }
+
+    // Check resend cooldown (120 seconds)
     const existing = await OtpCode.findOne({ phone: normPhone });
     if (existing && existing.lastSentAt) {
       const delta = Date.now() - new Date(existing.lastSentAt).getTime();
       const timeSinceLastSent = delta / 1000; // in seconds
 
-      // If less than 15 seconds, always block (prevent spam)
-      if (timeSinceLastSent < 15) {
+      if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
+        const retryAfterSeconds = Math.ceil(
+          OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent
+        );
         return res.status(429).json({
-          message: `لطفاً ${Math.ceil(15 - timeSinceLastSent)} ثانیه صبر کنید`,
-          retryAfterSeconds: Math.ceil(15 - timeSinceLastSent),
-        });
-      }
-
-      // If between 15-30 seconds and user hasn't tried to verify (attempts = 0), allow resend
-      // This handles the case where user goes back without trying to verify
-      if (timeSinceLastSent < OTP_RESEND_SECONDS && existing.attempts > 0) {
-        return res.status(429).json({
-          message: `لطفاً ${Math.ceil(
-            OTP_RESEND_SECONDS - timeSinceLastSent
-          )} ثانیه صبر کنید`,
-          retryAfterSeconds: Math.ceil(OTP_RESEND_SECONDS - timeSinceLastSent),
+          message: `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
+          retryAfterSeconds,
         });
       }
     }
 
-    // Generate code (5 or 6 digits). Use 6 by default.
+    // Generate 6-digit OTP code
     const code = generateCode(6);
     const codeHash = hashCode(code, normPhone);
     const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000);
 
-    // Upsert the OTP record for the phone
+    // Store hashed code with expiry
     await OtpCode.findOneAndUpdate(
       { phone: normPhone },
       { codeHash, expiresAt, attempts: 0, lastSentAt: new Date() },
       { upsert: true, setDefaultsOnInsert: true }
     );
 
-    // TODO: Integrate with SMS provider here. Keep it separate for testability.
+    // Send SMS via MeliPayamak
+    try {
+      await sendOtpSms(normPhone, code);
+      logger.info("OTP SMS sent successfully", { phone: normPhone });
+    } catch (smsError) {
+      logger.error("Failed to send OTP SMS", {
+        phone: normPhone,
+        error: smsError.message,
+      });
+      // Don't expose SMS sending failures to client in production
+      if (process.env.NODE_ENV === "production") {
+        return res
+          .status(500)
+          .json({ message: "خطا در ارسال کد. لطفاً دوباره تلاش کنید" });
+      } else {
+        return res.status(500).json({
+          message: "Failed to send SMS",
+          error: smsError.message,
+        });
+      }
+    }
 
-    const response = { success: true, message: "OTP sent" };
-    if ((process.env.NODE_ENV || "development") !== "production") {
-      // In non-production include the dev code to speed testing — do NOT enable in production
+    const response = {
+      success: true,
+      message: "کد ارسال شد",
+      retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
+    };
+
+    // Include dev code in non-production environments
+    if (process.env.NODE_ENV !== "production") {
       response.devCode = code;
     }
 
@@ -343,28 +363,39 @@ router.post("/otp/verify", async (req, res) => {
       logger.warn("POST /auth/otp/verify - DB not ready");
       return res.status(503).json({ message: "Database unavailable" });
     }
+
     const { phone, code } = req.body || {};
     const normPhone = normalizePhone(phone);
-    if (!normPhone || !iranPhoneRegex.test(normPhone) || !code)
+
+    // Validate input
+    if (!normPhone || !isValidIranianPhone(normPhone) || !code) {
       return res.status(400).json({ message: "Invalid input" });
+    }
 
+    // Find OTP record
     const record = await OtpCode.findOne({ phone: normPhone });
-    if (!record)
-      return res.status(400).json({ message: "OTP not found or expired" });
-    if (record.expiresAt && record.expiresAt.getTime() < Date.now())
-      return res.status(400).json({ message: "OTP expired" });
+    if (!record) {
+      return res.status(400).json({ message: "کد نادرست است" });
+    }
 
-    // Verify the code first using timing-safe compare
-    const ok = verifyHash(code, normPhone, record.codeHash);
-    if (!ok) {
-      // On mismatch, increment attempts and persist
+    // Check expiration
+    if (record.expiresAt && record.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ message: "کد منقضی شده" });
+    }
+
+    // Verify the code using timing-safe comparison
+    const isValid = verifyHash(code, normPhone, record.codeHash);
+    if (!isValid) {
+      // Increment attempts and persist
       record.attempts = (record.attempts || 0) + 1;
       await record.save();
+
+      // Rate limit after max attempts
       if (record.attempts >= OTP_MAX_ATTEMPTS) {
-        // Reset attempts after some time to give user another chance
+        // Reset attempts after 10 minutes
         const timeSinceLastAttempt =
           Date.now() - new Date(record.lastSentAt).getTime();
-        const resetTimeMinutes = 10; // Reset attempts after 10 minutes
+        const resetTimeMinutes = 10;
 
         if (timeSinceLastAttempt < resetTimeMinutes * 60 * 1000) {
           const remainingMinutes = Math.ceil(
@@ -382,25 +413,27 @@ router.post("/otp/verify", async (req, res) => {
           await record.save();
         }
       }
-      return res.status(400).json({ message: "کد وارد شده صحیح نیست." });
+      return res.status(400).json({ message: "کد نادرست است" });
     }
 
     // Successful verification: delete OTP record to prevent reuse
     await OtpCode.deleteOne({ _id: record._id });
 
-    // Find or create user. Current User model requires email & password, so create
-    // a minimal stub account with a placeholder email and random password.
+    // Find or create user (auto-register)
     let user = await User.findOne({ phone: normPhone });
     if (!user) {
-      // Create a user without placeholder email/password for OTP-only signup
+      // Create new user with phone-only registration
       user = await User.create({
         name: "کاربر نخشا",
         phone: normPhone,
+        // Don't require email and password for OTP-only registration
       });
-      // Mark verified if schema supports it
+
+      // Mark as verified if schema supports it
       try {
-        if (typeof user.isVerified !== "undefined") user.isVerified = true;
-        // If schema has phoneVerifiedAt, set it as well
+        if (typeof user.isVerified !== "undefined") {
+          user.isVerified = true;
+        }
         if (
           User.schema &&
           User.schema.path &&
@@ -414,15 +447,23 @@ router.post("/otp/verify", async (req, res) => {
           error: e.message,
         });
       }
+
+      logger.info("New user auto-registered via OTP", {
+        userId: user._id,
+        phone: normPhone,
+      });
     }
 
+    // Generate JWT token
     const token = sign(user);
+
     res.json({
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
       },
     });

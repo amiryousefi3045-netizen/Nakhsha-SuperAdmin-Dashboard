@@ -15,7 +15,7 @@ export default function NakhshaOtpAuthMobile() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(59);
+  const [secondsLeft, setSecondsLeft] = useState(120);
   const [loading, setLoading] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [otpFocused, setOtpFocused] = useState(false);
@@ -50,7 +50,7 @@ export default function NakhshaOtpAuthMobile() {
       await otpStart(phone.trim());
       setStep("CODE");
       setOtp("");
-      setSecondsLeft(59);
+      setSecondsLeft(120);
     } catch (err) {
       const e = err as OtpError;
       if (e?.status === 429 && e?.retryAfterSeconds) {
@@ -112,7 +112,7 @@ export default function NakhshaOtpAuthMobile() {
     try {
       await otpStart(phone.trim());
       setOtp("");
-      setSecondsLeft(59);
+      setSecondsLeft(120);
     } catch (err) {
       const e = err as OtpError;
       if (e?.status === 429 && e?.retryAfterSeconds) {

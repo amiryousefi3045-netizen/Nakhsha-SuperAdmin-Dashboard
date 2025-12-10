@@ -15,7 +15,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(59);
+  const [secondsLeft, setSecondsLeft] = useState(120);
   const [loading, setLoading] = useState(false);
   const [canAutoSubmit, setCanAutoSubmit] = useState(true);
   const [rateLimitActive, setRateLimitActive] = useState(false);
@@ -41,7 +41,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   useEffect(() => {
     if (step === "CODE") {
       // don't overwrite an active rate-limit countdown
-      if (!rateLimitActive) setSecondsLeft(59);
+      if (!rateLimitActive) setSecondsLeft(120);
     }
   }, [step, rateLimitActive]);
 
@@ -79,7 +79,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       // Only move to CODE step when start succeeds.
       setStep("CODE");
       setOtp("");
-      setSecondsLeft(res?.retryAfterSeconds || 30); // Default to 30 seconds
+      setSecondsLeft(res?.retryAfterSeconds || 120); // Default to 120 seconds
       setHasReturnedFromCode(false); // Reset when successfully sending code
       if ((res as any)?.devCode) setDevCode((res as any).devCode);
     } catch (e: any) {
@@ -97,7 +97,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
         if (errorMessage.includes("زیاد") || errorMessage.includes("صبر")) {
           setRateLimitActive(true);
           setCanAutoSubmit(false);
-          setSecondsLeft(30); // Default wait time
+          setSecondsLeft(120); // Default wait time
         }
       }
     } finally {
@@ -154,7 +154,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     setLoading(true);
     try {
       const res = await otpStart(phone.trim());
-      setSecondsLeft(res?.retryAfterSeconds || 30);
+      setSecondsLeft(res?.retryAfterSeconds || 120);
       setRateLimitActive(false); // Reset rate limit state on successful resend
       setCanAutoSubmit(true);
       if ((res as any)?.devCode) setDevCode((res as any).devCode);
