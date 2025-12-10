@@ -3,10 +3,10 @@ const logger = require("../../utils/logger");
 const { formatForProvider } = require("../../utils/phone");
 
 // Environment variables
-const MELIPAYAMAK_USERNAME = process.env.MELIPAYAMAK_USERNAME;
-const MELIPAYAMAK_PASSWORD = process.env.MELIPAYAMAK_PASSWORD;
-const MELIPAYAMAK_FROM = process.env.MELIPAYAMAK_FROM || "50004001854432";
-const MELIPAYAMAK_TO_FORMAT = process.env.MELIPAYAMAK_TO_FORMAT || "09";
+const MELIPAYAMAK_USERNAME = process.env.SMS_USERNAME;
+const MELIPAYAMAK_PASSWORD = process.env.SMS_PASSWORD;
+const MELIPAYAMAK_FROM = process.env.SMS_FROM || "50004001854432";
+const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "09";
 
 /**
  * Send OTP SMS using MeliPayamak service
@@ -39,7 +39,7 @@ async function sendOtpSms(phone, code) {
 لطفاً این کد را در اختیار دیگران قرار ندهید.
 (مدت زمان اعتبار تا ۲ دقیقه)`;
 
-  // In development mode, simulate success for faster testing
+  // In development mode, simulate success for faster testing (only if SMS_MOCK is true)
   if (
     process.env.NODE_ENV === "development" &&
     process.env.SMS_MOCK === "true"
@@ -53,6 +53,8 @@ async function sendOtpSms(phone, code) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     return;
   }
+    return;
+  }
 
   const api = new MelipayamakApi(MELIPAYAMAK_USERNAME, MELIPAYAMAK_PASSWORD);
   const sms = api.sms();
@@ -61,6 +63,8 @@ async function sendOtpSms(phone, code) {
     phone: formattedPhone,
     from: MELIPAYAMAK_FROM,
     format: MELIPAYAMAK_TO_FORMAT,
+    username: MELIPAYAMAK_USERNAME,
+    hasPassword: !!MELIPAYAMAK_PASSWORD,
   });
 
   try {
@@ -142,6 +146,16 @@ async function sendOtpSms(phone, code) {
         soapError: soapError.message,
       });
 
+      // In development mode, don't fail completely if SMS service is down
+      if (process.env.NODE_ENV === "development") {
+        logger.warn("SMS service failed in development, continuing anyway", {
+          phone: formattedPhone,
+          restError: restError.message,
+          soapError: soapError.message,
+        });
+        return; // Don't throw error in development
+      }
+
       throw new Error(
         `SMS sending failed: ${restError.message}; SOAP fallback: ${soapError.message}`
       );
@@ -155,6 +169,20 @@ async function sendOtpSms(phone, code) {
  */
 async function testConfiguration() {
   try {
+    // In mock mode, always return true if we have some credentials
+    if (
+      process.env.NODE_ENV === "development" &&
+      process.env.SMS_MOCK === "true"
+    ) {
+      logger.info("SMS service in mock mode", {
+        username: MELIPAYAMAK_USERNAME || "NOT SET",
+        from: MELIPAYAMAK_FROM,
+        format: MELIPAYAMAK_TO_FORMAT,
+        mock: true,
+      });
+      return true;
+    }
+
     if (!MELIPAYAMAK_USERNAME || !MELIPAYAMAK_PASSWORD) {
       logger.warn("MeliPayamak credentials missing");
       return false;

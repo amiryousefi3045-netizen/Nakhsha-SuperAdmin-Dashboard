@@ -283,20 +283,23 @@ router.post("/otp/start", async (req, res) => {
       return res.status(400).json({ message: "فرمت شماره تلفن نادرست است" });
     }
 
-    // Check resend cooldown (120 seconds)
-    const existing = await OtpCode.findOne({ phone: normPhone });
-    if (existing && existing.lastSentAt) {
-      const delta = Date.now() - new Date(existing.lastSentAt).getTime();
-      const timeSinceLastSent = delta / 1000; // in seconds
+    // Rate limiting disabled in development for easier testing
+    if (process.env.NODE_ENV !== "development") {
+      // Check resend cooldown - only in production
+      const existing = await OtpCode.findOne({ phone: normPhone });
+      if (existing && existing.lastSentAt) {
+        const delta = Date.now() - new Date(existing.lastSentAt).getTime();
+        const timeSinceLastSent = delta / 1000; // in seconds
 
-      if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
-        const retryAfterSeconds = Math.ceil(
-          OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent
-        );
-        return res.status(429).json({
-          message: `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
-          retryAfterSeconds,
-        });
+        if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
+          const retryAfterSeconds = Math.ceil(
+            OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent
+          );
+          return res.status(429).json({
+            message: `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
+            retryAfterSeconds,
+          });
+        }
       }
     }
 
