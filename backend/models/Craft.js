@@ -199,7 +199,10 @@ craftSchema.statics.migrateLocations = async function () {
   console.log(`Found ${docs.length} craft documents to migrate`);
 
   for (const doc of docs) {
-    if (Array.isArray(doc.location?.coordinates) && doc.location.coordinates.length === 2) {
+    if (
+      Array.isArray(doc.location?.coordinates) &&
+      doc.location.coordinates.length === 2
+    ) {
       doc.location = {
         ...doc.location,
         geometry: {

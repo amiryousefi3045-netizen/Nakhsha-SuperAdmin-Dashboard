@@ -240,7 +240,8 @@ const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
             key={craft.id || idx}
             ref={(el) => {
               const prev = itemRefsRef.current.get(idx);
-              if (prev && observerRef.current) observerRef.current.unobserve(prev);
+              if (prev && observerRef.current)
+                observerRef.current.unobserve(prev);
               if (el) {
                 itemRefsRef.current.set(idx, el);
                 if (observerRef.current) observerRef.current.observe(el);
