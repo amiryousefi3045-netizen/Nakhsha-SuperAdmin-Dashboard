@@ -6,6 +6,11 @@ const { generateCode, hashCode, verifyHash } = require("../utils/otp");
 const { normalizePhone, isValidIranianPhone } = require("../utils/phone");
 const { sendOtpSms } = require("../services/sms/melipayamakSms");
 const logger = require("../utils/logger");
+const {
+  otpRateLimit,
+  detectSuspiciousActivity,
+} = require("../utils/rateLimiter");
+const otpMetrics = require("../utils/otpMetrics");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -267,8 +272,13 @@ router.get("/me", authMiddleware, async (req, res) => {
 });
 
 // Start OTP flow: generate and store (hashed) code, enforce resend rate-limit
-router.post("/otp/start", async (req, res) => {
+router.post("/otp/start", otpRateLimit, async (req, res) => {
+  const startTime = Date.now();
+
   try {
+    logger.info("otp/start: begin", { ip: req.ip, ua: req.get("User-Agent") });
+    // Record OTP request
+    otpMetrics.recordOtpRequest(req.body?.phone, req.ip, req.get("User-Agent"));
     // DB readiness guard
     if (!req.app?.locals?.dbReady) {
       logger.warn("POST /auth/otp/start - DB not ready");
@@ -276,11 +286,52 @@ router.post("/otp/start", async (req, res) => {
     }
 
     const { phone } = req.body || {};
-    const normPhone = normalizePhone(phone);
+
+    // Input sanitization and validation
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({
+        message: "شماره تلفن الزامی است",
+        field: "phone",
+      });
+    }
+
+    // Trim and normalize
+    const trimmedPhone = phone.trim();
+    if (trimmedPhone.length > 20) {
+      return res.status(400).json({
+        message: "شماره تلفن خیلی طولانی است",
+        field: "phone",
+      });
+    }
+
+    const normPhone = normalizePhone(trimmedPhone);
 
     // Validate phone number
     if (!normPhone || !isValidIranianPhone(normPhone)) {
-      return res.status(400).json({ message: "فرمت شماره تلفن نادرست است" });
+      return res.status(400).json({
+        message: "فرمت شماره تلفن نادرست است",
+        field: "phone",
+      });
+    }
+
+    // Detect suspicious activity
+    const suspiciousIndicators = detectSuspiciousActivity(req, normPhone);
+    if (suspiciousIndicators.length > 2) {
+      otpMetrics.recordSuspiciousActivity(
+        suspiciousIndicators,
+        normPhone,
+        req.ip,
+        req.get("User-Agent")
+      );
+
+      logger.warn("Blocked suspicious OTP request", {
+        phone: normPhone,
+        clientIP: req.ip,
+        indicators: suspiciousIndicators,
+      });
+      return res.status(429).json({
+        message: "درخواست مشکوک تشخیص داده شد. لطفاً بعداً تلاش کنید",
+      });
     }
 
     // Rate limiting disabled in development for easier testing
@@ -314,53 +365,65 @@ router.post("/otp/start", async (req, res) => {
       { codeHash, expiresAt, attempts: 0, lastSentAt: new Date() },
       { upsert: true, setDefaultsOnInsert: true }
     );
-
-    // Send SMS via MeliPayamak
-    try {
-      await sendOtpSms(normPhone, code);
-      logger.info("OTP SMS sent successfully", { phone: normPhone });
-    } catch (smsError) {
-      logger.error("Failed to send OTP SMS", {
-        phone: normPhone,
-        error: smsError.message,
-      });
-      // Don't expose SMS sending failures to client in production
-      if (process.env.NODE_ENV === "production") {
-        return res
-          .status(500)
-          .json({ message: "خطا در ارسال کد. لطفاً دوباره تلاش کنید" });
-      } else {
-        return res.status(500).json({
-          message: "Failed to send SMS",
-          error: smsError.message,
-        });
-      }
-    }
-
+    logger.info("otp/start: saved", { phone: normPhone, expiresAt });
+    // Respond immediately without awaiting SMS send
     const response = {
       success: true,
       message: "کد ارسال شد",
       retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     };
 
-    // Include dev code in non-production environments
     if (process.env.NODE_ENV !== "production") {
       response.devCode = code;
     }
 
-    res.json(response);
+    logger.info("otp/start: responded", { phone: normPhone });
+    res.status(200).json(response);
+
+    // Send SMS in background with timeout handled inside service
+    const smsStartTime = Date.now();
+    Promise.resolve()
+      .then(() => sendOtpSms(normPhone, code))
+      .then(() => {
+        const smsDuration = Date.now() - smsStartTime;
+        otpMetrics.recordSmsAttempt(normPhone, true, null, smsDuration);
+        logger.info("otp/start: sms sent", {
+          phone: normPhone,
+          duration: smsDuration,
+        });
+      })
+      .catch((smsError) => {
+        const smsDuration = Date.now() - smsStartTime;
+        otpMetrics.recordSmsAttempt(normPhone, false, smsError, smsDuration);
+        logger.error("otp/start: sms failed", {
+          phone: normPhone,
+          error: smsError?.message,
+          duration: smsDuration,
+        });
+      });
+    return; // Ensure no further processing
   } catch (e) {
+    otpMetrics.recordError("otp_start", e, {
+      phone: req.body?.phone,
+      clientIP: req.ip,
+      duration: Date.now() - startTime,
+    });
+
     logger.error("POST /auth/otp/start error", {
       error: e.message,
       stack: e.stack,
+      duration: Date.now() - startTime,
     });
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
 // Verify OTP and issue JWT (auto-register if needed)
-router.post("/otp/verify", async (req, res) => {
+router.post("/otp/verify", otpRateLimit, async (req, res) => {
+  const startTime = Date.now();
+
   try {
+    logger.info("otp/verify: begin", { ip: req.ip, ua: req.get("User-Agent") });
     // DB readiness guard
     if (!req.app?.locals?.dbReady) {
       logger.warn("POST /auth/otp/verify - DB not ready");
@@ -368,30 +431,85 @@ router.post("/otp/verify", async (req, res) => {
     }
 
     const { phone, code } = req.body || {};
-    const normPhone = normalizePhone(phone);
+
+    // Input sanitization and validation
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({
+        message: "شماره تلفن الزامی است",
+        field: "phone",
+      });
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({
+        message: "کد تایید الزامی است",
+        field: "code",
+      });
+    }
+
+    // Validate code format (should be 6 digits)
+    const trimmedCode = code.trim();
+    if (!/^\d{6}$/.test(trimmedCode)) {
+      return res.status(400).json({
+        message: "کد تایید باید ۶ رقم باشد",
+        field: "code",
+      });
+    }
+
+    const normPhone = normalizePhone(phone.trim());
 
     // Validate input
-    if (!normPhone || !isValidIranianPhone(normPhone) || !code) {
-      return res.status(400).json({ message: "Invalid input" });
+    if (!normPhone || !isValidIranianPhone(normPhone)) {
+      return res.status(400).json({
+        message: "فرمت شماره تلفن نادرست است",
+        field: "phone",
+      });
     }
 
     // Find OTP record
     const record = await OtpCode.findOne({ phone: normPhone });
     if (!record) {
-      return res.status(400).json({ message: "کد نادرست است" });
+      logger.warn("OTP verification failed - no record found", {
+        phone: normPhone,
+        clientIP: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(400).json({
+        message: "کد نادرست است",
+        field: "code",
+      });
     }
 
     // Check expiration
     if (record.expiresAt && record.expiresAt.getTime() < Date.now()) {
-      return res.status(400).json({ message: "کد منقضی شده" });
+      logger.warn("OTP verification failed - code expired", {
+        phone: normPhone,
+        expiredAt: record.expiresAt,
+        clientIP: req.ip,
+      });
+      // Clean up expired record
+      await OtpCode.deleteOne({ _id: record._id });
+      return res.status(400).json({
+        message: "کد منقضی شده است. لطفاً کد جدید درخواست کنید",
+        expired: true,
+        field: "code",
+      });
     }
 
     // Verify the code using timing-safe comparison
-    const isValid = verifyHash(code, normPhone, record.codeHash);
+    const isValid = verifyHash(trimmedCode, normPhone, record.codeHash);
     if (!isValid) {
       // Increment attempts and persist
       record.attempts = (record.attempts || 0) + 1;
       await record.save();
+
+      logger.warn("OTP verification failed - invalid code", {
+        phone: normPhone,
+        attempts: record.attempts,
+        clientIP: req.ip,
+        userAgent: req.get("User-Agent"),
+        maxAttempts: OTP_MAX_ATTEMPTS,
+      });
 
       // Rate limit after max attempts
       if (record.attempts >= OTP_MAX_ATTEMPTS) {
@@ -404,11 +522,21 @@ router.post("/otp/verify", async (req, res) => {
           const remainingMinutes = Math.ceil(
             (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / (60 * 1000)
           );
+
+          logger.warn("OTP attempts exceeded limit", {
+            phone: normPhone,
+            attempts: record.attempts,
+            remainingMinutes,
+            clientIP: req.ip,
+          });
+
           return res.status(429).json({
             message: `تعداد تلاش‌ها بیش از حد. لطفاً ${remainingMinutes} دقیقه صبر کنید.`,
             retryAfterSeconds: Math.ceil(
               (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000
             ),
+            field: "code",
+            tooManyAttempts: true,
           });
         } else {
           // Reset attempts if enough time has passed
@@ -416,62 +544,103 @@ router.post("/otp/verify", async (req, res) => {
           await record.save();
         }
       }
-      return res.status(400).json({ message: "کد نادرست است" });
+      return res.status(400).json({
+        message: "کد نادرست است",
+        field: "code",
+        attemptsRemaining: Math.max(0, OTP_MAX_ATTEMPTS - record.attempts),
+      });
     }
 
     // Successful verification: delete OTP record to prevent reuse
     await OtpCode.deleteOne({ _id: record._id });
 
-    // Find or create user (auto-register)
-    let user = await User.findOne({ phone: normPhone });
+    const duration = Date.now() - startTime;
+    otpMetrics.recordVerificationAttempt(
+      normPhone,
+      true,
+      duration,
+      req.ip,
+      record.attempts || 1
+    );
+
+    logger.info("OTP verification successful", {
+      phone: normPhone,
+      attempts: record.attempts,
+      clientIP: req.ip,
+      duration,
+    });
+
+    // Find or create user (optimized)
+    let user = await User.findOne({ phone: normPhone }).lean();
     if (!user) {
-      // Create new user with phone-only registration
-      user = await User.create({
-        name: "کاربر نخشا",
-        phone: normPhone,
-        // Don't require email and password for OTP-only registration
-      });
-
-      // Mark as verified if schema supports it
+      // Create new user with minimal fields for speed
       try {
-        if (typeof user.isVerified !== "undefined") {
-          user.isVerified = true;
-        }
-        if (
-          User.schema &&
-          User.schema.path &&
-          User.schema.path("phoneVerifiedAt")
-        ) {
-          user.phoneVerifiedAt = new Date();
-        }
-        if (user.save) await user.save();
-      } catch (e) {
-        logger.warn("Failed to mark new user as verified", {
-          error: e.message,
+        user = await User.create({
+          name: "کاربر نخشا",
+          phone: normPhone,
+          isVerified: true,
+          phoneVerifiedAt: new Date(),
         });
-      }
 
-      logger.info("New user auto-registered via OTP", {
-        userId: user._id,
-        phone: normPhone,
-      });
+        logger.info("New user auto-registered via OTP", {
+          userId: user._id,
+          phone: normPhone,
+        });
+      } catch (createError) {
+        logger.error("Failed to create user", {
+          error: createError.message,
+          phone: normPhone,
+        });
+        // Still continue with authentication if user creation fails
+        user = {
+          _id: null,
+          name: "کاربر موقت",
+          phone: normPhone,
+          role: "user",
+        };
+      }
     }
 
     // Generate JWT token
     const token = sign(user);
 
-    res.json({
+    logger.info("otp/verify: responded", { phone: normPhone });
+    return res.json({
+      success: true,
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         phone: user.phone,
-        role: user.role,
+        role: user.role || "user",
       },
+      message: "تایید موفق",
     });
   } catch (e) {
+    const errorDuration = Date.now() - startTime;
+    otpMetrics.recordError("otp_verify", e, {
+      phone: req.body?.phone,
+      clientIP: req.ip,
+      duration: errorDuration,
+    });
+
     logger.error("POST /auth/otp/verify error", {
+      error: e.message,
+      stack: e.stack,
+      duration: errorDuration,
+    });
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// OTP metrics endpoint (for monitoring)
+router.get("/otp/metrics", async (req, res) => {
+  try {
+    const metrics = otpMetrics.getMetrics();
+    res.json(metrics);
+  } catch (e) {
+    logger.error("GET /auth/otp/metrics error", {
       error: e.message,
       stack: e.stack,
     });

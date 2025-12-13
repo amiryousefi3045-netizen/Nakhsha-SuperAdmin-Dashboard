@@ -11,6 +11,7 @@ const logger = require("./utils/logger");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
+const otpCleanupService = require("./services/otpCleanup");
 
 // Load environment variables
 dotenv.config();
@@ -21,7 +22,8 @@ const env = validateEnv();
 
 // Parse CORS allowed origins
 const allowedOrigins = (
-  process.env.ALLOWED_ORIGINS || "http://localhost:5173,http://localhost:4173"
+  process.env.ALLOWED_ORIGINS ||
+  "http://localhost:5173,http://localhost:4173,http://localhost:5000"
 )
   .split(",")
   .map((origin) => origin.trim())
@@ -48,16 +50,41 @@ const logFormat =
 // Middleware
 app.use(morgan(logFormat));
 
-// Strict CORS with whitelist
+// Debug CORS requests
+app.use((req, res, next) => {
+  if (req.path.includes("/api/auth/otp")) {
+    logger.info("OTP request debug:", {
+      method: req.method,
+      path: req.path,
+      origin: req.headers.origin,
+      referer: req.headers.referer,
+      userAgent: req.headers["user-agent"],
+    });
+  }
+  next();
+});
+
+// CORS configuration with development flexibility
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
+      // Allow requests with no origin (same-origin requests from HTML pages)
+      if (!origin) {
+        return callback(null, true);
+      }
 
+      // In development, allow all localhost requests
+      if (process.env.NODE_ENV !== "production") {
+        if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
+          return callback(null, true);
+        }
+      }
+
+      // Check whitelist for production
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        logger.warn("CORS: Origin not allowed", { origin, allowedOrigins });
         callback(new Error("CORS policy: Origin not allowed"));
       }
     },
@@ -158,6 +185,9 @@ const uploadRoutes = require("./routes/uploads");
 const listingsNearRoutes = require("./routes/listings.near");
 const healthRoutes = require("./routes/health");
 
+// Serve static files for monitoring
+app.use(express.static(path.join(__dirname, "public")));
+
 // Routes
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
@@ -184,6 +214,9 @@ const connectDB = async () => {
     });
     app.locals.dbReady = true;
     logger.info("MongoDB connected successfully");
+
+    // Start OTP cleanup service
+    otpCleanupService.start();
 
     // Ensure geospatial index exists for Craft model
     try {
@@ -216,8 +249,25 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   await connectDB();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info(`Server is running on port ${PORT}`);
+  });
+
+  // Graceful shutdown
+  process.on("SIGTERM", async () => {
+    logger.info("SIGTERM received, shutting down gracefully...");
+    otpCleanupService.stop();
+    server.close(() => {
+      logger.info("Process terminated");
+    });
+  });
+
+  process.on("SIGINT", async () => {
+    logger.info("SIGINT received, shutting down gracefully...");
+    otpCleanupService.stop();
+    server.close(() => {
+      logger.info("Process terminated");
+    });
   });
 })();
 

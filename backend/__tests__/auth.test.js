@@ -158,14 +158,14 @@ describe("Auth Routes - Login", () => {
 });
 
 describe("Auth Routes - OTP", () => {
-  describe("POST /api/auth/otp/request", () => {
+  describe("POST /api/auth/otp/start", () => {
     it("should send OTP to valid phone number", async () => {
       const response = await request(app)
-        .post("/api/auth/otp/request")
+        .post("/api/auth/otp/start")
         .send({ phone: "09123456789" })
         .expect(200);
 
-      expect(response.body.message).toContain("کد تایید ارسال شد");
+      expect(response.body.message).toContain("کد ارسال شد");
 
       // Verify OTP was created in database
       const otp = await OtpCode.findOne({ phone: "09123456789" });
@@ -174,7 +174,7 @@ describe("Auth Routes - OTP", () => {
 
     it("should reject invalid phone number", async () => {
       const response = await request(app)
-        .post("/api/auth/otp/request")
+        .post("/api/auth/otp/start")
         .send({ phone: "123" })
         .expect(400);
 
@@ -189,12 +189,11 @@ describe("Auth Routes - OTP", () => {
     beforeEach(async () => {
       // Request OTP first
       const response = await request(app)
-        .post("/api/auth/otp/request")
+        .post("/api/auth/otp/start")
         .send({ phone: testPhone });
 
-      // Get the code from database (in production, user receives via SMS)
-      const otpDoc = await OtpCode.findOne({ phone: testPhone });
-      validCode = otpDoc.code;
+      // Get the code from response (available in dev mode)
+      validCode = response.body.devCode;
     });
 
     it("should verify valid OTP and create/login user", async () => {

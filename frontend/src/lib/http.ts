@@ -4,7 +4,10 @@ import { getToken } from "../services/auth";
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 // Create a shared axios instance with defaults
-export const http = axios.create({ baseURL: API_BASE });
+export const http = axios.create({
+  baseURL: API_BASE,
+  timeout: 10000, // 10 second timeout
+});
 
 // Add token to all requests if it exists
 http.interceptors.request.use((config) => {

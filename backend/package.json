@@ -9,7 +9,8 @@
     "test": "NODE_ENV=test jest",
     "test:watch": "NODE_ENV=test jest --watch",
     "test:coverage": "NODE_ENV=test jest --coverage",
-    "test:api": "node scripts/api-smoke.js"
+    "test:api": "node scripts/api-smoke.js",
+    "monitor": "node scripts/otp-monitor.js"
   },
   "keywords": [],
   "author": "",

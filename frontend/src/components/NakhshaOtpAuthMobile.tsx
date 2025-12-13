@@ -20,12 +20,10 @@ export default function NakhshaOtpAuthMobile() {
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [otpFocused, setOtpFocused] = useState(false);
   const [rateLimitActive, setRateLimitActive] = useState(false);
-
-  // prevent duplicate verify calls
-  const isVerifyingRef = {} as any as { current: boolean };
-  isVerifyingRef.current = false;
-  const lastSubmittedCodeRef = {} as any as { current: string | null };
-  lastSubmittedCodeRef.current = null;
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [lastSubmittedCode, setLastSubmittedCode] = useState<string | null>(
+    null
+  );
 
   const phoneRegex = /^09\d{9}$/;
   const isPhoneValid = phoneRegex.test(phone.trim());
@@ -72,18 +70,17 @@ export default function NakhshaOtpAuthMobile() {
       setError("لطفاً کد ۶ رقمی را وارد کنید.");
       return;
     }
-    // block if rate-limited
-    if (rateLimitActive) return;
-    // avoid duplicate attempts
-    const c = otp;
-    if ((lastSubmittedCodeRef as any).current === c) return;
-    if ((isVerifyingRef as any).current) return;
+    // block if rate-limited or already verifying
+    if (rateLimitActive || isVerifying) return;
+    // avoid duplicate attempts with same code
+    const c = otp.trim();
+    if (lastSubmittedCode === c) return;
 
-    (isVerifyingRef as any).current = true;
-    (lastSubmittedCodeRef as any).current = c;
+    setIsVerifying(true);
+    setLastSubmittedCode(c);
     setLoading(true);
     try {
-      const { user } = await otpVerify(phone.trim(), otp);
+      const { user } = await otpVerify(phone.trim(), c);
       if (user) setUser(user);
       nav("/");
     } catch (err) {
@@ -98,10 +95,9 @@ export default function NakhshaOtpAuthMobile() {
           e?.message ||
             "کد واردشده اشتباه است. کد ارسال را بررسی و دوباره وارد کنید."
         );
-        // keep lastSubmittedCodeRef to prevent auto-resubmit until user edits
       }
     } finally {
-      (isVerifyingRef as any).current = false;
+      setIsVerifying(false);
       setLoading(false);
     }
   };
@@ -132,7 +128,7 @@ export default function NakhshaOtpAuthMobile() {
   useEffect(() => {
     if (rateLimitActive && secondsLeft <= 0) {
       setRateLimitActive(false);
-      (lastSubmittedCodeRef as any).current = null;
+      setLastSubmittedCode(null);
       setError(null);
     }
   }, [rateLimitActive, secondsLeft]);
@@ -345,12 +341,10 @@ export default function NakhshaOtpAuthMobile() {
               const val = e.target.value.replace(/\D/g, "").slice(0, 6);
               setOtp(val);
               // user edited digits: allow retrying different code
-              try {
-                (lastSubmittedCodeRef as any).current = null;
-              } catch {}
+              setLastSubmittedCode(null);
               if (val.length === 6) {
-                // Auto-submit when 6 digits entered
-                setTimeout(() => handleOtpSubmit(), 100);
+                // Auto-submit when 6 digits entered with slight delay
+                setTimeout(() => handleOtpSubmit(), 300);
               }
             }}
             onKeyPress={(e) => {

@@ -41,19 +41,18 @@ export async function otpStart(phone: string): Promise<{
   retryAfterSeconds?: number;
 }> {
   try {
-    const { data } = await http.post<
-      ApiResponse<{
-        success: boolean;
-        message: string;
-        devCode?: string;
-        retryAfterSeconds?: number;
-      }>
-    >("/auth/otp/start", { phone });
+    const { data } = await http.post<{
+      success: boolean;
+      message: string;
+      devCode?: string;
+      retryAfterSeconds?: number;
+    }>("/auth/otp/start", { phone });
+    // Backend returns data at root level, not nested in data.data
     return {
-      success: true,
-      message: data?.data?.message,
-      devCode: (data?.data as any)?.devCode,
-      retryAfterSeconds: (data?.data as any)?.retryAfterSeconds,
+      success: data.success,
+      message: data.message,
+      devCode: data.devCode,
+      retryAfterSeconds: data.retryAfterSeconds,
     };
   } catch (error) {
     const axiosError = error as AxiosError<{
@@ -74,12 +73,15 @@ export async function otpVerify(
   code: string
 ): Promise<{ token: string; user: User }> {
   try {
-    const { data } = await http.post<
-      ApiResponse<{ token: string; user: User }>
-    >("/auth/otp/verify", { phone, code });
-    const result = data?.data!;
-    if (result.token) setToken(result.token);
-    return result;
+    const { data } = await http.post<{
+      success: boolean;
+      token: string;
+      user: User;
+      message?: string;
+    }>("/auth/otp/verify", { phone, code });
+    // Backend returns data at root level, not nested in data.data
+    if (data.token) setToken(data.token);
+    return { token: data.token, user: data.user };
   } catch (error) {
     const axiosError = error as AxiosError<{
       message?: string;

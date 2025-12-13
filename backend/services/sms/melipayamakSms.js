@@ -2,11 +2,28 @@ const MelipayamakApi = require("melipayamak");
 const logger = require("../../utils/logger");
 const { formatForProvider } = require("../../utils/phone");
 
+// Simple timeout helper for promise-based operations
+function withTimeout(promiseFactory, ms, timeoutLabel) {
+  return Promise.race([
+    promiseFactory(),
+    new Promise((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(`${timeoutLabel || "operation"} timeout after ${ms}ms`)
+          ),
+        ms
+      )
+    ),
+  ]);
+}
+
 // Environment variables
 const MELIPAYAMAK_USERNAME = process.env.SMS_USERNAME;
 const MELIPAYAMAK_PASSWORD = process.env.SMS_PASSWORD;
 const MELIPAYAMAK_FROM = process.env.SMS_FROM || "50004001854432";
 const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "09";
+const SMS_TIMEOUT_MS = parseInt(process.env.SMS_TIMEOUT_MS || "4000", 10); // 3-5s recommended
 
 /**
  * Send OTP SMS using MeliPayamak service
@@ -34,10 +51,9 @@ async function sendOtpSms(phone, code) {
   }
 
   // Persian OTP message
-  const message = `*نخشا*
-کد ورود شما: ${code}
-لطفاً این کد را در اختیار دیگران قرار ندهید.
-(مدت زمان اعتبار تا ۲ دقیقه)`;
+  const message = `کد تایید نخشا:
+Code: ${code}
+برای دیگران نفرستید.`;
 
   // In development mode, simulate success for faster testing (only if SMS_MOCK is true)
   if (
@@ -51,8 +67,6 @@ async function sendOtpSms(phone, code) {
     });
     // Simulate API delay
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    return;
-  }
     return;
   }
 
@@ -69,35 +83,34 @@ async function sendOtpSms(phone, code) {
 
   try {
     // Try REST API first with timeout
-    const result = await Promise.race([
-      new Promise((resolve, reject) => {
-        sms.send(
-          formattedPhone,
-          MELIPAYAMAK_FROM,
-          message,
-          (response, error) => {
-            if (error) {
-              reject(new Error(`REST API error: ${error}`));
-            } else {
+    const restResult = await withTimeout(
+      () =>
+        new Promise((resolve, reject) => {
+          sms.send(
+            formattedPhone,
+            MELIPAYAMAK_FROM,
+            message,
+            (response, error) => {
+              if (error) return reject(new Error(`REST API error: ${error}`));
               resolve(response);
             }
-          }
-        );
-      }),
-      new Promise((_, reject) => {
-        setTimeout(
-          () => reject(new Error("REST API timeout after 10 seconds")),
-          10000
-        );
-      }),
-    ]);
+          );
+        }),
+      SMS_TIMEOUT_MS,
+      "REST API"
+    );
 
-    logger.info("SMS sent successfully via REST", {
-      phone: formattedPhone,
-      result: result,
-    });
+    // Only log success if provider indicates success
+    if (restResult && String(restResult).trim()) {
+      logger.info("SMS sent successfully via REST", {
+        phone: formattedPhone,
+        result: restResult,
+      });
+      return;
+    }
 
-    return;
+    // If result is falsy/empty, treat as failure and try fallback
+    throw new Error("REST API returned empty result");
   } catch (restError) {
     logger.warn("REST API failed, trying SOAP fallback", {
       error: restError.message,
@@ -107,35 +120,33 @@ async function sendOtpSms(phone, code) {
     try {
       // Fallback to SOAP API if available with timeout
       if (typeof sms.sendByBaseNumber === "function") {
-        const soapResult = await Promise.race([
-          new Promise((resolve, reject) => {
-            sms.sendByBaseNumber(
-              message,
-              formattedPhone,
-              MELIPAYAMAK_FROM,
-              (response, error) => {
-                if (error) {
-                  reject(new Error(`SOAP API error: ${error}`));
-                } else {
+        const soapResult = await withTimeout(
+          () =>
+            new Promise((resolve, reject) => {
+              sms.sendByBaseNumber(
+                message,
+                formattedPhone,
+                MELIPAYAMAK_FROM,
+                (response, error) => {
+                  if (error)
+                    return reject(new Error(`SOAP API error: ${error}`));
                   resolve(response);
                 }
-              }
-            );
-          }),
-          new Promise((_, reject) => {
-            setTimeout(
-              () => reject(new Error("SOAP API timeout after 10 seconds")),
-              10000
-            );
-          }),
-        ]);
+              );
+            }),
+          SMS_TIMEOUT_MS,
+          "SOAP API"
+        );
 
-        logger.info("SMS sent successfully via SOAP", {
-          phone: formattedPhone,
-          result: soapResult,
-        });
+        if (soapResult && String(soapResult).trim()) {
+          logger.info("SMS sent successfully via SOAP", {
+            phone: formattedPhone,
+            result: soapResult,
+          });
+          return;
+        }
 
-        return;
+        throw new Error("SOAP API returned empty result");
       } else {
         throw new Error("SOAP method not available");
       }
