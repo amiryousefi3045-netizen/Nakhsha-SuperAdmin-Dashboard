@@ -133,7 +133,7 @@ export async function fetchCraftsNear(params = {}) {
 // Seed development data
 export async function seedDev() {
   try {
-    const response = await http.post("/crafts/seed");
+    const response = await http.get("/crafts/seed/dev");
     return response.data;
   } catch (error) {
     console.error("seedDev error:", error.message);

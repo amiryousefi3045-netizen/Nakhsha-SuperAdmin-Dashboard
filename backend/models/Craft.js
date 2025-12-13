@@ -189,6 +189,31 @@ craftSchema.set("toJSON", {
   },
 });
 
+// Helper method for bulk migration of old documents
+craftSchema.statics.migrateLocations = async function () {
+  const docs = await this.find({
+    "location.coordinates": { $exists: true },
+    "location.geometry": { $exists: false },
+  });
+
+  console.log(`Found ${docs.length} craft documents to migrate`);
+
+  for (const doc of docs) {
+    if (Array.isArray(doc.location?.coordinates) && doc.location.coordinates.length === 2) {
+      doc.location = {
+        ...doc.location,
+        geometry: {
+          type: "Point",
+          coordinates: doc.location.coordinates,
+        },
+      };
+      await doc.save();
+    }
+  }
+
+  console.log("Craft location migration complete");
+};
+
 // Create an initialization function to ensure indexes
 craftSchema.statics.ensureIndexes = async function () {
   try {
@@ -228,7 +253,5 @@ craftSchema.statics.ensureIndexes = async function () {
 // Create model but keep collection name `listings` for backwards compatibility
 const Craft = mongoose.model("Craft", craftSchema, "listings");
 
-// Export model and utility methods
-module.exports = Object.assign(Craft, {
-  ensureIndexes: () => Craft.ensureIndexes(),
-});
+// Export the model directly (statics are available on the model)
+module.exports = Craft;

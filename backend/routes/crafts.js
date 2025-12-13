@@ -106,24 +106,42 @@ router.get("/", async (req, res) => {
         );
       } else {
         try {
-          console.log("Searching in bounds:", { n, s, e, w });
-          // Use GeoJSON polygon for $geoWithin against location.geometry
-          filter["location.geometry"] = {
-            $geoWithin: {
-              $geometry: {
-                type: "Polygon",
-                coordinates: [
-                  [
-                    [w, s],
-                    [e, s],
-                    [e, n],
-                    [w, n],
-                    [w, s],
-                  ],
-                ],
-              },
-            },
+          // Support both new GeoJSON format (`location.geometry`) and legacy
+          // coordinate arrays (`location.coordinates`). Many older documents may
+          // not have geometry yet, which would otherwise make the map show only
+          // a tiny subset of listings.
+          const polygon = {
+            type: "Polygon",
+            coordinates: [
+              [
+                [w, s],
+                [e, s],
+                [e, n],
+                [w, n],
+                [w, s],
+              ],
+            ],
           };
+
+          const boundsOr = {
+            $or: [
+              {
+                "location.geometry": {
+                  $geoWithin: {
+                    $geometry: polygon,
+                  },
+                },
+              },
+              {
+                // Legacy numeric bounds check (lng/lat stored as [lng, lat])
+                "location.coordinates.0": { $gte: w, $lte: e },
+                "location.coordinates.1": { $gte: s, $lte: n },
+              },
+            ],
+          };
+
+          filter.$and = Array.isArray(filter.$and) ? filter.$and : [];
+          filter.$and.push(boundsOr);
         } catch (ex) {
           // Defensive: if Polygon creation or value causes a runtime error, log and skip geo filter
           console.error("Failed to build geo polygon from bounds", {
@@ -480,9 +498,9 @@ router.get("/seed/dev", async (req, res) => {
 
     // Create a test artisan if none exists
     let artisan = await Artisan.findOne();
+    let user = null; // Initialize user outside the scope
     if (!artisan) {
       const hashedPassword = await bcrypt.hash("test123", 10);
-      let user;
       try {
         user = await User.create({
           name: "استاد حسین",
@@ -530,6 +548,11 @@ router.get("/seed/dev", async (req, res) => {
           throw e;
         }
       }
+    }
+
+    // If artisan already existed, get the related user
+    if (!user && artisan) {
+      user = await User.findOne({ _id: artisan.userId });
     }
 
     // Helper pools

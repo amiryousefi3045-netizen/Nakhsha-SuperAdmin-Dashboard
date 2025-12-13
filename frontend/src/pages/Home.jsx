@@ -37,7 +37,7 @@ const Home = () => {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [limit] = useState(20);
+  const [limit] = useState(50);
   const [hasMore, setHasMore] = useState(false);
   const [query, setQuery] = useState("");
   const [triedSeed, setTriedSeed] = useState(false);
@@ -144,14 +144,19 @@ const Home = () => {
 
   const effectiveParams = useMemo(
     () => ({
-      bounds: appliedBounds,
+      // Only include bounds if they exist and are valid
+      ...(appliedBounds && {
+        bounds: appliedBounds,
+      }),
       filters,
       page,
       limit,
       q: query,
       sort,
-      lat: safeUserPos?.lat,
-      lng: safeUserPos?.lng,
+      ...(safeUserPos && {
+        lat: safeUserPos.lat,
+        lng: safeUserPos.lng,
+      }),
     }),
     [appliedBounds, filters, page, limit, query, sort, safeUserPos]
   );
@@ -425,7 +430,11 @@ const Home = () => {
             >
               <div className="p-6">
                 {loading ? (
-                  <CraftList items={[]} loading={true} />
+                  <CraftList
+                    items={[]}
+                    loading={true}
+                    scrollRootRef={sidebarScrollRef}
+                  />
                 ) : items.length === 0 ? (
                   // Empty state
                   <div className="flex items-center justify-center h-48">
@@ -434,7 +443,11 @@ const Home = () => {
                     </div>
                   </div>
                 ) : (
-                  <CraftList items={items} loading={false} />
+                  <CraftList
+                    items={items}
+                    loading={false}
+                    scrollRootRef={sidebarScrollRef}
+                  />
                 )}
               </div>
 

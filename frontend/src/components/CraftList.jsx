@@ -160,50 +160,54 @@ const Skeleton = () => (
   </div>
 );
 
-const CraftList = ({ items = [], loading = false }) => {
-  const [visibleIndices, setVisibleIndices] = useState(new Set());
+const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
+  const [visibleIndices, setVisibleIndices] = useState(() => new Set());
   const observerRef = useRef(null);
   const itemRefsRef = useRef(new Map());
 
+  // Reset visible indices when dataset changes
   useEffect(() => {
+    setVisibleIndices(new Set([0, 1, 2, 3, 4]));
+  }, [items]);
+
+  // Observe items within the correct scroll container.
+  // If the list is inside an overflow container, using root=null (viewport)
+  // can lead to only the first few items ever becoming "visible".
+  useEffect(() => {
+    if (loading) return;
+
+    const rootEl = scrollRootRef?.current || null;
     const observer = new IntersectionObserver(
       (entries) => {
-        setVisibleIndices((prevIndices) => {
-          const newVisibleIndices = new Set(prevIndices);
-
-          entries.forEach((entry) => {
-            const idx = entry.target.dataset.idx;
-            if (entry.isIntersecting || entry.boundingClientRect.top < 800) {
-              newVisibleIndices.add(Number(idx));
-            }
-          });
-
-          return newVisibleIndices;
+        setVisibleIndices((prev) => {
+          const next = new Set(prev);
+          for (const entry of entries) {
+            const idxAttr = entry.target?.dataset?.idx;
+            if (idxAttr == null) continue;
+            const idx = Number(idxAttr);
+            if (entry.isIntersecting) next.add(idx);
+          }
+          return next;
         });
       },
       {
-        root: null,
-        rootMargin: "100px",
-        threshold: 0,
+        root: rootEl,
+        rootMargin: "200px 0px",
+        threshold: 0.01,
       }
     );
 
     observerRef.current = observer;
 
-    itemRefsRef.current.forEach((ref) => {
-      if (ref) observer.observe(ref);
-    });
+    for (const node of itemRefsRef.current.values()) {
+      if (node) observer.observe(node);
+    }
 
     return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
+      observer.disconnect();
+      if (observerRef.current === observer) observerRef.current = null;
     };
-  }, []);
-
-  useEffect(() => {
-    itemRefsRef.current.clear();
-  }, [items]);
+  }, [loading, items, scrollRootRef]);
 
   if (loading) {
     return (
@@ -235,7 +239,14 @@ const CraftList = ({ items = [], loading = false }) => {
           <div
             key={craft.id || idx}
             ref={(el) => {
-              if (el) itemRefsRef.current.set(idx, el);
+              const prev = itemRefsRef.current.get(idx);
+              if (prev && observerRef.current) observerRef.current.unobserve(prev);
+              if (el) {
+                itemRefsRef.current.set(idx, el);
+                if (observerRef.current) observerRef.current.observe(el);
+              } else {
+                itemRefsRef.current.delete(idx);
+              }
             }}
             data-idx={idx}
           >
