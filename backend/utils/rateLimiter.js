@@ -14,7 +14,7 @@ const RATE_LIMIT_CONFIG = {
   IP_MAX_ATTEMPTS: 10,
 
   // Phone-based limits
-  PHONE_WINDOW_MINUTES: 60,
+  PHONE_WINDOW_MINUTES: 2,
   PHONE_MAX_ATTEMPTS: 5,
 
   // Global limits

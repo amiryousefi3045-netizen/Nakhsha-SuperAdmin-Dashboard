@@ -15,50 +15,93 @@ const CraftCard = ({ craft }) => {
     setImgSrc(PLACEHOLDER);
   };
 
+  // Calculate image count
+  const imageCount = Array.isArray(craft.images)
+    ? craft.images.length
+    : craft.image
+    ? 1
+    : 0;
+
+  // Format price
+  const formatPrice = (price) => {
+    if (!price) return null;
+    return new Intl.NumberFormat("fa-IR").format(price);
+  };
+
+  const priceText = craft.price
+    ? `${formatPrice(craft.price)} تومان`
+    : craft.minPrice && craft.maxPrice
+    ? `${formatPrice(craft.minPrice)} - ${formatPrice(craft.maxPrice)} تومان`
+    : craft.priceRange
+    ? craft.priceRange
+    : null;
+
+  // Status tag
+  const statusTag = craft.isNew
+    ? "جدید"
+    : craft.isFeatured
+    ? "ویژه"
+    : craft.distanceMeters && craft.distanceMeters < 1000
+    ? `نزدیک ${Math.round(craft.distanceMeters)} متر`
+    : null;
+
   return (
     <Link
       to={`/craft/${craft.id}`}
-      className="block p-3 hover:bg-primary-50 transition-colors duration-200 motion-reduce:transition-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
+      className="block p-4 hover:bg-primary-50/50 transition-colors duration-200 motion-reduce:transition-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
       aria-label={`دیدن جزئیات ${craft.title}`}
     >
-      <div className="flex gap-3 items-start">
-        <img
-          src={imgSrc}
-          alt={craft.title}
-          className="w-28 h-20 object-cover rounded-md flex-shrink-0 motion-safe:group-hover:brightness-110 transition-all duration-200 motion-reduce:transition-none"
-          width="112"
-          height="80"
-          sizes="(max-width: 640px) 100px, 112px"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={handleImgError}
-          decoding="async"
-        />
-        <div className="flex-1 text-right">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-base text-nakhsha-text">
+      <div className="flex flex-row-reverse gap-3">
+        {/* Thumbnail with photo count badge */}
+        <div className="relative w-28 h-28 shrink-0">
+          <img
+            src={imgSrc}
+            alt={craft.title}
+            className="w-full h-full object-cover rounded-xl motion-safe:group-hover:brightness-110 transition-all duration-200 motion-reduce:transition-none"
+            width="112"
+            height="112"
+            sizes="112px"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={handleImgError}
+            decoding="async"
+          />
+          {imageCount > 0 && (
+            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-lg flex items-center gap-1">
+              <svg
+                className="w-3 h-3"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span>{imageCount}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Text content */}
+        <div className="flex-1 min-w-0 flex flex-col justify-between">
+          {/* Title - max 2 lines */}
+          <div>
+            <h3 className="font-semibold text-sm leading-5 text-nakhsha-text line-clamp-2">
               {craft.title}
             </h3>
-            <span className="text-xs font-medium text-nakhsha-text/60">
-              {craft.duration || craft.craftingTime || ""}
-            </span>
-          </div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-xs text-nakhsha-text/60 flex-wrap">
-            {typeof craft.distanceMeters === "number" && (
-              <span
-                className="px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-primary-100"
-                title={`${
-                  craft.distanceMeters < 1000
-                    ? craft.distanceMeters + " متر"
-                    : (craft.distanceMeters / 1000).toFixed(1) + " کیلومتر"
-                }`}
-              >
-                {craft.distanceMeters < 1000
-                  ? `${Math.round(craft.distanceMeters)} متر`
-                  : `${(craft.distanceMeters / 1000).toFixed(1)} کیلومتر`}
-              </span>
+
+            {/* Price row */}
+            {priceText && (
+              <div className="mt-1 text-xs text-slate-600">
+                <span className="font-semibold">{priceText}</span>
+              </div>
             )}
-            <span>
+
+            {/* Location/details row */}
+            <div className="mt-1 text-xs text-slate-500 truncate">
               {typeof craft.location === "string"
                 ? craft.location
                 : craft.location && typeof craft.location === "object"
@@ -68,129 +111,30 @@ const CraftCard = ({ craft }) => {
                         ? "، " + craft.location.neighborhood
                         : ""
                     }`
-                  : Array.isArray(craft.location.coordinates)
-                  ? `${Number(craft.location.coordinates[1]).toFixed(
-                      3
-                    )}, ${Number(craft.location.coordinates[0]).toFixed(3)}`
                   : "—"
-                : "—"}
-            </span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="w-3.5 h-3.5"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M11.54 22.351l-.345-.207C9.727 21.274 3 17.13 3 10.5 3 6.358 6.358 3 10.5 3S18 6.358 18 10.5c0 6.63-6.727 10.774-8.195 11.644l-.265.157zM10.5 6a4.5 4.5 0 100 9 4.5 4.5 0 000-9z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-2 flex-wrap">
-            <span className="px-2 py-0.5 rounded-full bg-nakhsha-bg text-xs text-nakhsha-text/70 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-primary-50">
-              {craft.type}
-            </span>
-            {craft.hasImage === false && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-medium">
-                بدون تصویر
-              </span>
+                : craft.type || "—"}
+            </div>
+
+            {/* Description (if available) */}
+            {craft.description && (
+              <div className="mt-1 text-xs text-slate-500 truncate">
+                {craft.description}
+              </div>
             )}
-            {craft.isHandmade && (
-              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[11px] font-medium">
-                دست‌ساز
-              </span>
-            )}
-            {typeof craft.totalLikes === "number" && craft.totalLikes > 0 && (
-              <span
-                className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] flex items-center gap-1 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-green-100"
-                aria-label={`${craft.totalLikes} پسند`}
-              >
-                👍 {craft.totalLikes}
-              </span>
-            )}
-            {typeof craft.totalDislikes === "number" &&
-              craft.totalDislikes > 0 && (
-                <span
-                  className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px] flex items-center gap-1 font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-red-100"
-                  aria-label={`${craft.totalDislikes} نپسند`}
-                >
-                  👎 {craft.totalDislikes}
-                </span>
-              )}
           </div>
 
-          {/* CTA Footer */}
-          <div className="mt-3 flex items-center gap-2">
-            {/* Primary CTA - View Details */}
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href = `/craft/${craft.id}`;
-              }}
-              className="flex-1 rounded-full h-9 px-4 bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
-              aria-label={`دیدن جزئیات ${craft.title}`}
-            >
-              دیدن جزئیات
-            </button>
-
-            {/* Secondary CTA - Save */}
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                // TODO: Implement save functionality
-                console.log("Save craft:", craft.id);
-              }}
-              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center"
-              title="ذخیره"
-              aria-label="ذخیره این اثر"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 19V5z" />
-              </svg>
-            </button>
-
-            {/* Secondary CTA - Share */}
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                // TODO: Implement share functionality
-                if (navigator.share) {
-                  navigator.share({
-                    title: craft.title,
-                    text: craft.description || craft.title,
-                    url: `/craft/${craft.id}`,
-                  });
-                } else {
-                  console.log("Share craft:", craft.id);
-                }
-              }}
-              className="rounded-full h-9 w-9 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400 flex items-center justify-center"
-              title="اشتراک"
-              aria-label="اشتراک این اثر"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8.684 13.342C9.589 12.938 10.45 12.5 11.3 12.1m0 0a6 6 0 11-8.485 2.936m8.485-2.936l6.364 3.686m0 0l1.364.682a1 1 0 001.364-1.366L19 15"
-                />
-              </svg>
-            </button>
+          {/* Bottom section with tag */}
+          <div className="flex items-center justify-between gap-2">
+            {statusTag && (
+              <span className="text-xs text-red-500 font-medium">
+                {statusTag}
+              </span>
+            )}
+            {craft.craftingTime && (
+              <span className="text-xs text-slate-400">
+                {craft.craftingTime}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -203,13 +147,14 @@ const MemoizedCraftCard = React.memo(CraftCard, (prevProps, nextProps) => {
 });
 
 const Skeleton = () => (
-  <div className="p-3">
+  <div className="p-4">
     <div className="flex gap-3">
-      <div className="w-28 h-20 bg-nakhsha-border/30 rounded-md animate-pulse" />
-      <div className="flex-1 space-y-2">
-        <div className="h-4 bg-nakhsha-border/30 w-1/2 rounded animate-pulse" />
-        <div className="h-3 bg-nakhsha-border/30 w-1/3 rounded animate-pulse" />
-        <div className="h-3 bg-nakhsha-border/30 w-1/4 rounded animate-pulse" />
+      <div className="w-28 h-28 bg-nakhsha-border/30 rounded-xl animate-pulse shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="h-4 bg-nakhsha-border/30 w-3/4 rounded animate-pulse" />
+        <div className="h-3 bg-nakhsha-border/30 w-1/2 rounded animate-pulse" />
+        <div className="h-3 bg-nakhsha-border/30 w-2/3 rounded animate-pulse" />
+        <div className="h-3 bg-nakhsha-border/30 w-1/3 rounded animate-pulse mt-4" />
       </div>
     </div>
   </div>
@@ -297,7 +242,7 @@ const CraftList = ({ items = [], loading = false }) => {
             {shouldRender ? (
               <MemoizedCraftCard craft={craft} isVisible={true} />
             ) : (
-              <div className="p-3 h-28 bg-transparent" />
+              <div className="p-4 h-32 bg-transparent" />
             )}
           </div>
         );
