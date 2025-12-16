@@ -1,6 +1,6 @@
 import { AxiosError } from "axios";
 import { http } from "../lib/http";
-import type { User, ApiResponse } from "../types/api";
+import type { User, ErrorResponse } from "../types/api";
 
 const TOKEN_KEY = "token";
 
@@ -55,15 +55,12 @@ export async function otpStart(phone: string): Promise<{
       retryAfterSeconds: data.retryAfterSeconds,
     };
   } catch (error) {
-    const axiosError = error as AxiosError<{
-      message?: string;
-      retryAfterSeconds?: number;
-    }>;
+    const axiosError = error as AxiosError<ErrorResponse>;
     const status = axiosError.response?.status;
-    const body = axiosError.response?.data;
-    const e = new Error(body?.message || "OTP start failed") as OtpError;
+    const errorData = axiosError.response?.data?.error;
+    const e = new Error(errorData?.message || "OTP start failed") as OtpError;
     e.status = status;
-    e.retryAfterSeconds = body?.retryAfterSeconds;
+    e.retryAfterSeconds = errorData?.details?.retryAfterSeconds;
     throw e;
   }
 }
@@ -74,32 +71,27 @@ export async function otpVerify(
 ): Promise<{ token: string; user: User }> {
   try {
     const { data } = await http.post<{
-      success: boolean;
       token: string;
       user: User;
-      message?: string;
     }>("/auth/otp/verify", { phone, code });
     // Backend returns data at root level, not nested in data.data
     if (data.token) setToken(data.token);
     return { token: data.token, user: data.user };
   } catch (error) {
-    const axiosError = error as AxiosError<{
-      message?: string;
-      retryAfterSeconds?: number;
-    }>;
+    const axiosError = error as AxiosError<ErrorResponse>;
     const status = axiosError.response?.status;
-    const body = axiosError.response?.data;
-    const e = new Error(body?.message || "OTP verify failed") as OtpError;
+    const errorData = axiosError.response?.data?.error;
+    const e = new Error(errorData?.message || "OTP verify failed") as OtpError;
     e.status = status;
-    e.retryAfterSeconds = body?.retryAfterSeconds;
+    e.retryAfterSeconds = errorData?.details?.retryAfterSeconds;
     throw e;
   }
 }
 
 export async function me(): Promise<User | null> {
   try {
-    const { data } = await http.get<ApiResponse<{ user: User }>>("/auth/me");
-    return data?.data?.user || null;
+    const { data } = await http.get<{ user: User }>("/auth/me");
+    return data?.user || null;
   } catch {
     return null;
   }

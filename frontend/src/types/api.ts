@@ -68,17 +68,34 @@ export interface ApiResponse<T = any> {
 // Backwards-compatible alias used in some places
 export type ApiListResponse<T> = ApiResponse<T>;
 
+// Standardized error response format
+export interface ErrorResponse {
+  error: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+}
+
 export interface User {
   id: string;
-  name?: string;
-  email?: string;
-  phone?: string;
-  role?: "user" | "admin" | "artisan";
-  avatar?: string;
-  location?: { city?: string; coordinates?: [number, number] };
-  isVerified?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  name: string;
+  phone: string;
+  avatar: string; // Always absolute URL
+  bio: string;
+  location: {
+    city: string;
+    neighborhood: string;
+    coordinates: {
+      lat: number | null;
+      lng: number | null;
+    };
+  };
+  role: "user" | "tour_leader" | "admin";
+  creatorType: "artisan" | "tour_leader";
+  isVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Removed LoginRequest, RegisterRequest, and AuthResponse types

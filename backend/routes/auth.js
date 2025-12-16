@@ -11,6 +11,7 @@ const {
   detectSuspiciousActivity,
 } = require("../utils/rateLimiter");
 const otpMetrics = require("../utils/otpMetrics");
+const { createUserDTO, createErrorResponse } = require("../utils/userDto");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -33,13 +34,24 @@ function sign(user) {
 function authMiddleware(req, res, next) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
+  if (!token) {
+    return res
+      .status(401)
+      .json(
+        createErrorResponse(
+          "UNAUTHORIZED",
+          "Missing or invalid authorization token"
+        )
+      );
+  }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.user = payload;
     next();
   } catch {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res
+      .status(401)
+      .json(createErrorResponse("UNAUTHORIZED", "Invalid or expired token"));
   }
 }
 
@@ -47,227 +59,56 @@ function authMiddleware(req, res, next) {
  * @swagger
  * /api/auth/register:
  *   post:
- *     summary: ثبت‌نام کاربر جدید
+ *     deprecated: true
+ *     summary: ثبت‌نام قدیمی - غیرفعال شده (فقط OTP استفاده کنید)
+ *     description: این endpoint غیرفعال شده است. لطفاً از OTP استفاده کنید.
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - phone
- *               - password
- *             properties:
- *               name:
- *                 type: string
- *                 example: علی احمدی
- *               email:
- *                 type: string
- *                 format: email
- *                 example: ali@example.com
- *               phone:
- *                 type: string
- *                 pattern: '^09\d{9}$'
- *                 example: "09123456789"
- *               password:
- *                 type: string
- *                 minLength: 6
- *                 example: password123
- *               role:
- *                 type: string
- *                 enum: [user, artisan, admin]
- *                 default: user
- *     responses:
- *       201:
- *         description: ثبت‌نام موفق
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 token:
- *                   type: string
- *                 user:
- *                   $ref: '#/components/schemas/User'
- *       400:
- *         description: داده‌های نامعتبر
- *       409:
- *         description: ایمیل یا شماره تلفن تکراری
- *       503:
- *         description: دیتابیس در دسترس نیست
  */
 router.post("/register", async (req, res) => {
-  try {
-    // If DB is not ready, return a clear 503 so client doesn't get a generic 500
-    if (!req.app?.locals?.dbReady) {
-      logger.warn("POST /auth/register - DB not ready");
-      return res.status(503).json({ message: "Database unavailable" });
-    }
-    logger.debug("Register request received", { body: req.body });
-    const { name, email, phone, password, role } = req.body || {};
-    const normEmail =
-      typeof email === "string" ? email.toLowerCase().trim() : email;
-    const normPhone = typeof phone === "string" ? phone.trim() : phone;
-    if (!name || !email || !phone || !password) {
-      logger.warn("Missing required fields", {
-        name: !!name,
-        email: !!email,
-        phone: !!phone,
-        password: !!password,
-      });
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-    if (typeof password === "string" && password.length < 6) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 6 characters" });
-    }
-    const exists = await User.findOne({
-      $or: [{ email: normEmail }, { phone: normPhone }],
-    });
-    if (exists) {
-      logger.warn("User already exists", { email, phone });
-      return res.status(409).json({ message: "Email or phone already exists" });
-    }
-    logger.info("Creating new user", { name, email, phone });
-    const user = await User.create({
-      name: String(name).trim(),
-      email: normEmail,
-      phone: normPhone,
-      password,
-      role,
-    });
-    logger.info("User created successfully", { userId: user._id });
-    const token = sign(user);
-    res.status(201).json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (e) {
-    // Handle validation and duplicate key errors with proper status codes
-    if (e?.name === "ValidationError") {
-      const details = Object.values(e.errors || {}).map((er) => er.message);
-      return res.status(400).json({ message: "Validation error", details });
-    }
-    if (e?.code === 11000) {
-      const field = Object.keys(e.keyPattern || e.keyValue || {})[0] || "field";
-      return res.status(409).json({ message: `${field} already exists` });
-    }
-    logger.error("POST /auth/register error", {
-      error: e.message,
-      stack: e.stack,
-    });
-    res.status(500).json({ message: "Server error", error: e.message });
-  }
+  return res.status(410).json({
+    message: "این endpoint غیرفعال شده است. لطفاً از OTP استفاده کنید.",
+    deprecated: true,
+    useOtpInstead: true,
+  });
 });
 
 /**
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: ورود کاربر
+ *     deprecated: true
+ *     summary: ورود قدیمی - غیرفعال شده (فقط OTP استفاده کنید)
+ *     description: این endpoint غیرفعال شده است. لطفاً از OTP استفاده کنید.
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *                 format: email
- *                 example: ali@example.com
- *               phone:
- *                 type: string
- *                 example: "09123456789"
- *               password:
- *                 type: string
- *                 example: password123
- *     responses:
- *       200:
- *         description: ورود موفق
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 token:
- *                   type: string
- *                 user:
- *                   $ref: '#/components/schemas/User'
- *       400:
- *         description: اطلاعات ناقص
- *       401:
- *         description: نام کاربری یا رمز عبور اشتباه
- *       503:
- *         description: دیتابیس در دسترس نیست
  */
 router.post("/login", async (req, res) => {
-  try {
-    // If DB is not ready, return 503 to signal service unavailable
-    if (!req.app?.locals?.dbReady) {
-      logger.warn("POST /auth/login - DB not ready");
-      return res.status(503).json({ message: "Database unavailable" });
-    }
-    const { email, phone, password } = req.body || {};
-    const normEmail =
-      typeof email === "string" ? email.toLowerCase().trim() : email;
-    const normPhone = typeof phone === "string" ? phone.trim() : phone;
-    if ((!email && !phone) || !password)
-      return res.status(400).json({ message: "Missing credentials" });
-    const user = await User.findOne(
-      email ? { email: normEmail } : { phone: normPhone }
-    ).select("+password");
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
-    const ok = await user.comparePassword(password);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-    const token = sign(user);
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (e) {
-    logger.error("POST /auth/login error", {
-      error: e.message,
-      stack: e.stack,
-    });
-    res.status(500).json({ message: "Server error" });
-  }
+  return res.status(410).json({
+    message: "این endpoint غیرفعال شده است. لطفاً از OTP استفاده کنید.",
+    deprecated: true,
+    useOtpInstead: true,
+  });
 });
 
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      "name email role avatar"
+      "name phone role avatar bio location creatorType isVerified createdAt updatedAt"
     );
-    if (!user) return res.status(404).json({ message: "Not found" });
-    res.json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-      },
-    });
+    if (!user) {
+      return res
+        .status(404)
+        .json(createErrorResponse("USER_NOT_FOUND", "User not found"));
+    }
+
+    const userDTO = createUserDTO(user, req);
+    res.json({ user: userDTO });
   } catch (e) {
-    res.status(500).json({ message: "Server error" });
+    logger.error("GET /auth/me error", {
+      error: e.message,
+      stack: e.stack,
+      userId: req.user?.id,
+    });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }
 });
 
@@ -282,36 +123,51 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
     // DB readiness guard
     if (!req.app?.locals?.dbReady) {
       logger.warn("POST /auth/otp/start - DB not ready");
-      return res.status(503).json({ message: "Database unavailable" });
+      return res
+        .status(503)
+        .json(
+          createErrorResponse("SERVICE_UNAVAILABLE", "Database unavailable")
+        );
     }
 
     const { phone } = req.body || {};
 
     // Input sanitization and validation
     if (!phone || typeof phone !== "string") {
-      return res.status(400).json({
-        message: "شماره تلفن الزامی است",
-        field: "phone",
-      });
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "شماره تلفن الزامی است", {
+          field: "phone",
+        })
+      );
     }
 
     // Trim and normalize
     const trimmedPhone = phone.trim();
     if (trimmedPhone.length > 20) {
-      return res.status(400).json({
-        message: "شماره تلفن خیلی طولانی است",
-        field: "phone",
-      });
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "شماره تلفن خیلی طولانی است",
+            { field: "phone" }
+          )
+        );
     }
 
     const normPhone = normalizePhone(trimmedPhone);
 
     // Validate phone number
     if (!normPhone || !isValidIranianPhone(normPhone)) {
-      return res.status(400).json({
-        message: "فرمت شماره تلفن نادرست است",
-        field: "phone",
-      });
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "فرمت شماره تلفن نادرست است",
+            { field: "phone" }
+          )
+        );
     }
 
     // Detect suspicious activity
@@ -329,9 +185,16 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
         clientIP: req.ip,
         indicators: suspiciousIndicators,
       });
-      return res.status(429).json({
-        message: "درخواست مشکوک تشخیص داده شد. لطفاً بعداً تلاش کنید",
-      });
+      return res.status(429).json(
+        createErrorResponse(
+          "RATE_LIMITED",
+          "درخواست مشکوک تشخیص داده شد. لطفاً بعداً تلاش کنید",
+          {
+            suspiciousActivity: true,
+            indicators: suspiciousIndicators,
+          }
+        )
+      );
     }
 
     // Rate limiting disabled in development for easier testing
@@ -346,10 +209,16 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
           const retryAfterSeconds = Math.ceil(
             OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent
           );
-          return res.status(429).json({
-            message: `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
-            retryAfterSeconds,
-          });
+          return res.status(429).json(
+            createErrorResponse(
+              "RATE_LIMITED",
+              `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
+              {
+                retryAfterSeconds,
+                cooldown: true,
+              }
+            )
+          );
         }
       }
     }
@@ -368,9 +237,8 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
     logger.info("otp/start: saved", { phone: normPhone, expiresAt });
     // Respond immediately without awaiting SMS send
     const response = {
-      success: true,
-      message: "کد ارسال شد",
-      retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
+      ok: true,
+      cooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     };
 
     if (process.env.NODE_ENV !== "production") {
@@ -414,7 +282,9 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
       stack: e.stack,
       duration: Date.now() - startTime,
     });
-    return res.status(500).json({ message: "Server error" });
+    return res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }
 });
 
@@ -427,43 +297,55 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
     // DB readiness guard
     if (!req.app?.locals?.dbReady) {
       logger.warn("POST /auth/otp/verify - DB not ready");
-      return res.status(503).json({ message: "Database unavailable" });
+      return res
+        .status(503)
+        .json(
+          createErrorResponse("SERVICE_UNAVAILABLE", "Database unavailable")
+        );
     }
 
     const { phone, code } = req.body || {};
 
     // Input sanitization and validation
     if (!phone || typeof phone !== "string") {
-      return res.status(400).json({
-        message: "شماره تلفن الزامی است",
-        field: "phone",
-      });
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "شماره تلفن الزامی است", {
+          field: "phone",
+        })
+      );
     }
 
     if (!code || typeof code !== "string") {
-      return res.status(400).json({
-        message: "کد تایید الزامی است",
-        field: "code",
-      });
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "کد تایید الزامی است", {
+          field: "code",
+        })
+      );
     }
 
     // Validate code format (should be 6 digits)
     const trimmedCode = code.trim();
     if (!/^\d{6}$/.test(trimmedCode)) {
-      return res.status(400).json({
-        message: "کد تایید باید ۶ رقم باشد",
-        field: "code",
-      });
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "کد تایید باید ۶ رقم باشد", {
+          field: "code",
+        })
+      );
     }
 
     const normPhone = normalizePhone(phone.trim());
 
     // Validate input
     if (!normPhone || !isValidIranianPhone(normPhone)) {
-      return res.status(400).json({
-        message: "فرمت شماره تلفن نادرست است",
-        field: "phone",
-      });
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "فرمت شماره تلفن نادرست است",
+            { field: "phone" }
+          )
+        );
     }
 
     // Find OTP record
@@ -474,10 +356,11 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         clientIP: req.ip,
         userAgent: req.get("User-Agent"),
       });
-      return res.status(400).json({
-        message: "کد نادرست است",
-        field: "code",
-      });
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("OTP_INVALID", "کد نادرست است", { field: "code" })
+        );
     }
 
     // Check expiration
@@ -489,11 +372,15 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       });
       // Clean up expired record
       await OtpCode.deleteOne({ _id: record._id });
-      return res.status(400).json({
-        message: "کد منقضی شده است. لطفاً کد جدید درخواست کنید",
-        expired: true,
-        field: "code",
-      });
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "OTP_EXPIRED",
+            "کد منقضی شده است. لطفاً کد جدید درخواست کنید",
+            { field: "code", expired: true }
+          )
+        );
     }
 
     // Verify the code using timing-safe comparison
@@ -530,25 +417,32 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
             clientIP: req.ip,
           });
 
-          return res.status(429).json({
-            message: `تعداد تلاش‌ها بیش از حد. لطفاً ${remainingMinutes} دقیقه صبر کنید.`,
-            retryAfterSeconds: Math.ceil(
-              (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000
-            ),
-            field: "code",
-            tooManyAttempts: true,
-          });
+          return res.status(429).json(
+            createErrorResponse(
+              "TOO_MANY_ATTEMPTS",
+              `تعداد تلاش‌ها بیش از حد. لطفاً ${remainingMinutes} دقیقه صبر کنید.`,
+              {
+                retryAfterSeconds: Math.ceil(
+                  (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000
+                ),
+                field: "code",
+                tooManyAttempts: true,
+                remainingMinutes,
+              }
+            )
+          );
         } else {
           // Reset attempts if enough time has passed
           record.attempts = 1;
           await record.save();
         }
       }
-      return res.status(400).json({
-        message: "کد نادرست است",
-        field: "code",
-        attemptsRemaining: Math.max(0, OTP_MAX_ATTEMPTS - record.attempts),
-      });
+      return res.status(400).json(
+        createErrorResponse("OTP_INVALID", "کد نادرست است", {
+          field: "code",
+          attemptsRemaining: Math.max(0, OTP_MAX_ATTEMPTS - record.attempts),
+        })
+      );
     }
 
     // Successful verification: delete OTP record to prevent reuse
@@ -579,7 +473,8 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
           name: "کاربر نخشا",
           phone: normPhone,
           isVerified: true,
-          phoneVerifiedAt: new Date(),
+          role: "user",
+          creatorType: "artisan",
         });
 
         logger.info("New user auto-registered via OTP", {
@@ -591,31 +486,42 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
           error: createError.message,
           phone: normPhone,
         });
-        // Still continue with authentication if user creation fails
-        user = {
-          _id: null,
-          name: "کاربر موقت",
-          phone: normPhone,
-          role: "user",
-        };
+
+        // Return 500 error instead of issuing JWT with null id
+        return res
+          .status(500)
+          .json(
+            createErrorResponse("USER_CREATE_FAILED", "Failed to create user")
+          );
       }
     }
 
+    // Fetch fresh user document with all required fields for complete UserDTO
+    const freshUser = await User.findById(user._id).select(
+      "name phone role avatar bio location creatorType isVerified createdAt updatedAt"
+    );
+
+    if (!freshUser) {
+      logger.error("Fresh user fetch failed after creation/find", {
+        userId: user._id,
+        phone: normPhone,
+      });
+      return res
+        .status(500)
+        .json(
+          createErrorResponse("USER_FETCH_FAILED", "Failed to fetch user data")
+        );
+    }
+
     // Generate JWT token
-    const token = sign(user);
+    const token = sign(freshUser);
 
     logger.info("otp/verify: responded", { phone: normPhone });
+
+    const userDTO = createUserDTO(freshUser, req);
     return res.json({
-      success: true,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role || "user",
-      },
-      message: "تایید موفق",
+      user: userDTO,
     });
   } catch (e) {
     const errorDuration = Date.now() - startTime;
@@ -630,7 +536,9 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       stack: e.stack,
       duration: errorDuration,
     });
-    return res.status(500).json({ message: "Server error" });
+    return res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }
 });
 

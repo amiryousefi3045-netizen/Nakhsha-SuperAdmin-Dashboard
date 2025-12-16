@@ -1,47 +1,44 @@
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
 const logger = require("../utils/logger");
 
 const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
-      trim: true,
-    },
-    email: {
-      type: String,
-      required: false,
-      lowercase: true,
+      required: false, // Not everyone might want to provide a name initially
       trim: true,
     },
     phone: {
       type: String,
       required: true,
       unique: true,
-    },
-    password: {
-      type: String,
-      required: false,
-      minlength: 6,
-      select: false,
-    },
-    location: {
-      city: String,
-      neighborhood: String,
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        index: "2dsphere",
-      },
+      trim: true,
     },
     avatar: {
       type: String,
       default: "",
     },
+    bio: {
+      type: String,
+      default: "",
+    },
+    location: {
+      city: String,
+      neighborhood: String,
+      coordinates: {
+        lat: Number,
+        lng: Number,
+      },
+    },
     role: {
       type: String,
-      enum: ["user", "admin", "artisan"],
+      enum: ["user", "tour_leader", "admin"],
       default: "user",
+    },
+    creatorType: {
+      type: String,
+      enum: ["artisan", "tour_leader"],
+      default: "artisan",
     },
     isVerified: {
       type: Boolean,
@@ -65,37 +62,6 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Partial unique index for email: only enforce uniqueness when a non-empty string is provided.
-userSchema.index(
-  { email: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { email: { $exists: true, $ne: "" } },
-  }
-);
+const User = mongoose.model("User", userSchema);
 
-// Hash password before saving — only when a password exists and was modified.
-userSchema.pre("save", async function (next) {
-  if (!this.password) return next();
-  if (!this.isModified("password")) return next();
-
-  try {
-    const identifier = this.email || this.phone || "<unknown>";
-    logger.debug("Hashing password for user", { identifier });
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    logger.debug("Password hashed successfully");
-    next();
-  } catch (error) {
-    logger.error("Error hashing password", { error: error.message });
-    next(error);
-  }
-});
-
-// Compare password method. If user has no password, return false.
-userSchema.methods.comparePassword = async function (password) {
-  if (!this.password) return false;
-  return bcrypt.compare(password, this.password);
-};
-
-module.exports = mongoose.model("User", userSchema);
+module.exports = User;
