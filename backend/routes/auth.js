@@ -12,6 +12,7 @@ const {
 } = require("../utils/rateLimiter");
 const otpMetrics = require("../utils/otpMetrics");
 const { createUserDTO, createErrorResponse } = require("../utils/userDto");
+const { requireAuth } = require("../middlewares/auth");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -29,30 +30,6 @@ function sign(user) {
   return jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
     expiresIn: TOKEN_TTL,
   });
-}
-
-function authMiddleware(req, res, next) {
-  const h = req.headers.authorization || "";
-  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-  if (!token) {
-    return res
-      .status(401)
-      .json(
-        createErrorResponse(
-          "UNAUTHORIZED",
-          "Missing or invalid authorization token"
-        )
-      );
-  }
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
-    next();
-  } catch {
-    return res
-      .status(401)
-      .json(createErrorResponse("UNAUTHORIZED", "Invalid or expired token"));
-  }
 }
 
 /**
@@ -89,7 +66,7 @@ router.post("/login", async (req, res) => {
   });
 });
 
-router.get("/me", authMiddleware, async (req, res) => {
+router.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
       "name phone role avatar bio location creatorType isVerified createdAt updatedAt"
