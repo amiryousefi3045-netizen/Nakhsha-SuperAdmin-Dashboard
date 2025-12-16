@@ -13,18 +13,18 @@ const path = require("path");
 function getAbsoluteAvatarUrl(avatarPath, req) {
   if (!avatarPath) {
     // Default avatar URL
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
     return `${baseUrl}/api/uploads/avatars/default-avatar.svg`;
   }
-  
+
   // If already absolute URL, return as is
-  if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+  if (avatarPath.startsWith("http://") || avatarPath.startsWith("https://")) {
     return avatarPath;
   }
-  
+
   // Convert relative path to absolute URL
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const cleanPath = avatarPath.startsWith('/') ? avatarPath : `/${avatarPath}`;
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const cleanPath = avatarPath.startsWith("/") ? avatarPath : `/${avatarPath}`;
   return `${baseUrl}${cleanPath}`;
 }
 
@@ -36,7 +36,7 @@ function getAbsoluteAvatarUrl(avatarPath, req) {
  */
 function createUserDTO(user, req) {
   if (!user) return null;
-  
+
   return {
     id: user._id || user.id,
     phone: user.phone,
@@ -71,13 +71,13 @@ function createErrorResponse(code, message, details = null) {
     error: {
       code,
       message,
-    }
+    },
   };
-  
+
   if (details !== null) {
     response.error.details = details;
   }
-  
+
   return response;
 }
 
