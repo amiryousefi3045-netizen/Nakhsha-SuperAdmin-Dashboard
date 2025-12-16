@@ -9,7 +9,7 @@ const {
   validate,
   createCraftSchema,
   nearQuerySchema,
-} = require("../middlewares/validate");
+} = require("../middleware/validate");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";

@@ -38,4 +38,33 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+/**
+ * Role-based authorization middleware
+ * Checks if req.user.role matches any of the required roles
+ *
+ * @param {...string} roles - Required roles
+ * @returns {Function} - Express middleware function
+ */
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res
+        .status(401)
+        .json(createErrorResponse("UNAUTHORIZED", "Authentication required"));
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return res
+        .status(403)
+        .json(
+          createErrorResponse("FORBIDDEN", "Access denied", {
+            requiredRoles: roles,
+          })
+        );
+    }
+
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole };

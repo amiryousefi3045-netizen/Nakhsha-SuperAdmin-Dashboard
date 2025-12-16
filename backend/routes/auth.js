@@ -12,7 +12,7 @@ const {
 } = require("../utils/rateLimiter");
 const otpMetrics = require("../utils/otpMetrics");
 const { createUserDTO, createErrorResponse } = require("../utils/userDto");
-const { requireAuth } = require("../middlewares/auth");
+const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -529,7 +529,7 @@ router.get("/otp/metrics", async (req, res) => {
       error: e.message,
       stack: e.stack,
     });
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }
 });
 
