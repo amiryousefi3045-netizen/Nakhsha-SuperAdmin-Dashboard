@@ -1,6 +1,6 @@
 import axios from "axios";
 // Ensure auth interceptor is registered when uploads are used
-import "./auth";
+import "./auth.ts";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 let SERVER_ORIGIN = "";

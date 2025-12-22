@@ -1,16 +1,14 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { logout } from "../services/auth";
 import AuthModal from "./auth/AuthModal";
 
 const Navbar = () => {
   const nav = useNavigate();
   const [showAuth, setShowAuth] = useState(false);
-  const { user, setUser } = useAuth();
+  const { user, logout } = useAuth();
   const onLogout = () => {
     logout();
-    setUser(null);
     nav("/");
   };
   return (

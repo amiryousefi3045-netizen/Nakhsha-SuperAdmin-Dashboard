@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import OtpInput from "./OtpInput";
-import { otpStart, otpVerify } from "../../services/auth";
+import { otpStart } from "../../services/auth";
 import { useAuth } from "../../hooks/useAuth";
 
 type Props = {
@@ -9,7 +9,7 @@ type Props = {
 };
 
 export default function AuthPanel({ onClose, onSuccess }: Props) {
-  const { setUser } = useAuth();
+  const { loginWithOtpVerify } = useAuth();
   const [step, setStep] = useState<"PHONE" | "CODE">("PHONE");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -120,11 +120,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     setLoading(true);
     try {
       const phoneNormalized = normalizePhone(phone.trim());
-      const { token, user } = await otpVerify(phoneNormalized, c);
-      try {
-        localStorage.setItem("token", token);
-      } catch {}
-      if (user) setUser(user);
+      const { token, user } = await loginWithOtpVerify(phoneNormalized, c);
       onSuccess && onSuccess(user);
       onClose();
     } catch (e: any) {

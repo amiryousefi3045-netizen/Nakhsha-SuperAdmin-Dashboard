@@ -13,7 +13,7 @@ import Login from "./pages/Login";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import MyCrafts from "./pages/MyCrafts";
-import AuthProvider from "./components/AuthProvider";
+import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
 

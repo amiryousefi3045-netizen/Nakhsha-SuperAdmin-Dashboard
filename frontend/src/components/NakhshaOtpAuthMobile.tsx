@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { otpStart, otpVerify } from "../services/auth";
+import { otpStart } from "../services/auth";
 import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -10,7 +10,7 @@ interface OtpError extends Error {
 
 export default function NakhshaOtpAuthMobile() {
   const nav = useNavigate();
-  const { setUser } = useAuth();
+  const { loginWithOtpVerify } = useAuth();
   const [step, setStep] = useState<"PHONE" | "CODE">("PHONE");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -80,8 +80,7 @@ export default function NakhshaOtpAuthMobile() {
     setLastSubmittedCode(c);
     setLoading(true);
     try {
-      const { user } = await otpVerify(phone.trim(), c);
-      if (user) setUser(user);
+      const { user } = await loginWithOtpVerify(phone.trim(), c);
       nav("/");
     } catch (err) {
       const e = err as OtpError;

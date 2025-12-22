@@ -2,11 +2,12 @@ import { AxiosError } from "axios";
 import { http } from "../lib/http";
 import type { User, ErrorResponse } from "../types/api";
 
-const TOKEN_KEY = "token";
+const TOKEN_KEY = "nakhsha_token";
 
-interface OtpError extends Error {
-  status?: number;
-  retryAfterSeconds?: number;
+interface NormalizedError {
+  code: string;
+  message: string;
+  details?: any;
 }
 
 // Token helpers
@@ -34,6 +35,24 @@ export function clearToken(): void {
   }
 }
 
+// Helper function to normalize errors
+function normalizeError(error: any): NormalizedError {
+  if (error instanceof AxiosError && error.response?.data?.error) {
+    const errorData = error.response.data.error;
+    return {
+      code: errorData.code || "UNKNOWN_ERROR",
+      message: errorData.message || "An unknown error occurred",
+      details: errorData.details,
+    };
+  }
+
+  return {
+    code: "NETWORK_ERROR",
+    message: error.message || "Network error occurred",
+    details: null,
+  };
+}
+
 export async function otpStart(phone: string): Promise<{
   success: boolean;
   message?: string;
@@ -47,7 +66,7 @@ export async function otpStart(phone: string): Promise<{
       devCode?: string;
       retryAfterSeconds?: number;
     }>("/auth/otp/start", { phone });
-    // Backend returns data at root level, not nested in data.data
+
     return {
       success: data.success,
       message: data.message,
@@ -55,17 +74,11 @@ export async function otpStart(phone: string): Promise<{
       retryAfterSeconds: data.retryAfterSeconds,
     };
   } catch (error) {
-    const axiosError = error as AxiosError<ErrorResponse>;
-    const status = axiosError.response?.status;
-    const errorData = axiosError.response?.data?.error;
-    const e = new Error(errorData?.message || "OTP start failed") as OtpError;
-    e.status = status;
-    e.retryAfterSeconds = errorData?.details?.retryAfterSeconds;
-    throw e;
+    throw normalizeError(error);
   }
 }
 
-export async function otpVerify(
+export async function verifyOtp(
   phone: string,
   code: string
 ): Promise<{ token: string; user: User }> {
@@ -74,26 +87,20 @@ export async function otpVerify(
       token: string;
       user: User;
     }>("/auth/otp/verify", { phone, code });
-    // Backend returns data at root level, not nested in data.data
+
     if (data.token) setToken(data.token);
     return { token: data.token, user: data.user };
   } catch (error) {
-    const axiosError = error as AxiosError<ErrorResponse>;
-    const status = axiosError.response?.status;
-    const errorData = axiosError.response?.data?.error;
-    const e = new Error(errorData?.message || "OTP verify failed") as OtpError;
-    e.status = status;
-    e.retryAfterSeconds = errorData?.details?.retryAfterSeconds;
-    throw e;
+    throw normalizeError(error);
   }
 }
 
-export async function me(): Promise<User | null> {
+export async function me(): Promise<User> {
   try {
     const { data } = await http.get<{ user: User }>("/auth/me");
-    return data?.user || null;
-  } catch {
-    return null;
+    return data.user;
+  } catch (error) {
+    throw normalizeError(error);
   }
 }
 
