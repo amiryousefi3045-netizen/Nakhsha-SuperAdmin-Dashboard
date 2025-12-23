@@ -1,10 +1,154 @@
 const express = require("express");
+const multer = require("multer");
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs").promises;
 const User = require("../models/User");
 const { requireAuth } = require("../middleware/auth");
 const { createUserDTO, createErrorResponse } = require("../utils/userDto");
 const logger = require("../utils/logger");
 
 const router = express.Router();
+
+// Configure multer for avatar uploads (memory storage)
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB
+  },
+  fileFilter: (req, file, cb) => {
+    // Check mime type
+    const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("INVALID_FILE_TYPE"), false);
+    }
+  },
+});
+
+// POST /api/users/me/avatar - Upload avatar
+router.post(
+  "/me/avatar",
+  requireAuth,
+  avatarUpload.single("avatar"),
+  async (req, res) => {
+    try {
+      // Check if file exists
+      if (!req.file) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse("VALIDATION_ERROR", "No avatar file provided", {
+              field: "avatar",
+            })
+          );
+      }
+
+      const userId = req.user.id;
+      const timestamp = Date.now();
+      const filename = `${userId}-${timestamp}.webp`;
+      const avatarPath = path.join(
+        __dirname,
+        "..",
+        "uploads",
+        "avatars",
+        filename
+      );
+
+      // Process image with sharp
+      await sharp(req.file.buffer)
+        .resize(256, 256, {
+          fit: "cover",
+          position: "center",
+        })
+        .webp({ quality: 75 })
+        .toFile(avatarPath);
+
+      // Update user's avatar field in database
+      const relativePath = `/uploads/avatars/${filename}`;
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { avatar: relativePath },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        // Clean up uploaded file if user not found
+        try {
+          await fs.unlink(avatarPath);
+        } catch (cleanupError) {
+          logger.error(
+            "Failed to cleanup avatar file after user not found",
+            cleanupError
+          );
+        }
+
+        return res
+          .status(404)
+          .json(createErrorResponse("NOT_FOUND", "User not found"));
+      }
+
+      logger.info("Avatar uploaded successfully", {
+        userId,
+        filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+      });
+
+      // Return updated user
+      res.json({ user: createUserDTO(updatedUser, req) });
+    } catch (error) {
+      logger.error("Avatar upload error:", error);
+
+      // Handle multer errors
+      if (error.message === "INVALID_FILE_TYPE") {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "VALIDATION_ERROR",
+              "Invalid file type. Only JPEG, PNG, and WebP images are allowed",
+              {
+                field: "avatar",
+                allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+              }
+            )
+          );
+      }
+
+      if (error.code === "LIMIT_FILE_SIZE") {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "VALIDATION_ERROR",
+              "File too large. Maximum size is 2MB",
+              { field: "avatar", maxSize: "2MB" }
+            )
+          );
+      }
+
+      // Handle sharp processing errors
+      if (error.message && error.message.includes("Input file")) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "VALIDATION_ERROR",
+              "Invalid image file or corrupted data",
+              { field: "avatar" }
+            )
+          );
+      }
+
+      // Generic server error
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "Failed to upload avatar"));
+    }
+  }
+);
 
 // PATCH /api/users/me - Update current user profile
 router.patch("/me", requireAuth, async (req, res) => {

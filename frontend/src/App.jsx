@@ -13,14 +13,51 @@ import Login from "./pages/Login";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import MyCrafts from "./pages/MyCrafts";
+import ProfilePage from "./pages/ProfilePage";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
 
 function RequireAuth({ children, roles }) {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  const { user, isLoading } = useAuth();
+
+  // Show loading while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center">
+        <div className="text-gray-600">در حال بارگذاری...</div>
+      </div>
+    );
+  }
+
+  // For modal-only UX, don't navigate to login - just return null or a CTA
+  if (!user) {
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center px-4 text-center">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          برای دسترسی وارد شوید
+        </h2>
+        <p className="text-gray-600 mb-6">
+          برای دسترسی به این بخش ابتدا وارد حساب کاربری‌تان شوید
+        </p>
+      </div>
+    );
+  }
+
+  // Check role permissions
+  if (roles && !roles.includes(user.role)) {
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center px-4 text-center">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          دسترسی محدود
+        </h2>
+        <p className="text-gray-600">
+          شما دسترسی لازم برای مشاهده این بخش را ندارید
+        </p>
+      </div>
+    );
+  }
+
   return children;
 }
 
@@ -51,6 +88,7 @@ function App() {
             <Route path="login" element={<Login />} />
             <Route path="terms" element={<Terms />} />
             <Route path="privacy" element={<Privacy />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route
               path="my"
               element={

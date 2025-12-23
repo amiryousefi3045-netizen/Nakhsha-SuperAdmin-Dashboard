@@ -14,7 +14,7 @@ function getAbsoluteAvatarUrl(avatarPath, req) {
   if (!avatarPath) {
     // Default avatar URL
     const baseUrl = `${req.protocol}://${req.get("host")}`;
-    return `${baseUrl}/api/uploads/avatars/default-avatar.svg`;
+    return `${baseUrl}/uploads/avatars/default-avatar.svg`;
   }
 
   // If already absolute URL, return as is

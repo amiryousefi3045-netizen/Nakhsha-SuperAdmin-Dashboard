@@ -1,6 +1,6 @@
 import { AxiosError } from "axios";
 import { http } from "../lib/http";
-import type { User, ErrorResponse } from "../types/api";
+import type { User } from "../types/api";
 
 const TOKEN_KEY = "nakhsha_token";
 
@@ -98,6 +98,48 @@ export async function verifyOtp(
 export async function me(): Promise<User> {
   try {
     const { data } = await http.get<{ user: User }>("/auth/me");
+    return data.user;
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function updateMe(payload: {
+  name?: string;
+  bio?: string;
+  avatar?: string;
+  location?: {
+    city?: string;
+    neighborhood?: string;
+  };
+}): Promise<User> {
+  try {
+    // Filter payload to only include allowed fields
+    const allowedPayload: any = {};
+
+    if (payload.name !== undefined) allowedPayload.name = payload.name;
+    if (payload.bio !== undefined) allowedPayload.bio = payload.bio;
+    if (payload.avatar !== undefined) allowedPayload.avatar = payload.avatar;
+
+    if (payload.location) {
+      if (
+        payload.location.city !== undefined ||
+        payload.location.neighborhood !== undefined
+      ) {
+        allowedPayload.location = {};
+        if (payload.location.city !== undefined) {
+          allowedPayload.location.city = payload.location.city;
+        }
+        if (payload.location.neighborhood !== undefined) {
+          allowedPayload.location.neighborhood = payload.location.neighborhood;
+        }
+      }
+    }
+
+    const { data } = await http.patch<{ user: User }>(
+      "/users/me",
+      allowedPayload
+    );
     return data.user;
   } catch (error) {
     throw normalizeError(error);

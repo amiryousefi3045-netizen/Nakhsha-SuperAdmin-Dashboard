@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   useContext,
   useState,
@@ -6,7 +6,13 @@ import React, {
   ReactNode,
 } from "react";
 import type { User } from "../types/api";
-import { verifyOtp, me, getToken, clearToken } from "../services/auth";
+import {
+  verifyOtp,
+  me,
+  updateMe,
+  getToken,
+  clearToken,
+} from "../services/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -18,6 +24,12 @@ interface AuthContextType {
   ) => Promise<{ token: string; user: User }>;
   logout: () => void;
   refreshMe: () => Promise<void>;
+  updateUser: (payload: {
+    name?: string;
+    bio?: string;
+    city?: string;
+    neighborhood?: string;
+  }) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,6 +69,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null);
   };
 
+  const updateUser = async (payload: {
+    name?: string;
+    bio?: string;
+    city?: string;
+    neighborhood?: string;
+  }): Promise<User> => {
+    if (!user) {
+      throw new Error("No user logged in");
+    }
+
+    // Store original user data for rollback
+    const originalUser = user;
+
+    // Optimistic update
+    const optimisticUser: User = {
+      ...user,
+      ...(payload.name !== undefined && { name: payload.name }),
+      ...(payload.bio !== undefined && { bio: payload.bio }),
+      location: {
+        ...user.location,
+        ...(payload.city !== undefined && { city: payload.city }),
+        ...(payload.neighborhood !== undefined && {
+          neighborhood: payload.neighborhood,
+        }),
+      },
+    };
+    setUser(optimisticUser);
+
+    try {
+      const updatedUser = await updateMe(payload);
+      setUser(updatedUser);
+      return updatedUser;
+    } catch (error) {
+      // Rollback on error
+      setUser(originalUser);
+      throw error;
+    }
+  };
+
   // Hydration logic on mount
   useEffect(() => {
     const token = getToken();
@@ -86,6 +137,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loginWithOtpVerify,
     logout,
     refreshMe,
+    updateUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
