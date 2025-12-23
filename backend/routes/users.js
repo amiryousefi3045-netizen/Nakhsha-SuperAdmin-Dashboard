@@ -36,25 +36,33 @@ router.post(
     try {
       // Check if file exists
       if (!req.file) {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse("VALIDATION_ERROR", "No avatar file provided", {
-              field: "avatar",
-            })
-          );
+        return res.status(400).json(
+          createErrorResponse("VALIDATION_ERROR", "No avatar file provided", {
+            field: "avatar",
+          })
+        );
       }
 
       const userId = req.user.id;
       const timestamp = Date.now();
       const filename = `${userId}-${timestamp}.webp`;
-      const avatarPath = path.join(
-        __dirname,
-        "..",
-        "uploads",
-        "avatars",
-        filename
-      );
+      const avatarsDir = path.join(__dirname, "..", "uploads", "avatars");
+      const avatarPath = path.join(avatarsDir, filename);
+
+      // Ensure avatars directory exists
+      try {
+        await fs.mkdir(avatarsDir, { recursive: true });
+      } catch (mkdirError) {
+        logger.error("Failed to create avatars directory", mkdirError);
+        return res
+          .status(500)
+          .json(
+            createErrorResponse(
+              "INTERNAL_ERROR",
+              "Failed to create upload directory"
+            )
+          );
+      }
 
       // Process image with sharp
       await sharp(req.file.buffer)
@@ -103,18 +111,16 @@ router.post(
 
       // Handle multer errors
       if (error.message === "INVALID_FILE_TYPE") {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              "VALIDATION_ERROR",
-              "Invalid file type. Only JPEG, PNG, and WebP images are allowed",
-              {
-                field: "avatar",
-                allowedTypes: ["image/jpeg", "image/png", "image/webp"],
-              }
-            )
-          );
+        return res.status(400).json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "Invalid file type. Only JPEG, PNG, and WebP images are allowed",
+            {
+              field: "avatar",
+              allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+            }
+          )
+        );
       }
 
       if (error.code === "LIMIT_FILE_SIZE") {
