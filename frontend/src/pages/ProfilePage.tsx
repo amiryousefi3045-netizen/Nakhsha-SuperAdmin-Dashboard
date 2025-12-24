@@ -357,7 +357,9 @@ const ProfilePage: React.FC = () => {
 
                   {/* Bio */}
                   <div>
-                    <h3 className="font-medium text-gray-900 mb-2">درباره من</h3>
+                    <h3 className="font-medium text-gray-900 mb-2">
+                      درباره من
+                    </h3>
                     <p className="text-gray-700 leading-relaxed">
                       {user.bio || "هنوز بیوگرافی‌ای نوشته نشده است."}
                     </p>
