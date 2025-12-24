@@ -162,8 +162,6 @@ const ProfilePage: React.FC = () => {
         throw new Error(errorData.error?.message || "خطا در آپلود عکس");
       }
 
-      const data = await response.json();
-
       // Refresh user data to get the new avatar
       await refreshMe();
 
@@ -312,66 +310,70 @@ const ProfilePage: React.FC = () => {
           {!isEditing ? (
             // View Mode
             <div className="space-y-6">
-              {/* Avatar and Basic Info */}
-              <div className="flex items-center gap-4">
-                <img
-                  src={user.avatar}
-                  alt={user.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                  onError={handleAvatarError}
-                />
-                <div className="flex-1">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {user.name}
-                  </h2>
-                  <p className="text-gray-600 text-sm" dir="ltr">
-                    {user.phone}
-                  </p>
-                </div>
-              </div>
+              {user && (
+                <>
+                  {/* Avatar and Basic Info */}
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={user.avatar}
+                      alt={user.name}
+                      className="w-16 h-16 rounded-full object-cover"
+                      onError={handleAvatarError}
+                    />
+                    <div className="flex-1">
+                      <h2 className="text-xl font-semibold text-gray-900">
+                        {user.name}
+                      </h2>
+                      <p className="text-gray-600 text-sm" dir="ltr">
+                        {user.phone}
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Badges */}
-              <div className="flex gap-2 flex-wrap">
-                <span
-                  className={`px-3 py-1 rounded-full text-sm font-medium ${getRoleBadgeColor(
-                    user.role
-                  )}`}
-                >
-                  {getRoleLabel(user.role)}
-                </span>
-                {user.creatorType && (
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${getCreatorTypeBadgeColor(
-                      user.creatorType
-                    )}`}
-                  >
-                    {getCreatorTypeLabel(user.creatorType)}
-                  </span>
-                )}
-                {user.isVerified && (
-                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                    تأیید شده
-                  </span>
-                )}
-              </div>
+                  {/* Badges */}
+                  <div className="flex gap-2 flex-wrap">
+                    <span
+                      className={`px-3 py-1 rounded-full text-sm font-medium ${getRoleBadgeColor(
+                        user.role
+                      )}`}
+                    >
+                      {getRoleLabel(user.role)}
+                    </span>
+                    {user.creatorType && (
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${getCreatorTypeBadgeColor(
+                          user.creatorType
+                        )}`}
+                      >
+                        {getCreatorTypeLabel(user.creatorType)}
+                      </span>
+                    )}
+                    {user.isVerified && (
+                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                        تأیید شده
+                      </span>
+                    )}
+                  </div>
 
-              {/* Bio */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-2">درباره من</h3>
-                <p className="text-gray-700 leading-relaxed">
-                  {user.bio || "هنوز بیوگرافی‌ای نوشته نشده است."}
-                </p>
-              </div>
+                  {/* Bio */}
+                  <div>
+                    <h3 className="font-medium text-gray-900 mb-2">درباره من</h3>
+                    <p className="text-gray-700 leading-relaxed">
+                      {user.bio || "هنوز بیوگرافی‌ای نوشته نشده است."}
+                    </p>
+                  </div>
 
-              {/* Location */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-2">موقعیت</h3>
-                <p className="text-gray-700">
-                  {[user.location?.city, user.location?.neighborhood]
-                    .filter(Boolean)
-                    .join("، ") || "موقعیت مشخص نشده است."}
-                </p>
-              </div>
+                  {/* Location */}
+                  <div>
+                    <h3 className="font-medium text-gray-900 mb-2">موقعیت</h3>
+                    <p className="text-gray-700">
+                      {[user.location?.city, user.location?.neighborhood]
+                        .filter(Boolean)
+                        .join("، ") || "موقعیت مشخص نشده است."}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             // Edit Mode
@@ -386,8 +388,8 @@ const ProfilePage: React.FC = () => {
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <img
-                    src={avatarPreview || user.avatar}
-                    alt={user.name}
+                    src={avatarPreview || user?.avatar}
+                    alt={user?.name || ""}
                     className="w-16 h-16 rounded-full object-cover"
                     onError={handleAvatarError}
                   />
@@ -420,7 +422,7 @@ const ProfilePage: React.FC = () => {
                 </div>
                 <div className="flex-1">
                   <p className="text-gray-600 text-sm" dir="ltr">
-                    {user.phone}
+                    {user?.phone}
                   </p>
                   {avatarFile && (
                     <div className="mt-2 flex gap-2">
