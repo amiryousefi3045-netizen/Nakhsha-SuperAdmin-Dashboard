@@ -14,6 +14,13 @@ const userSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    handle: {
+      type: String,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      sparse: true, // Allows null/undefined while maintaining uniqueness for non-null values
+    },
     avatar: {
       type: String,
       default: "",

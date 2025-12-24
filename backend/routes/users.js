@@ -408,7 +408,7 @@ router.patch("/me", requireAuth, async (req, res) => {
         runValidators: true,
       }
     ).select(
-      "name phone role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
     );
 
     if (!updatedUser) {
@@ -436,6 +436,50 @@ router.patch("/me", requireAuth, async (req, res) => {
         })
       );
     }
+
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
+// GET /api/users/handle/:handle - Get user by handle
+router.get("/handle/:handle", async (req, res) => {
+  try {
+    const { handle } = req.params;
+
+    // Validate handle parameter
+    if (!handle || typeof handle !== "string" || handle.trim().length === 0) {
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "Handle is required", {
+          field: "handle",
+        })
+      );
+    }
+
+    const cleanHandle = handle.trim().toLowerCase();
+
+    // Find user by handle
+    const user = await User.findOne({ handle: cleanHandle }).select(
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
+    );
+
+    if (!user) {
+      return res
+        .status(404)
+        .json(
+          createErrorResponse("NOT_FOUND", "User not found", {
+            handle: cleanHandle,
+          })
+        );
+    }
+
+    // Return user data using DTO
+    res.json({ user: createUserDTO(user, req) });
+  } catch (error) {
+    logger.error("GET /users/handle/:handle error", {
+      error: error.message,
+      stack: error.stack,
+      handle: req.params?.handle,
+    });
 
     res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }

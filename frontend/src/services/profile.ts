@@ -22,6 +22,16 @@ export async function getProfileByHandle(handle: string): Promise<User> {
 }
 
 /**
+ * Fetch public profile by handle (matches backend endpoint)
+ * @param handle - User handle/username
+ * @returns User profile data
+ */
+export async function getPublicProfile(handle: string): Promise<User> {
+  const response = await http.get<{ user: User }>(`/users/handle/${handle}`);
+  return response.data.user;
+}
+
+/**
  * Fetch profile by ID specifically
  * @param id - User ID
  * @returns User profile data

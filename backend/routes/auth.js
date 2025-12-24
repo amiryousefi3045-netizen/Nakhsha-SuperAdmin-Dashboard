@@ -12,6 +12,7 @@ const {
 } = require("../utils/rateLimiter");
 const otpMetrics = require("../utils/otpMetrics");
 const { createUserDTO, createErrorResponse } = require("../utils/userDto");
+const { generateUniqueHandle } = require("../utils/handleGenerator");
 const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
 
@@ -69,7 +70,7 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      "name phone role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
     );
     if (!user) {
       return res
@@ -446,9 +447,13 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
     if (!user) {
       // Create new user with minimal fields for speed
       try {
+        // Generate unique handle for new user
+        const handle = await generateUniqueHandle(normPhone);
+
         user = await User.create({
           name: "کاربر نخشا",
           phone: normPhone,
+          handle: handle,
           isVerified: true,
           role: "user",
           creatorType: "artisan",
@@ -457,6 +462,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         logger.info("New user auto-registered via OTP", {
           userId: user._id,
           phone: normPhone,
+          handle: handle,
         });
       } catch (createError) {
         logger.error("Failed to create user", {
@@ -475,7 +481,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
 
     // Fetch fresh user document with all required fields for complete UserDTO
     const freshUser = await User.findById(user._id).select(
-      "name phone role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
     );
 
     if (!freshUser) {

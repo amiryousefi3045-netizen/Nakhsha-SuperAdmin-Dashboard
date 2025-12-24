@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import {
   getProfileByHandle,
   getProfileById,
+  getPublicProfile,
   isProfileSaved,
   saveProfile,
   unsaveProfile,
@@ -47,33 +48,28 @@ const PublicProfile = () => {
     setError(null);
 
     try {
-      // Mock data for testing - remove when backend is ready
-      const mockUser = {
-        id: "123",
-        name: "علی حسینی",
-        phone: "09123456789",
-        avatar:
-          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-        bio: "هنرمند صنایع دستی از کرمان. تخصص در بافت فرش و قالی دستباف. بیش از 15 سال تجربه در این زمینه دارم و آموزش‌های تخصصی ارائه می‌دهم.",
-        location: {
-          city: "کرمان",
-          neighborhood: "بازار وکیل",
-          coordinates: {
-            lat: 30.2839,
-            lng: 57.0834,
-          },
-        },
-        role: "user",
-        creatorType: "artisan",
-        isVerified: true,
-        createdAt: "2023-01-15T08:00:00.000Z",
-        updatedAt: "2024-12-20T12:00:00.000Z",
-      };
+      let profileData;
 
-      setProfileUser(mockUser);
+      if (handle) {
+        // Use the new getPublicProfile API for handle-based lookups
+        profileData = await getPublicProfile(handle);
+      } else if (id) {
+        // Fallback to ID-based lookup (legacy support)
+        profileData = await getProfileById(id);
+      } else {
+        throw new Error("مشخصات کاربر نامعتبر است");
+      }
+
+      setProfileUser(profileData);
     } catch (err) {
       console.error("Failed to load profile:", err);
-      setError(err?.message || "خطا در بارگذاری پروفایل");
+
+      // Handle different error types
+      if (err.response?.status === 404) {
+        setError("کاربری با این مشخصات یافت نشد");
+      } else {
+        setError(err?.message || "خطا در بارگذاری پروفایل");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -84,10 +80,12 @@ const PublicProfile = () => {
 
     setIsCheckingSaved(true);
     try {
-      // Mock data - remove when backend is ready
-      setIsSaved(false);
+      const saved = await isProfileSaved(profileUser.id);
+      setIsSaved(saved);
     } catch (err) {
       console.error("Failed to check saved status:", err);
+      // Fail silently for this feature
+      setIsSaved(false);
     } finally {
       setIsCheckingSaved(false);
     }
@@ -97,11 +95,15 @@ const PublicProfile = () => {
     if (!profileUser || !currentUser) return;
 
     try {
-      // Mock functionality - remove when backend is ready
-      console.log("Toggle save:", shouldSave);
+      if (shouldSave) {
+        await saveProfile(profileUser.id);
+      } else {
+        await unsaveProfile(profileUser.id);
+      }
       setIsSaved(shouldSave);
     } catch (err) {
       console.error("Failed to toggle save status:", err);
+      // Could show a toast notification here
     }
   };
 
@@ -116,7 +118,7 @@ const PublicProfile = () => {
 
   const handleEditProfile = () => {
     // Navigate to profile edit page
-    navigate("/profile/edit");
+    navigate("/profile");
   };
 
   if (isLoading) {

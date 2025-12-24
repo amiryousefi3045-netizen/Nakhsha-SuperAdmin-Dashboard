@@ -81,6 +81,7 @@ export interface User {
   id: string;
   name: string;
   phone: string;
+  handle?: string | null;
   avatar: string; // Always absolute URL
   bio: string;
   location: {

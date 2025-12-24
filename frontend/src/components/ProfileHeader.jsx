@@ -87,9 +87,14 @@ const ProfileHeader = ({
           {/* Name and Badges */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-2">
-              <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-nakhsha-text">
-                {user.name}
-              </h1>
+              <div>
+                <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-nakhsha-text">
+                  {user.name}
+                </h1>
+                {user.handle && (
+                  <p className="text-gray-600 text-lg mt-1">@{user.handle}</p>
+                )}
+              </div>
 
               {/* Badges */}
               {badges.length > 0 && (

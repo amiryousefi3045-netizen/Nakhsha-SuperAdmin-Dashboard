@@ -40,6 +40,7 @@ function createUserDTO(user, req) {
   return {
     id: user._id || user.id,
     phone: user.phone,
+    handle: user.handle || null,
     name: user.name || "",
     avatar: getAbsoluteAvatarUrl(user.avatar, req),
     bio: user.bio || "",
