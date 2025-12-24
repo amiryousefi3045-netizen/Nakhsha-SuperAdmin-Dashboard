@@ -14,6 +14,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import MyCrafts from "./pages/MyCrafts";
 import ProfilePage from "./pages/ProfilePage";
+import PublicProfile from "./pages/PublicProfile";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
@@ -89,6 +90,9 @@ function App() {
             <Route path="terms" element={<Terms />} />
             <Route path="privacy" element={<Privacy />} />
             <Route path="profile" element={<ProfilePage />} />
+            {/* Public profile routes */}
+            <Route path="u/:handle" element={<PublicProfile />} />
+            <Route path="profile/:id" element={<PublicProfile />} />
             <Route
               path="my"
               element={
