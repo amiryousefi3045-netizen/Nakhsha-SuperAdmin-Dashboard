@@ -463,13 +463,11 @@ router.get("/handle/:handle", async (req, res) => {
     );
 
     if (!user) {
-      return res
-        .status(404)
-        .json(
-          createErrorResponse("NOT_FOUND", "User not found", {
-            handle: cleanHandle,
-          })
-        );
+      return res.status(404).json(
+        createErrorResponse("NOT_FOUND", "User not found", {
+          handle: cleanHandle,
+        })
+      );
     }
 
     // Return user data using DTO
@@ -479,6 +477,123 @@ router.get("/handle/:handle", async (req, res) => {
       error: error.message,
       stack: error.stack,
       handle: req.params?.handle,
+    });
+
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
+// GET /api/users/handle/:handle/content - Get user content by handle and type
+router.get("/handle/:handle/content", async (req, res) => {
+  try {
+    const { handle } = req.params;
+    const { type } = req.query;
+
+    // Validate handle parameter
+    if (!handle || typeof handle !== "string" || handle.trim().length === 0) {
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "Handle is required", {
+          field: "handle",
+        })
+      );
+    }
+
+    // Validate type parameter
+    const validTypes = ["posts", "tours", "tutorials"];
+    if (!type || !validTypes.includes(type)) {
+      return res.status(400).json(
+        createErrorResponse(
+          "VALIDATION_ERROR",
+          "Valid content type is required",
+          {
+            field: "type",
+            validTypes,
+          }
+        )
+      );
+    }
+
+    const cleanHandle = handle.trim().toLowerCase();
+
+    // Find user by handle to verify they exist
+    const user = await User.findOne({ handle: cleanHandle }).select("_id name");
+
+    if (!user) {
+      return res.status(404).json(
+        createErrorResponse("NOT_FOUND", "User not found", {
+          handle: cleanHandle,
+        })
+      );
+    }
+
+    // Generate mock content based on type (will be replaced with real collections later)
+    const generateMockContent = (contentType, userId) => {
+      const cities = [
+        "تهران",
+        "اصفهان",
+        "شیراز",
+        "مشهد",
+        "تبریز",
+        "کرج",
+        "قم",
+        "کرمان",
+      ];
+      const count = Math.floor(Math.random() * 5) + 8; // 8-12 items
+
+      const items = [];
+      for (let i = 0; i < count; i++) {
+        const randomCity = cities[Math.floor(Math.random() * cities.length)];
+        const randomDate = new Date(
+          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+        );
+
+        const baseItem = {
+          id: `${contentType}_${userId}_${i}`,
+          type: contentType.slice(0, -1), // Remove 's' to get singular form
+          city: randomCity,
+          createdAt: randomDate.toISOString(),
+          thumbnailUrl:
+            Math.random() > 0.3
+              ? `https://picsum.photos/400/225?random=${contentType}_${i}`
+              : null,
+        };
+
+        if (contentType === "posts") {
+          items.push({
+            ...baseItem,
+            title: `صنایع دستی زیبا از ${randomCity} - نمونه ${i + 1}`,
+            price:
+              Math.random() > 0.5
+                ? `${Math.floor(Math.random() * 500 + 100)} هزار تومان`
+                : null,
+          });
+        } else if (contentType === "tours") {
+          items.push({
+            ...baseItem,
+            title: `تور گردشگری ${randomCity} - برنامه ${i + 1}`,
+            price: `${Math.floor(Math.random() * 2000 + 500)} هزار تومان`,
+          });
+        } else if (contentType === "tutorials") {
+          items.push({
+            ...baseItem,
+            title: `آموزش ساخت صنایع دستی ${randomCity} - قسمت ${i + 1}`,
+            price: null,
+          });
+        }
+      }
+
+      return items;
+    };
+
+    const items = generateMockContent(type, user._id);
+
+    res.json({ items });
+  } catch (error) {
+    logger.error("GET /users/handle/:handle/content error", {
+      error: error.message,
+      stack: error.stack,
+      handle: req.params?.handle,
+      type: req.query?.type,
     });
 
     res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));

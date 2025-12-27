@@ -1,5 +1,5 @@
 import { http } from "../lib/http";
-import type { User } from "../types/api";
+import type { User, ContentItem } from "../types/api";
 
 /**
  * Fetch a user profile by handle (username/slug) or ID
@@ -119,4 +119,47 @@ export async function unsaveProfile(
     `/profiles/${profileId}/save`
   );
   return response.data;
+}
+
+/**
+ * Fetch user content by handle and type
+ * @param handle - User handle/username
+ * @param type - Content type: posts, tours, or tutorials
+ * @returns Array of content items
+ */
+export async function getPublicUserContent(
+  handle: string,
+  type: "posts" | "tours" | "tutorials"
+): Promise<ContentItem[]> {
+  try {
+    const response = await http.get<{ items: ContentItem[] }>(
+      `/users/handle/${handle}/content?type=${type}`
+    );
+    return response.data.items;
+  } catch (error: any) {
+    // Normalize errors for consistent handling
+    if (error.response?.status === 404) {
+      throw {
+        code: "USER_NOT_FOUND",
+        message: "کاربر پیدا نشد",
+        details: { handle },
+      };
+    }
+
+    if (error.response?.status === 400) {
+      throw {
+        code: "VALIDATION_ERROR",
+        message: "نوع محتوا نامعتبر است",
+        details: { handle, type },
+      };
+    }
+
+    // For other errors, preserve original or provide fallback
+    throw {
+      code: "API_ERROR",
+      message:
+        error.response?.data?.error?.message || "خطا در دریافت محتوای کاربر",
+      details: { handle, type, originalError: error.message },
+    };
+  }
 }

@@ -1,5 +1,15 @@
 ﻿export type GeoPoint = { type: "Point"; coordinates: [number, number] };
 
+export type ContentItem = {
+  id: string;
+  type: "post" | "tour" | "tutorial";
+  title: string;
+  thumbnailUrl: string | null;
+  city: string | null;
+  price: string | null;
+  createdAt: string;
+};
+
 export type Craft = {
   id: string;
   title: string;

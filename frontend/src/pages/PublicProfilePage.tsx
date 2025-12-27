@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { getPublicUserByHandle } from "../services/profile";
-import type { User } from "../types/api";
+import {
+  getPublicUserByHandle,
+  getPublicUserContent,
+} from "../services/profile";
+import type { User, ContentItem } from "../types/api";
+import ContentCard from "../components/ContentCard";
 
 const PublicProfilePage = () => {
   const { handle } = useParams<{ handle: string }>();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -15,6 +20,20 @@ const PublicProfilePage = () => {
     code?: string;
     message?: string;
   } | null>(null);
+  const [tabContentLoading, setTabContentLoading] = useState(false);
+  const [content, setContent] = useState<ContentItem[]>([]);
+  const [contentError, setContentError] = useState<string | null>(null);
+
+  // Get active tab from URL params, default to "posts"
+  const activeTab = searchParams.get("tab") || "posts";
+
+  // Tab configuration
+  const tabs = [
+    { id: "posts", label: "پست‌ها", icon: "" },
+    { id: "tours", label: "تور‌ها", icon: "" },
+    { id: "tutorials", label: "آموزش‌ها", icon: "" },
+    { id: "about", label: "درباره", icon: "" },
+  ];
 
   // Determine if this is the current user's own profile
   const isOwnProfile =
@@ -51,6 +70,43 @@ const PublicProfilePage = () => {
   const handleEditProfile = () => {
     navigate("/profile");
   };
+
+  const handleTabClick = (tabId: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("tab", tabId);
+    setSearchParams(newParams);
+  };
+
+  // Map activeTab to API type
+  const mapTabToType = (tab: string): "posts" | "tours" | "tutorials" => {
+    if (tab === "tours") return "tours";
+    if (tab === "tutorials") return "tutorials";
+    return "posts"; // default to posts
+  };
+
+  // Load content for active tab
+  useEffect(() => {
+    if (!profileUser || !handle || activeTab === "about") return;
+
+    const loadContent = async () => {
+      setTabContentLoading(true);
+      setContentError(null);
+
+      try {
+        const contentType = mapTabToType(activeTab);
+        const items = await getPublicUserContent(handle, contentType);
+        setContent(items);
+      } catch (error: any) {
+        console.error("Failed to load content:", error);
+        setContentError(error.message || "خطا در بارگذاری محتوا");
+        setContent([]);
+      } finally {
+        setTabContentLoading(false);
+      }
+    };
+
+    loadContent();
+  }, [activeTab, profileUser, handle]);
 
   const getRoleLabel = (role: string): string => {
     switch (role) {
@@ -338,6 +394,307 @@ const PublicProfilePage = () => {
                   />
                 </svg>
                 <span className="text-sm">{locationText}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky Tab Bar */}
+      <div className="bg-white border-b border-gray-200 sticky top-14 z-40">
+        <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8">
+          <nav
+            className="flex space-x-0 space-x-reverse"
+            role="tablist"
+            aria-label="بخش‌های پروفایل"
+          >
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabClick(tab.id)}
+                  className={`
+                    relative px-4 py-4 text-sm md:text-base font-medium transition-all duration-200
+                    hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30 
+                    focus:ring-offset-2 focus:ring-offset-white
+                    ${
+                      isActive
+                        ? "text-blue-600 font-bold"
+                        : "text-gray-600 hover:text-gray-800"
+                    }
+                  `}
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls={`${tab.id}-panel`}
+                  id={`${tab.id}-tab`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">{tab.icon}</span>
+                    {tab.label}
+                  </span>
+
+                  {/* Active tab indicator */}
+                  {isActive && (
+                    <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-blue-500" />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="bg-gray-50 min-h-[400px]">
+        <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-6">
+          <div
+            role="tabpanel"
+            aria-labelledby={`${activeTab}-tab`}
+            id={`${activeTab}-panel`}
+          >
+            {activeTab === "posts" && (
+              <>
+                {tabContentLoading ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {Array(8)
+                      .fill(0)
+                      .map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-pulse"
+                        >
+                          <div className="aspect-video bg-gray-200" />
+                          <div className="p-4 space-y-2">
+                            <div className="h-4 bg-gray-200 rounded" />
+                            <div className="h-3 bg-gray-200 rounded w-3/4" />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : contentError ? (
+                  <div className="text-center py-12 text-red-500">
+                    <span className="text-6xl mb-4 block">⚠️</span>
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">
+                      خطا در بارگذاری
+                    </h3>
+                    <p className="text-gray-600">{contentError}</p>
+                  </div>
+                ) : content.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {content.map((item) => (
+                      <ContentCard
+                        key={item.id}
+                        title={item.title}
+                        thumbnailUrl={item.thumbnailUrl}
+                        type={item.type}
+                        city={item.city}
+                        price={item.price}
+                        createdAt={item.createdAt}
+                        onClick={() => console.log("Navigate to:", item.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <span className="text-6xl mb-4 block">📝</span>
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">
+                      هنوز پستی ثبت نشده
+                    </h3>
+                    <p className="text-gray-600">
+                      در این بخش پست‌های کاربر نمایش داده می‌شود
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === "tours" && (
+              <>
+                {tabContentLoading ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {Array(8)
+                      .fill(0)
+                      .map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-pulse"
+                        >
+                          <div className="aspect-video bg-gray-200" />
+                          <div className="p-4 space-y-2">
+                            <div className="h-4 bg-gray-200 rounded" />
+                            <div className="h-3 bg-gray-200 rounded w-3/4" />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : contentError ? (
+                  <div className="text-center py-12 text-red-500">
+                    <span className="text-6xl mb-4 block">⚠️</span>
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">
+                      خطا در بارگذاری
+                    </h3>
+                    <p className="text-gray-600">{contentError}</p>
+                  </div>
+                ) : content.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {content.map((item) => (
+                      <ContentCard
+                        key={item.id}
+                        title={item.title}
+                        thumbnailUrl={item.thumbnailUrl}
+                        type={item.type}
+                        city={item.city}
+                        price={item.price}
+                        createdAt={item.createdAt}
+                        onClick={() => console.log("Navigate to:", item.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <span className="text-6xl mb-4 block">🗺️</span>
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">
+                      هنوز توری ثبت نشده
+                    </h3>
+                    <p className="text-gray-600">
+                      در این بخش تورهای گردشگری نمایش داده می‌شود
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === "tutorials" && (
+              <>
+                {tabContentLoading ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {Array(8)
+                      .fill(0)
+                      .map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-pulse"
+                        >
+                          <div className="aspect-video bg-gray-200" />
+                          <div className="p-4 space-y-2">
+                            <div className="h-4 bg-gray-200 rounded" />
+                            <div className="h-3 bg-gray-200 rounded w-3/4" />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : contentError ? (
+                  <div className="text-center py-12 text-red-500">
+                    <span className="text-6xl mb-4 block">⚠️</span>
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">
+                      خطا در بارگذاری
+                    </h3>
+                    <p className="text-gray-600">{contentError}</p>
+                  </div>
+                ) : content.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {content.map((item) => (
+                      <ContentCard
+                        key={item.id}
+                        title={item.title}
+                        thumbnailUrl={item.thumbnailUrl}
+                        type={item.type}
+                        city={item.city}
+                        price={item.price}
+                        createdAt={item.createdAt}
+                        onClick={() => console.log("Navigate to:", item.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <span className="text-6xl mb-4 block">🎓</span>
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">
+                      هنوز آموزشی ثبت نشده
+                    </h3>
+                    <p className="text-gray-600">
+                      در این بخش آموزش‌ها و راهنماها نمایش داده می‌شود
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === "about" && (
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  درباره {profileUser.name}
+                </h2>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Bio Card */}
+                  {profileUser.bio && (
+                    <div className="bg-white rounded-lg border border-gray-200 p-6">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">
+                        معرفی
+                      </h3>
+                      <p className="text-gray-700 leading-relaxed">
+                        {profileUser.bio}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Location Card */}
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      موقعیت مکانی
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 text-gray-600">
+                        <span className="w-5">📍</span>
+                        <span>{locationText || "موقعیت مشخص نشده"}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-gray-600">
+                        <span className="w-5">🏷️</span>
+                        <span>
+                          {profileUser.creatorType === "artisan"
+                            ? "هنرمند"
+                            : profileUser.creatorType === "tour_leader"
+                            ? "راهنمای گردشگری"
+                            : getRoleLabel(profileUser.role)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Activity Stats Card */}
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      آمار فعالیت
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">وضعیت:</span>
+                        <span className="font-medium">
+                          {profileUser.isVerified
+                            ? "تأیید شده"
+                            : "در انتظار تأیید"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">نقش:</span>
+                        <span className="font-medium">
+                          {getRoleLabel(profileUser.role)}
+                        </span>
+                      </div>
+                      {profileUser.creatorType && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">تخصص:</span>
+                          <span className="font-medium">
+                            {getCreatorTypeLabel(profileUser.creatorType)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
