@@ -17,7 +17,7 @@ async function main() {
 
   // Clean up a subset of test data to be safe
   await Promise.all([
-    User.deleteMany({ email: /@seedtest\.local$/ }),
+    User.deleteMany({ name: /کاربر نمونه/ }),
     Artisan.deleteMany({ name: /کارگاه نمونه/ }),
     Craft.deleteMany({ title: /نمونه-/ }),
   ]);
@@ -26,8 +26,7 @@ async function main() {
   const password = await bcrypt.hash("devpass", 10);
   const user = await User.create({
     name: "کاربر نمونه",
-    email: `seed-${Date.now()}@seedtest.local`,
-    password,
+    phone: `091${Date.now().toString().slice(-8)}`,
     role: "artisan",
     phone: "09120000000",
     location: { city: "تهران", province: "تهران", coordinates: [51.41, 35.69] },

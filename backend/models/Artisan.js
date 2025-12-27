@@ -89,7 +89,6 @@ const ArtisanSchema = new mongoose.Schema(
       },
     },
     contactInfo: {
-      email: String,
       phone: String,
       telegram: String,
       instagram: String,
@@ -256,7 +255,6 @@ ArtisanSchema.set("toJSON", {
       }));
     }
     if (ret.contactInfo) {
-      delete ret.contactInfo.email;
       delete ret.contactInfo.phone;
     }
     return ret;

@@ -40,7 +40,6 @@ const swaggerOptions = {
           properties: {
             _id: { type: "string", example: "507f1f77bcf86cd799439011" },
             name: { type: "string", example: "علی احمدی" },
-            email: { type: "string", example: "ali@example.com" },
             phone: { type: "string", example: "09123456789" },
             role: {
               type: "string",

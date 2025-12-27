@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       sparse: true, // Allows null/undefined while maintaining uniqueness for non-null values
+      index: true,
     },
     avatar: {
       type: String,

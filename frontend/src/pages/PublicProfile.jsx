@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import {
-  getProfileByHandle,
   getProfileById,
   getPublicProfile,
   isProfileSaved,
@@ -24,7 +23,6 @@ const PublicProfile = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
-  const [isCheckingSaved, setIsCheckingSaved] = useState(false);
 
   // Get active tab from URL params
   const activeTab = searchParams.get("tab") || "posts";
@@ -35,15 +33,15 @@ const PublicProfile = () => {
 
   useEffect(() => {
     loadProfile();
-  }, [handle, id]);
+  }, [loadProfile]);
 
   useEffect(() => {
     if (currentUser && profileUser && !isOwnProfile) {
       checkIfSaved();
     }
-  }, [currentUser, profileUser, isOwnProfile]);
+  }, [currentUser, profileUser, isOwnProfile, checkIfSaved]);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -73,12 +71,11 @@ const PublicProfile = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [handle, id]);
 
-  const checkIfSaved = async () => {
+  const checkIfSaved = useCallback(async () => {
     if (!profileUser || !currentUser) return;
 
-    setIsCheckingSaved(true);
     try {
       const saved = await isProfileSaved(profileUser.id);
       setIsSaved(saved);
@@ -86,10 +83,8 @@ const PublicProfile = () => {
       console.error("Failed to check saved status:", err);
       // Fail silently for this feature
       setIsSaved(false);
-    } finally {
-      setIsCheckingSaved(false);
     }
-  };
+  }, [profileUser, currentUser]);
 
   const handleSaveToggle = async (shouldSave) => {
     if (!profileUser || !currentUser) return;

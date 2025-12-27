@@ -32,6 +32,42 @@ export async function getPublicProfile(handle: string): Promise<User> {
 }
 
 /**
+ * Fetch public user by handle - YouTube-like API function
+ * @param handle - User handle/username
+ * @returns API response with user object and normalized errors
+ */
+export async function getPublicUserByHandle(handle: string): Promise<User> {
+  try {
+    const response = await http.get<{ user: User }>(`/users/handle/${handle}`);
+    return response.data.user;
+  } catch (error: any) {
+    // Normalize errors for consistent handling
+    if (error.response?.status === 404) {
+      throw {
+        code: "USER_NOT_FOUND",
+        message: "کاربر پیدا نشد",
+        details: { handle },
+      };
+    }
+
+    if (error.response?.status === 400) {
+      throw {
+        code: "INVALID_HANDLE",
+        message: "شناسه کاربری نامعتبر است",
+        details: { handle },
+      };
+    }
+
+    // For other errors, preserve original or provide fallback
+    throw {
+      code: "API_ERROR",
+      message: error.response?.data?.message || "خطا در دریافت اطلاعات کاربر",
+      details: { handle, originalError: error.message },
+    };
+  }
+}
+
+/**
  * Fetch profile by ID specifically
  * @param id - User ID
  * @returns User profile data

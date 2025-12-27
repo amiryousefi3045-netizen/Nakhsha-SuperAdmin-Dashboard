@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { getPublicProfile } from "../services/profile";
+import { getPublicUserByHandle } from "../services/profile";
 import type { User } from "../types/api";
 
 const PublicProfilePage = () => {
@@ -11,7 +11,10 @@ const PublicProfilePage = () => {
 
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{
+    code?: string;
+    message?: string;
+  } | null>(null);
 
   // Determine if this is the current user's own profile
   const isOwnProfile =
@@ -23,7 +26,7 @@ const PublicProfilePage = () => {
 
   const loadProfile = async () => {
     if (!handle) {
-      setError("مشخصات کاربر نامعتبر است");
+      setError({ code: "INVALID_HANDLE", message: "مشخصات کاربر نامعتبر است" });
       setIsLoading(false);
       return;
     }
@@ -32,33 +35,17 @@ const PublicProfilePage = () => {
     setError(null);
 
     try {
-      const profileData = await getPublicProfile(handle);
-      setProfileUser(profileData);
+      const userData = await getPublicUserByHandle(handle);
+      setProfileUser(userData);
     } catch (err: any) {
       console.error("Failed to load profile:", err);
-
-      if (err.response?.status === 404) {
-        setError("کاربری با این شناسه یافت نشد");
-      } else {
-        setError(err?.message || "خطا در بارگذاری پروفایل");
-      }
+      setError({
+        code: err.code || "API_ERROR",
+        message: err.message || "خطا در بارگذاری پروفایل",
+      });
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleContact = () => {
-    if (!profileUser) return;
-    // For now, this could open a modal or navigate to a contact page
-    console.log("Contact user:", profileUser.id);
-  };
-
-  const handleSave = () => {
-    if (!currentUser || !profileUser) {
-      // Could show login modal
-      return;
-    }
-    console.log("Save profile:", profileUser.id);
   };
 
   const handleEditProfile = () => {
@@ -122,11 +109,15 @@ const PublicProfilePage = () => {
         dir="rtl"
       >
         <div className="text-center p-8 max-w-md">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <div className="text-red-500 text-6xl mb-4">
+            {error.code === "USER_NOT_FOUND" ? "👤" : "⚠️"}
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            خطا در بارگذاری پروفایل
+            {error.code === "USER_NOT_FOUND"
+              ? "کاربر پیدا نشد"
+              : "خطا در بارگذاری"}
           </h1>
-          <p className="text-gray-600 mb-6">{error}</p>
+          <p className="text-gray-600 mb-6">{error.message}</p>
           <button
             onClick={() => navigate("/")}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -173,40 +164,56 @@ const PublicProfilePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* Banner Section - Simple gradient placeholder */}
+      {/* Banner Section - Simple gradient placeholder (~160px height) */}
       <div className="relative">
-        <div className="h-48 md:h-64 lg:h-80 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+        <div className="h-40 md:h-44 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
       </div>
 
       {/* Main Content */}
       <div className="px-4 md:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           {/* Profile Header */}
-          <div className="relative -mt-16 md:-mt-20 lg:-mt-24">
+          <div className="relative -mt-16 md:-mt-20">
             {/* Avatar */}
-            <div className="mb-6">
+            <div className="mb-4">
               <div className="inline-block">
-                <div className="w-24 h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 rounded-full border-4 border-white shadow-lg bg-white overflow-hidden">
-                  <img
-                    src={profileUser.avatar}
-                    alt={`تصویر پروفایل ${profileUser.name}`}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
+                <div className="w-20 h-20 md:w-28 md:h-28 rounded-full border-4 border-white shadow-lg bg-white overflow-hidden">
+                  {profileUser.avatar ? (
+                    <img
+                      src={profileUser.avatar}
+                      alt={`تصویر پروفایل ${profileUser.name}`}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                      <svg
+                        className="w-10 h-10 text-gray-400"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Name, Handle, and Action Buttons */}
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-6">
-              <div className="space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+              <div className="space-y-3">
                 {/* Name and Handle */}
                 <div>
-                  <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
                     {profileUser.name}
                   </h1>
                   {profileUser.handle && (
-                    <p className="text-gray-600 text-lg mt-1">
+                    <p className="text-gray-600 text-base mt-1">
                       @{profileUser.handle}
                     </p>
                   )}
@@ -259,10 +266,7 @@ const PublicProfilePage = () => {
                   </button>
                 ) : (
                   <>
-                    <button
-                      onClick={handleContact}
-                      className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500/30 transition-all duration-200"
-                    >
+                    <button className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500/30 transition-all duration-200">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
@@ -280,10 +284,7 @@ const PublicProfilePage = () => {
                       تماس
                     </button>
 
-                    <button
-                      onClick={handleSave}
-                      className="flex items-center gap-2 px-6 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 focus:ring-2 focus:ring-blue-500/30 transition-all duration-200"
-                    >
+                    <button className="flex items-center gap-2 px-6 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 focus:ring-2 focus:ring-blue-500/30 transition-all duration-200">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
@@ -305,10 +306,10 @@ const PublicProfilePage = () => {
               </div>
             </div>
 
-            {/* Bio */}
+            {/* Bio - truncate to 2 lines */}
             {profileUser.bio && (
-              <div className="mb-6 max-w-3xl">
-                <p className="text-gray-700 text-base md:text-lg leading-relaxed whitespace-pre-line">
+              <div className="mb-4 max-w-3xl">
+                <p className="text-gray-700 text-base leading-relaxed line-clamp-2 overflow-hidden">
                   {profileUser.bio}
                 </p>
               </div>
@@ -323,7 +324,7 @@ const PublicProfilePage = () => {
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  className="w-5 h-5 text-gray-400"
+                  className="w-4 h-4 text-gray-400"
                 >
                   <path
                     strokeLinecap="round"
@@ -336,31 +337,9 @@ const PublicProfilePage = () => {
                     d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25s-7.5-4.108-7.5-11.25a7.5 7.5 0 1115 0z"
                   />
                 </svg>
-                <span className="text-sm md:text-base">{locationText}</span>
+                <span className="text-sm">{locationText}</span>
               </div>
             )}
-
-            {/* Tabs Bar Placeholder */}
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8 space-x-reverse">
-                <button className="border-b-2 border-blue-500 py-4 px-1 text-sm font-medium text-blue-600">
-                  آثار
-                </button>
-                <button className="border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                  معرفی
-                </button>
-                <button className="border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                  نظرات
-                </button>
-              </nav>
-            </div>
-
-            {/* Content Area Placeholder */}
-            <div className="py-8">
-              <div className="text-center text-gray-500">
-                <p>محتوای تب‌ها در ادامه پیاده‌سازی خواهد شد</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>

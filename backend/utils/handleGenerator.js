@@ -20,7 +20,7 @@ function generateRandomChars(length = 3) {
 
 /**
  * Generate a unique user handle based on phone number
- * Format: u + last 6 digits of phone + 3 random characters
+ * Format: u + last 6 digits of phone + - + 3 random alphanumeric characters
  * @param {string} phone - User's phone number (normalized format: 09xxxxxxxxx)
  * @returns {Promise<string>} - Unique handle
  */
@@ -36,8 +36,8 @@ async function generateUniqueHandle(phone) {
     // Generate random 3 characters
     const randomChars = generateRandomChars(3);
 
-    // Create handle: u + last6digits + random3chars
-    const handle = `u${lastSixDigits}${randomChars}`;
+    // Create handle: u + last6digits + - + random3chars
+    const handle = `u${lastSixDigits}-${randomChars}`;
 
     // Check if handle already exists
     try {
@@ -55,7 +55,7 @@ async function generateUniqueHandle(phone) {
 
   // Fallback: if all attempts failed, use timestamp
   const timestamp = Date.now().toString().slice(-6);
-  const fallbackHandle = `u${lastSixDigits}${timestamp.slice(-3)}`;
+  const fallbackHandle = `u${lastSixDigits}-${timestamp.slice(-3)}`;
 
   // Final check for fallback handle
   try {

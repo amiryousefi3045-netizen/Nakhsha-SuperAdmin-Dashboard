@@ -491,7 +491,7 @@ router.get("/seed/dev", async (req, res) => {
   try {
     // Delete small set of test data first to avoid large accidental wipes
     await Promise.all([
-      User.deleteMany({ email: "artisan@test.com" }),
+      User.deleteMany({ phone: "09123456789" }),
       Artisan.deleteMany({}),
       Craft.deleteMany({}),
     ]);
@@ -504,10 +504,8 @@ router.get("/seed/dev", async (req, res) => {
       try {
         user = await User.create({
           name: "استاد حسین",
-          email: "artisan@test.com",
-          password: hashedPassword,
-          role: "artisan",
           phone: "09123456789",
+          role: "user",
           location: {
             city: "یزد",
             province: "یزد",
@@ -517,7 +515,7 @@ router.get("/seed/dev", async (req, res) => {
         });
       } catch (e) {
         if (e && e.code === 11000) {
-          user = await User.findOne({ email: "artisan@test.com" });
+          user = await User.findOne({ phone: "09123456789" });
         } else {
           throw e;
         }

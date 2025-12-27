@@ -32,16 +32,18 @@ beforeEach(async () => {
   app.locals.dbReady = true;
 
   // Create a test user and artisan
-  const response = await request(app).post("/api/auth/register").send({
+  // Note: Since register endpoint is deprecated, we'll create user directly
+  testUser = await User.create({
     name: "هنرمند تست",
-    email: "artisan@test.com",
     phone: "09123456789",
-    password: "password123",
-    role: "artisan",
+    role: "user",
+    isVerified: true,
   });
 
-  authToken = response.body.token;
-  testUser = response.body.user;
+  // Generate auth token manually for testing
+  const jwt = require("jsonwebtoken");
+  const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+  authToken = jwt.sign({ id: testUser._id, role: testUser.role }, JWT_SECRET);
 
   // Create artisan profile
   testArtisan = await Artisan.create({

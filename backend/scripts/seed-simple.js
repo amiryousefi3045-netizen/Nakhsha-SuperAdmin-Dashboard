@@ -11,20 +11,18 @@ async function seedData() {
 
     // Clear existing data
     await Promise.all([
-      User.deleteMany({ email: "artisan@test.com" }),
+      User.deleteMany({ phone: "09123456789" }),
       Artisan.deleteMany({}),
       Craft.deleteMany({}),
     ]);
-    console.log("🗑️ Cleared existing test data");
+    console.log("🗿️ Cleared existing test data");
 
     // Create test user
     const hashedPassword = await bcrypt.hash("test123", 10);
     const user = await User.create({
       name: "استاد حسین",
-      email: "artisan@test.com",
-      password: hashedPassword,
-      role: "artisan",
       phone: "09123456789",
+      role: "user",
       location: {
         city: "یزد",
         province: "یزد",

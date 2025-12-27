@@ -2,15 +2,12 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import AuthModal from "./auth/AuthModal";
+import UserAvatarDropdown from "./UserAvatarDropdown";
 
 const Navbar = () => {
   const nav = useNavigate();
   const [showAuth, setShowAuth] = useState(false);
-  const { user, logout } = useAuth();
-  const onLogout = () => {
-    logout();
-    nav("/");
-  };
+  const { user } = useAuth();
   return (
     <nav className="bg-nakhsha-bg border-b border-nakhsha-border sticky top-0 z-50">
       <div className="max-w-[1280px] mx-auto px-4 py-3 md:py-4">
@@ -175,47 +172,8 @@ const Navbar = () => {
                   </svg>
                 </Link>
 
-                <div className="hidden sm:flex items-center gap-2 ml-3 pl-3 border-l border-nakhsha-border">
-                  <Link
-                    to="/my"
-                    className="text-sm text-primary-600 hover:text-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 rounded px-2 py-1 transition-all duration-200"
-                    aria-label="آثار من"
-                  >
-                    آثار من
-                  </Link>
-                  <div className="text-sm text-nakhsha-text">
-                    {user.name || "کاربر"}
-                  </div>
-                  <button
-                    onClick={onLogout}
-                    className="text-sm text-red-600 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-red-500 rounded px-2 py-1 transition-all duration-200"
-                    aria-label="خروج از حساب"
-                  >
-                    خروج
-                  </button>
-                </div>
-
-                {/* Mobile User Menu - Icon */}
-                <button
-                  className="sm:hidden w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-nakhsha-text/60 focus-visible:ring-2 focus-visible:ring-primary-500 transition-all duration-200"
-                  aria-label="منوی کاربر"
-                  title="منوی کاربر"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="w-6 h-6"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M17.982 18.725A7.488 7.488 0 0 0 12 15a7.488 7.488 0 0 0-5.982 3.725m11.964 0a9 9 0 1 0-11.964 0m11.964 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275m11.964 0A24.973 24.973 0 0 1 12 21a24.973 24.973 0 0 1-5.982-2.275"
-                    />
-                  </svg>
-                </button>
+                {/* User Avatar Dropdown */}
+                <UserAvatarDropdown user={user} />
               </>
             ) : (
               <>

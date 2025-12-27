@@ -10,17 +10,15 @@ async function seedMoreData() {
     console.log("📦 Connected to database");
 
     // Get existing test user/artisan or create if needed
-    let user = await User.findOne({ email: "artisan@test.com" });
+    let user = await User.findOne({ phone: "09123456789" });
     let artisan = await Artisan.findOne();
 
     if (!user) {
       const hashedPassword = await bcrypt.hash("test123", 10);
       user = await User.create({
         name: "استاد حسین",
-        email: "artisan@test.com",
-        password: hashedPassword,
-        role: "artisan",
         phone: "09123456789",
+        role: "user",
         location: {
           city: "یزد",
           province: "یزد",
