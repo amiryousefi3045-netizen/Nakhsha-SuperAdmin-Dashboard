@@ -119,6 +119,22 @@ const PublicProfilePage = () => {
     }
   };
 
+  const handleContentClick = (item: ContentItem) => {
+    switch (item.type) {
+      case "post":
+        navigate(`/p/${item.id}`);
+        break;
+      case "tour":
+        navigate(`/tour/${item.id}`);
+        break;
+      case "tutorial":
+        navigate(`/learn/${item.id}`);
+        break;
+      default:
+        navigate(`/p/${item.id}`);
+    }
+  };
+
   const getCreatorTypeLabel = (creatorType: string): string => {
     switch (creatorType) {
       case "artisan":
@@ -486,13 +502,14 @@ const PublicProfilePage = () => {
                     {content.map((item) => (
                       <ContentCard
                         key={item.id}
+                        id={item.id}
                         title={item.title}
                         thumbnailUrl={item.thumbnailUrl}
                         type={item.type}
                         city={item.city}
                         price={item.price}
                         createdAt={item.createdAt}
-                        onClick={() => console.log("Navigate to:", item.id)}
+                        onClick={() => handleContentClick(item)}
                       />
                     ))}
                   </div>
@@ -542,13 +559,14 @@ const PublicProfilePage = () => {
                     {content.map((item) => (
                       <ContentCard
                         key={item.id}
+                        id={item.id}
                         title={item.title}
                         thumbnailUrl={item.thumbnailUrl}
                         type={item.type}
                         city={item.city}
                         price={item.price}
                         createdAt={item.createdAt}
-                        onClick={() => console.log("Navigate to:", item.id)}
+                        onClick={() => handleContentClick(item)}
                       />
                     ))}
                   </div>
@@ -598,13 +616,14 @@ const PublicProfilePage = () => {
                     {content.map((item) => (
                       <ContentCard
                         key={item.id}
+                        id={item.id}
                         title={item.title}
                         thumbnailUrl={item.thumbnailUrl}
                         type={item.type}
                         city={item.city}
                         price={item.price}
                         createdAt={item.createdAt}
-                        onClick={() => console.log("Navigate to:", item.id)}
+                        onClick={() => handleContentClick(item)}
                       />
                     ))}
                   </div>

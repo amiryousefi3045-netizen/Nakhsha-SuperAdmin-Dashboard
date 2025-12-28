@@ -1,16 +1,19 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 interface ContentCardProps {
+  id: string; // Added id for navigation
   title: string;
   thumbnailUrl: string | null;
   type: "post" | "tour" | "tutorial";
   city?: string | null;
   price?: string | null;
   createdAt?: string | null;
-  onClick?: () => void;
+  onClick?: () => void; // Optional custom click handler
 }
 
 const ContentCard: React.FC<ContentCardProps> = ({
+  id,
   title,
   thumbnailUrl,
   type,
@@ -19,6 +22,7 @@ const ContentCard: React.FC<ContentCardProps> = ({
   createdAt,
   onClick,
 }) => {
+  const navigate = useNavigate();
   const getTypeBadge = () => {
     switch (type) {
       case "post":
@@ -33,6 +37,34 @@ const ContentCard: React.FC<ContentCardProps> = ({
   };
 
   const badge = getTypeBadge();
+
+  const getDetailRoute = () => {
+    switch (type) {
+      case "post":
+        return `/p/${id}`;
+      case "tour":
+        return `/tour/${id}`;
+      case "tutorial":
+        return `/learn/${id}`;
+      default:
+        return `/p/${id}`;
+    }
+  };
+
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else {
+      navigate(getDetailRoute());
+    }
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    }
+  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -49,8 +81,11 @@ const ContentCard: React.FC<ContentCardProps> = ({
 
   return (
     <div
-      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
-      onClick={onClick}
+      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md hover:border-gray-300 active:scale-98 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
       dir="rtl"
     >
       {/* Thumbnail */}

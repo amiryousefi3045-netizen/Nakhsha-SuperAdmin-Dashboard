@@ -145,13 +145,13 @@ const PostsTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
         {posts.map((post) => (
           <ContentCard
             key={post.id}
+            id={post.id}
             title={post.title}
             thumbnailUrl={post.thumbnail}
             type={post.type}
             city={post.city}
             price={post.price}
-            date={post.createdAt}
-            onClick={() => console.log("Navigate to post:", post.id)}
+            createdAt={post.createdAt}
           />
         ))}
       </div>
@@ -252,13 +252,13 @@ const ToursTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
         {tours.map((tour) => (
           <ContentCard
             key={tour.id}
+            id={tour.id}
             title={tour.title}
             thumbnailUrl={tour.thumbnail}
             type={tour.type}
             city={tour.city}
             price={tour.price}
-            date={tour.createdAt}
-            onClick={() => console.log("Navigate to tour:", tour.id)}
+            createdAt={tour.createdAt}
           />
         ))}
       </div>
@@ -359,12 +359,12 @@ const TutorialsTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
         {tutorials.map((tutorial) => (
           <ContentCard
             key={tutorial.id}
+            id={tutorial.id}
             title={tutorial.title}
             thumbnailUrl={tutorial.thumbnail}
             type={tutorial.type}
             city={tutorial.city}
-            date={tutorial.createdAt}
-            onClick={() => console.log("Navigate to tutorial:", tutorial.id)}
+            createdAt={tutorial.createdAt}
           />
         ))}
       </div>

@@ -16,6 +16,9 @@ import MyCrafts from "./pages/MyCrafts";
 import ProfilePage from "./pages/ProfilePage";
 import PublicProfile from "./pages/PublicProfile";
 import PublicProfilePage from "./pages/PublicProfilePage";
+import PostDetailPage from "./pages/PostDetailPage";
+import TourDetailPage from "./pages/TourDetailPage";
+import TutorialDetailPage from "./pages/TutorialDetailPage";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
@@ -94,6 +97,10 @@ function App() {
             {/* Public profile routes */}
             <Route path="u/:handle" element={<PublicProfilePage />} />
             <Route path="profile/:id" element={<PublicProfile />} />
+            {/* Content detail routes */}
+            <Route path="p/:id" element={<PostDetailPage />} />
+            <Route path="tour/:id" element={<TourDetailPage />} />
+            <Route path="learn/:id" element={<TutorialDetailPage />} />
             <Route
               path="my"
               element={
