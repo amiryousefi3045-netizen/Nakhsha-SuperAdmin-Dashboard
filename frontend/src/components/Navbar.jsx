@@ -143,10 +143,17 @@ const Navbar = () => {
               <>
                 <Link
                   to="/create-craft"
-                  className="hidden sm:inline-block bg-primary-600 text-white px-4 py-2 rounded-full hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium"
+                  className="hidden sm:inline-block bg-primary-600 text-white px-4 py-2 rounded-full hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium ml-2"
                   aria-label="ثبت محصول جدید"
                 >
                   ثبت محصول
+                </Link>
+                <Link
+                  to="/create/post"
+                  className="hidden sm:inline-block bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium"
+                  aria-label="ثبت آگهی جدید"
+                >
+                  ثبت آگهی
                 </Link>
 
                 {/* Mobile Create Button */}

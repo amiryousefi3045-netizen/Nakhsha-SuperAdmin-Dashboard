@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const { createErrorResponse } = require("../utils/userDto");
 
 /**
  * Creates a validation middleware using a Zod schema
@@ -6,28 +7,38 @@ const { z } = require("zod");
  * @param {('body'|'query'|'params')} source - Request property to validate
  */
 const validate = (schema, source = "body") => {
-  return async (req, res, next) => {
-    try {
-      // Parse and transform the data
-      const parsed = await schema.parseAsync(req[source]);
+  return (req, res, next) => {
+    const data = req[source];
+    const result = schema.safeParse(data);
 
+    if (result.success) {
       // Replace the request data with parsed results
-      req[source] = parsed;
-
+      req[source] = result.data;
       next();
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        // Flatten and format Zod errors
-        const errors = error.flatten();
-        return res.status(400).json({
-          message: "اطلاعات ورودی نامعتبر است",
-          errors: {
-            fieldErrors: errors.fieldErrors,
-            formErrors: errors.formErrors,
-          },
-        });
+    } else {
+      // Extract the first issue for the main message
+      const firstIssue = result.error.issues[0];
+      const message = firstIssue
+        ? firstIssue.message
+        : "اطلاعات ورودی نامعتبر است";
+
+      // Format details
+      const details = {
+        issues: result.error.issues.map((issue) => ({
+          field: issue.path.join(".") || undefined,
+          message: issue.message,
+          code: issue.code,
+        })),
+      };
+
+      // Add field to details if there's a clear primary field from first issue
+      if (firstIssue && firstIssue.path && firstIssue.path.length > 0) {
+        details.field = firstIssue.path.join(".");
       }
-      next(error);
+
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", message, details));
     }
   };
 };
@@ -93,8 +104,37 @@ const nearQuerySchema = z
     path: ["location"],
   });
 
+// Schema for creating a new post
+const createPostSchema = z.object({
+  title: z
+    .string()
+    .min(1, "عنوان الزامی است")
+    .max(80, "عنوان نباید بیش از ۸۰ کاراکتر باشد")
+    .trim(),
+  description: z
+    .string()
+    .min(1, "توضیحات الزامی است")
+    .max(2000, "توضیحات نباید بیش از ۲۰۰۰ کاراکتر باشد")
+    .trim(),
+  category: z.string().trim().optional(),
+  price: z.number().nonnegative().optional(),
+  location: z
+    .object({
+      city: z.string().trim().optional(),
+      neighborhood: z.string().trim().optional(),
+      coordinates: z
+        .object({
+          lat: z.number().min(-90).max(90),
+          lng: z.number().min(-180).max(180),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
 module.exports = {
   validate,
   createCraftSchema,
+  createPostSchema,
   nearQuerySchema,
 };

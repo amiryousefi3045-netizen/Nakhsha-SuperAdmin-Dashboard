@@ -8,6 +8,7 @@ import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import CraftDetail from "./pages/CraftDetail";
 import CreateCraft from "./pages/CreateCraft";
+import CreatePostPage from "./pages/CreatePostPage";
 import EditCraft from "./pages/EditCraft";
 import Login from "./pages/Login";
 import Terms from "./pages/Terms";
@@ -87,6 +88,22 @@ function App() {
               element={
                 <RequireAuth roles={["admin", "user"]}>
                   <CreateCraft />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="create/post"
+              element={
+                <RequireAuth roles={["admin", "user"]}>
+                  <CreatePostPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="createpostpage"
+              element={
+                <RequireAuth roles={["admin", "user"]}>
+                  <CreatePostPage />
                 </RequireAuth>
               }
             />

@@ -179,6 +179,7 @@ require("./models/User");
 const Craft = require("./models/Craft");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
+const postsRoutes = require("./routes/posts");
 // NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
@@ -193,6 +194,8 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 // Mount canonical crafts API first
 app.use("/api/crafts", craftRoutes);
+// Mount posts API
+app.use("/api/posts", postsRoutes);
 // (Removed compatibility alias to /api/recipes)
 // Mount the new near-search route
 app.use("/api/listings", listingsNearRoutes);

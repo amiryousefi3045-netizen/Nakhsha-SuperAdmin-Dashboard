@@ -155,3 +155,42 @@ export type CommentCreateRequest = {
   text: string;
   rating?: number;
 };
+
+export interface Post {
+  id: string;
+  title: string;
+  description: string;
+  category?: string;
+  price?: number;
+  status: "draft" | "published" | "archived";
+  images?: string[];
+  location?: {
+    city?: string;
+    neighborhood?: string;
+    coordinates?: [number, number];
+  };
+  owner: {
+    id: string;
+    name: string;
+    handle?: string;
+    avatar?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePostRequest {
+  title: string;
+  description: string;
+  category?: string;
+  price?: number;
+  location?: {
+    city?: string;
+    neighborhood?: string;
+    coordinates?: [number, number];
+  };
+}
+
+export interface CreatePostResponse {
+  item: Post;
+}
