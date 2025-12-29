@@ -27,7 +27,6 @@ interface MapClickHandlerProps {
   onMapClick: (latlng: any) => void;
 }
 
-
 const MapClickHandler = ({ onMapClick }: MapClickHandlerProps) => {
   useMapEvents({
     click: (e: any) => {
@@ -179,16 +178,11 @@ const LocationPickerModal = ({
               zoom={13}
               style={{ height: "100%", width: "100%" }}
             >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <MapClickHandler onMapClick={handleMapClick} />
               {selectedPosition && (
                 <Marker
-                  position={[
-                    selectedPosition.lat,
-                    selectedPosition.lng,
-                  ]}
+                  position={[selectedPosition.lat, selectedPosition.lng]}
                 />
               )}
             </MapContainerAny>
