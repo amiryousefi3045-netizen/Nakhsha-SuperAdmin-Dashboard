@@ -120,7 +120,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     setLoading(true);
     try {
       const phoneNormalized = normalizePhone(phone.trim());
-      const { token, user } = await loginWithOtpVerify(phoneNormalized, c);
+      const { user } = await loginWithOtpVerify(phoneNormalized, c);
       onSuccess && onSuccess(user);
       onClose();
     } catch (e: any) {

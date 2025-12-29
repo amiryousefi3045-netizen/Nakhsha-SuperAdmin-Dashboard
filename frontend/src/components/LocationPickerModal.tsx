@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
-import { Icon } from "leaflet";
+
+const MapContainerAny = MapContainer as any;
 
 interface Coordinates {
   lat: number;
@@ -26,17 +27,6 @@ interface MapClickHandlerProps {
   onMapClick: (latlng: any) => void;
 }
 
-// Fix for default markers in react-leaflet
-const defaultIcon = new Icon({
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
 
 const MapClickHandler = ({ onMapClick }: MapClickHandlerProps) => {
   useMapEvents({
@@ -184,28 +174,24 @@ const LocationPickerModal = ({
         {/* Map */}
         <div className="flex-1 p-4">
           <div className="h-80 rounded-lg overflow-hidden border border-gray-300">
-            <MapContainer
-              center={[mapCenter.lat, mapCenter.lng] as [number, number]}
+            <MapContainerAny
+              center={[mapCenter.lat, mapCenter.lng]}
               zoom={13}
               style={{ height: "100%", width: "100%" }}
             >
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               />
               <MapClickHandler onMapClick={handleMapClick} />
               {selectedPosition && (
                 <Marker
-                  position={
-                    [selectedPosition.lat, selectedPosition.lng] as [
-                      number,
-                      number
-                    ]
-                  }
-                  icon={defaultIcon}
+                  position={[
+                    selectedPosition.lat,
+                    selectedPosition.lng,
+                  ]}
                 />
               )}
-            </MapContainer>
+            </MapContainerAny>
           </div>
 
           {/* Selected Location Info */}
