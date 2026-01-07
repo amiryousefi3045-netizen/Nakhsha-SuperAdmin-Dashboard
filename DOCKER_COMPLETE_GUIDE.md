@@ -83,7 +83,7 @@ docker-compose up -d frontend
 - **🌐 Frontend**: http://localhost:3000
 - **🔧 Backend API**: http://localhost:5000
 - **📚 API Documentation**: http://localhost:5000/api-docs
-- **🍃 MongoDB**: localhost:27017
+- **🍃 MongoDB**: localhost:27018 (external) → 27017 (internal)
 - **❤️ Health Check**: http://localhost:5000/api/health
 
 ---
