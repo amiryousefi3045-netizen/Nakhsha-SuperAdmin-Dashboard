@@ -33,10 +33,6 @@ const SMS_TIMEOUT_MS = parseInt(process.env.SMS_TIMEOUT_MS || "4000", 10); // 3-
  * @throws {Error} If SMS sending fails
  */
 async function sendOtpSms(phone, code) {
-  if (!MELIPAYAMAK_USERNAME || !MELIPAYAMAK_PASSWORD) {
-    throw new Error("MeliPayamak credentials not configured");
-  }
-
   if (!phone || !code) {
     throw new Error("Phone number and code are required");
   }
@@ -55,19 +51,29 @@ async function sendOtpSms(phone, code) {
 Code: ${code}
 برای دیگران نفرستید.`;
 
-  // In development mode, simulate success for faster testing (only if SMS_MOCK is true)
+  // In development mode or when SMS_MOCK is enabled, simulate success
   if (
-    process.env.NODE_ENV === "development" &&
-    process.env.SMS_MOCK === "true"
+    process.env.SMS_MOCK === "true" ||
+    (process.env.NODE_ENV === "development" &&
+      (!MELIPAYAMAK_USERNAME || !MELIPAYAMAK_PASSWORD))
   ) {
-    logger.info("SMS mocked in development mode", {
+    logger.info("SMS mocked (development/testing mode)", {
       phone: formattedPhone,
       code,
-      message: "SMS would be sent in production",
+      message: "SMS would be sent in production with valid credentials",
     });
     // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     return;
+  }
+
+  // Check credentials only when not in mock mode
+  if (!MELIPAYAMAK_USERNAME || !MELIPAYAMAK_PASSWORD) {
+    logger.error("OTP error recorded", {
+      error: "MeliPayamak credentials not configured",
+      hint: "Set SMS_USERNAME and SMS_PASSWORD environment variables, or enable SMS_MOCK=true for testing",
+    });
+    throw new Error("MeliPayamak credentials not configured");
   }
 
   const api = new MelipayamakApi(MELIPAYAMAK_USERNAME, MELIPAYAMAK_PASSWORD);
