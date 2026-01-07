@@ -3,6 +3,7 @@
 ## Standard Port Assignments
 
 ### Development Environment
+
 ```
 Frontend (Vite):     5173
 Backend (Express):   5000
@@ -10,15 +11,17 @@ MongoDB:             27017
 ```
 
 ### Docker Production Environment
+
 ```
 Frontend (nginx):    3000 → 80 (container)
-Backend (Express):   5000 → 5000 (container)  
+Backend (Express):   5000 → 5000 (container)
 MongoDB:             27018 → 27017 (container)
 ```
 
 ## Access URLs
 
 ### Development
+
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:5000
 - **API Docs**: http://localhost:5000/api-docs
@@ -26,8 +29,9 @@ MongoDB:             27018 → 27017 (container)
 - **MongoDB**: mongodb://127.0.0.1:27017/nakhsha
 
 ### Docker Production
+
 - **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000  
+- **Backend API**: http://localhost:5000
 - **API Docs**: http://localhost:5000/api-docs
 - **Health Check**: http://localhost:5000/api/health
 - **MongoDB**: mongodb://admin:password@localhost:27018/nakhsha
@@ -35,11 +39,13 @@ MongoDB:             27018 → 27017 (container)
 ## Environment Variables
 
 ### CORS Configuration
+
 ```env
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
 ### Backend Configuration
+
 ```env
 PORT=5000
 MONGODB_URI=mongodb://127.0.0.1:27017/nakhsha  # Development
@@ -47,12 +53,14 @@ MONGODB_URI=mongodb://127.0.0.1:27017/nakhsha  # Development
 ```
 
 ### Frontend Configuration
+
 ```env
 VITE_API_BASE=/api
 VITE_SERVER_ORIGIN=http://localhost:5000
 ```
 
 ## Proxy Configuration (Vite)
+
 ```javascript
 // frontend/vite.config.js
 server: {
@@ -67,6 +75,7 @@ server: {
 ## Troubleshooting Port Conflicts
 
 ### Check if port is in use:
+
 ```bash
 # Windows
 netstat -ano | findstr :5000
@@ -79,6 +88,7 @@ taskkill /PID <PID> /F
 ```
 
 ### Docker port conflicts:
+
 ```bash
 # Stop all containers
 docker-compose down
@@ -89,4 +99,5 @@ docker-compose up --build
 ```
 
 ---
-*Updated: January 2026*
+
+_Updated: January 2026_
