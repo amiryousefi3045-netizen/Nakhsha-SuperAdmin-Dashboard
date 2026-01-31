@@ -91,7 +91,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 // Enhanced security headers with Helmet
@@ -141,7 +141,7 @@ app.use(
 
     // Hide X-Powered-By header
     hidePoweredBy: true,
-  })
+  }),
 );
 
 // Rate limiters
@@ -169,7 +169,7 @@ app.use(
     setHeaders: (res) => {
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     },
-  })
+  }),
 );
 
 // Import routes
@@ -245,7 +245,7 @@ app.use(
   swaggerUi.setup(swaggerSpec, {
     customCss: ".swagger-ui .topbar { display: none }",
     customSiteTitle: "Nakhsha API Documentation",
-  })
+  }),
 );
 
 const PORT = process.env.PORT || 5000;
