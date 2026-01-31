@@ -109,23 +109,6 @@ export default function OtpInput({
 
   return (
     <div className="w-full">
-      {/* Progress indicator */}
-      <div className="mb-4">
-        <div className="flex justify-center gap-1 mb-2">
-          {Array.from({ length }).map((_, i) => (
-            <div
-              key={i}
-              className={`w-6 h-1 rounded-full transition-all duration-300 ${
-                i < digits.length ? "bg-[#1A5F7A] scale-110" : "bg-gray-200"
-              }`}
-            />
-          ))}
-        </div>
-        <p className="text-center text-xs text-gray-600">
-          {digits.length} از {length} رقم وارد شده
-        </p>
-      </div>
-
       {/* OTP Input */}
       <div
         className="flex justify-center gap-2 flex-row-reverse relative"
@@ -162,23 +145,23 @@ export default function OtpInput({
                   isFocused
                     ? "scale-110 shadow-lg"
                     : hasValue
-                    ? "scale-105"
-                    : ""
+                      ? "scale-105"
+                      : ""
                 } ${
                   isError
                     ? "border-red-500 bg-red-50 text-red-600 animate-pulse"
                     : hasValue
-                    ? "border-[#1A5F7A] bg-blue-50 text-[#1A5F7A] shadow-md"
-                    : isFocused
-                    ? "border-[#1A5F7A] bg-blue-50"
-                    : "border-gray-300 bg-white hover:border-gray-400"
+                      ? "border-[#1A5F7A] bg-blue-50 text-[#1A5F7A] shadow-md"
+                      : isFocused
+                        ? "border-[#1A5F7A] bg-blue-50"
+                        : "border-gray-300 bg-white hover:border-gray-400"
                 }`}
                 style={{
                   color: isError
                     ? "#DC2626"
                     : hasValue || isFocused
-                    ? "#1A5F7A"
-                    : "#2E2E2E",
+                      ? "#1A5F7A"
+                      : "#2E2E2E",
                 }}
               />
 

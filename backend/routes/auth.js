@@ -21,7 +21,7 @@ const TOKEN_TTL = process.env.JWT_TTL || "7d";
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
 const OTP_RESEND_COOLDOWN_SECONDS = parseInt(
   process.env.OTP_RESEND_COOLDOWN_SECONDS || "120",
-  10
+  10,
 );
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "8", 10);
 
@@ -70,7 +70,7 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt",
     );
     if (!user) {
       return res
@@ -91,7 +91,9 @@ router.get("/me", requireAuth, async (req, res) => {
 });
 
 // Start OTP flow: generate and store (hashed) code, enforce resend rate-limit
-router.post("/otp/start", otpRateLimit, async (req, res) => {
+// TODO: Re-enable otpRateLimit for production after testing
+// router.post("/otp/start", otpRateLimit, async (req, res) => {
+router.post("/otp/start", async (req, res) => {
   const startTime = Date.now();
 
   try {
@@ -104,7 +106,7 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
       return res
         .status(503)
         .json(
-          createErrorResponse("SERVICE_UNAVAILABLE", "Database unavailable")
+          createErrorResponse("SERVICE_UNAVAILABLE", "Database unavailable"),
         );
     }
 
@@ -115,7 +117,7 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", "شماره تلفن الزامی است", {
           field: "phone",
-        })
+        }),
       );
     }
 
@@ -128,8 +130,8 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
           createErrorResponse(
             "VALIDATION_ERROR",
             "شماره تلفن خیلی طولانی است",
-            { field: "phone" }
-          )
+            { field: "phone" },
+          ),
         );
     }
 
@@ -143,8 +145,8 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
           createErrorResponse(
             "VALIDATION_ERROR",
             "فرمت شماره تلفن نادرست است",
-            { field: "phone" }
-          )
+            { field: "phone" },
+          ),
         );
     }
 
@@ -155,7 +157,7 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
         suspiciousIndicators,
         normPhone,
         req.ip,
-        req.get("User-Agent")
+        req.get("User-Agent"),
       );
 
       logger.warn("Blocked suspicious OTP request", {
@@ -170,8 +172,8 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
           {
             suspiciousActivity: true,
             indicators: suspiciousIndicators,
-          }
-        )
+          },
+        ),
       );
     }
 
@@ -185,7 +187,7 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
 
         if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
           const retryAfterSeconds = Math.ceil(
-            OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent
+            OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent,
           );
           return res.status(429).json(
             createErrorResponse(
@@ -194,8 +196,8 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
               {
                 retryAfterSeconds,
                 cooldown: true,
-              }
-            )
+              },
+            ),
           );
         }
       }
@@ -210,7 +212,7 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
     await OtpCode.findOneAndUpdate(
       { phone: normPhone },
       { codeHash, expiresAt, attempts: 0, lastSentAt: new Date() },
-      { upsert: true, setDefaultsOnInsert: true }
+      { upsert: true, setDefaultsOnInsert: true },
     );
     logger.info("otp/start: saved", { phone: normPhone, expiresAt });
     // Respond immediately without awaiting SMS send
@@ -267,7 +269,9 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
 });
 
 // Verify OTP and issue JWT (auto-register if needed)
-router.post("/otp/verify", otpRateLimit, async (req, res) => {
+// TODO: Re-enable otpRateLimit for production after testing
+// router.post("/otp/verify", otpRateLimit, async (req, res) => {
+router.post("/otp/verify", async (req, res) => {
   const startTime = Date.now();
 
   try {
@@ -278,7 +282,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       return res
         .status(503)
         .json(
-          createErrorResponse("SERVICE_UNAVAILABLE", "Database unavailable")
+          createErrorResponse("SERVICE_UNAVAILABLE", "Database unavailable"),
         );
     }
 
@@ -289,7 +293,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", "شماره تلفن الزامی است", {
           field: "phone",
-        })
+        }),
       );
     }
 
@@ -297,7 +301,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", "کد تایید الزامی است", {
           field: "code",
-        })
+        }),
       );
     }
 
@@ -307,7 +311,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", "کد تایید باید ۶ رقم باشد", {
           field: "code",
-        })
+        }),
       );
     }
 
@@ -321,8 +325,8 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
           createErrorResponse(
             "VALIDATION_ERROR",
             "فرمت شماره تلفن نادرست است",
-            { field: "phone" }
-          )
+            { field: "phone" },
+          ),
         );
     }
 
@@ -336,9 +340,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       });
       return res
         .status(400)
-        .json(
-          createErrorResponse("OTP_INVALID", "کد نادرست است", { field: "code" })
-        );
+        .json(createErrorResponse("OTP_INVALID", "", { field: "code" }));
     }
 
     // Check expiration
@@ -356,8 +358,8 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
           createErrorResponse(
             "OTP_EXPIRED",
             "کد منقضی شده است. لطفاً کد جدید درخواست کنید",
-            { field: "code", expired: true }
-          )
+            { field: "code", expired: true },
+          ),
         );
     }
 
@@ -385,7 +387,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
 
         if (timeSinceLastAttempt < resetTimeMinutes * 60 * 1000) {
           const remainingMinutes = Math.ceil(
-            (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / (60 * 1000)
+            (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / (60 * 1000),
           );
 
           logger.warn("OTP attempts exceeded limit", {
@@ -401,13 +403,13 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
               `تعداد تلاش‌ها بیش از حد. لطفاً ${remainingMinutes} دقیقه صبر کنید.`,
               {
                 retryAfterSeconds: Math.ceil(
-                  (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000
+                  (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000,
                 ),
                 field: "code",
                 tooManyAttempts: true,
                 remainingMinutes,
-              }
-            )
+              },
+            ),
           );
         } else {
           // Reset attempts if enough time has passed
@@ -416,10 +418,10 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         }
       }
       return res.status(400).json(
-        createErrorResponse("OTP_INVALID", "کد نادرست است", {
+        createErrorResponse("OTP_INVALID", "", {
           field: "code",
           attemptsRemaining: Math.max(0, OTP_MAX_ATTEMPTS - record.attempts),
-        })
+        }),
       );
     }
 
@@ -432,7 +434,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       true,
       duration,
       req.ip,
-      record.attempts || 1
+      record.attempts || 1,
     );
 
     logger.info("OTP verification successful", {
@@ -474,14 +476,14 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         return res
           .status(500)
           .json(
-            createErrorResponse("USER_CREATE_FAILED", "Failed to create user")
+            createErrorResponse("USER_CREATE_FAILED", "Failed to create user"),
           );
       }
     }
 
     // Fetch fresh user document with all required fields for complete UserDTO
     const freshUser = await User.findById(user._id).select(
-      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt",
     );
 
     if (!freshUser) {
@@ -492,7 +494,7 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       return res
         .status(500)
         .json(
-          createErrorResponse("USER_FETCH_FAILED", "Failed to fetch user data")
+          createErrorResponse("USER_FETCH_FAILED", "Failed to fetch user data"),
         );
     }
 

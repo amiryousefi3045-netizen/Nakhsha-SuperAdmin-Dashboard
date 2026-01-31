@@ -50,7 +50,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     if (secondsLeft <= 0) return;
     const t = setInterval(
       () => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)),
-      1000
+      1000,
     );
     return () => clearInterval(t);
   }, [secondsLeft]);
@@ -600,26 +600,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
                   لطفاً پس از {formatTimer(secondsLeft)} دوباره تلاش کنید.
                 </p>
               </div>
-            ) : (
-              error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 animate-shake">
-                  <div className="flex items-center gap-2">
-                    <svg
-                      className="w-5 h-5 text-red-500"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <p className="text-red-600 text-sm font-medium">{error}</p>
-                  </div>
-                </div>
-              )
-            )}
+            ) : null}
 
             <div className="flex gap-3">
               <button

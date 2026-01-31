@@ -27,7 +27,8 @@ async function main() {
   const user = await User.create({
     name: "کاربر نمونه",
     phone: `091${Date.now().toString().slice(-8)}`,
-    role: "artisan",
+    role: "user",
+    creatorType: "artisan",
     phone: "09120000000",
     location: { city: "تهران", province: "تهران", coordinates: [51.41, 35.69] },
     isVerified: true,
@@ -53,7 +54,7 @@ async function main() {
   console.log(
     "Created user and artisan:",
     user._id.toString(),
-    artisan._id.toString()
+    artisan._id.toString(),
   );
 
   const craftTypes = [
@@ -114,7 +115,7 @@ async function main() {
       description: baseDesc,
       images: [
         `https://source.unsplash.com/800x600?${encodeURIComponent(
-          type
+          type,
         )}&sig=${i}`,
       ],
       kind: isEducational ? "class" : "artwork",
@@ -132,7 +133,7 @@ async function main() {
       },
       isPublished: true,
       createdAt: new Date(
-        Date.now() - Math.floor(Math.random() * 1000 * 60 * 60 * 24 * 90)
+        Date.now() - Math.floor(Math.random() * 1000 * 60 * 60 * 24 * 90),
       ),
     });
   }
@@ -142,7 +143,7 @@ async function main() {
     "Created",
     created.length,
     "crafts. Example IDs:",
-    created.slice(0, 5).map((c) => c._id.toString())
+    created.slice(0, 5).map((c) => c._id.toString()),
   );
 
   await mongoose.disconnect();
