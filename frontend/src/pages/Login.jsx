@@ -5,7 +5,7 @@ import AuthPanel from "../components/auth/AuthPanel";
 export default function Login() {
   const nav = useNavigate();
 
-  const handleSuccess = (user) => {
+  const handleSuccess = () => {
     nav("/"); // Redirect to home on successful login
   };
 

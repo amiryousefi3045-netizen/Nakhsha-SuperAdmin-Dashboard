@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import AuthModal from "./auth/AuthModal";
 import UserAvatarDropdown from "./UserAvatarDropdown";
 
 const Navbar = () => {
-  const nav = useNavigate();
   const [showAuth, setShowAuth] = useState(false);
   const { user } = useAuth();
   return (

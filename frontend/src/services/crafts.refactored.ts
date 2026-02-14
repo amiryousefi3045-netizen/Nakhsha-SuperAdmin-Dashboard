@@ -23,7 +23,6 @@ import {
 import type { Craft, Comment } from "../types/api";
 import type {
   CraftResponse,
-  CraftsListResponse,
   NearbyCraftsResponse,
   CraftFilters,
   GeoQuery,

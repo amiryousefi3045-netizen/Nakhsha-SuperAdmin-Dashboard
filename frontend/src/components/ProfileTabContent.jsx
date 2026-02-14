@@ -13,8 +13,6 @@ const ProfileTabContent = ({ activeTab, user, isOwnProfile }) => {
         return (
           <PostsTabContent
             userHandle={userHandle}
-            activeTab={activeTab}
-            user={user}
             isOwnProfile={isOwnProfile}
           />
         );
@@ -22,7 +20,6 @@ const ProfileTabContent = ({ activeTab, user, isOwnProfile }) => {
         return (
           <ToursTabContent
             userHandle={userHandle}
-            activeTab={activeTab}
             user={user}
             isOwnProfile={isOwnProfile}
           />
@@ -31,8 +28,6 @@ const ProfileTabContent = ({ activeTab, user, isOwnProfile }) => {
         return (
           <TutorialsTabContent
             userHandle={userHandle}
-            activeTab={activeTab}
-            user={user}
             isOwnProfile={isOwnProfile}
           />
         );
@@ -42,8 +37,6 @@ const ProfileTabContent = ({ activeTab, user, isOwnProfile }) => {
         return (
           <PostsTabContent
             userHandle={userHandle}
-            activeTab={activeTab}
-            user={user}
             isOwnProfile={isOwnProfile}
           />
         );
@@ -63,7 +56,7 @@ const ProfileTabContent = ({ activeTab, user, isOwnProfile }) => {
 };
 
 // Posts Tab Content
-const PostsTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
+const PostsTabContent = ({ userHandle, isOwnProfile }) => {
   const {
     items: posts,
     isLoading,
@@ -170,7 +163,7 @@ const PostsTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
 };
 
 // Tours Tab Content
-const ToursTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
+const ToursTabContent = ({ userHandle, user, isOwnProfile }) => {
   const {
     items: tours,
     isLoading,
@@ -277,7 +270,7 @@ const ToursTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
 };
 
 // Tutorials Tab Content
-const TutorialsTabContent = ({ userHandle, activeTab, user, isOwnProfile }) => {
+const TutorialsTabContent = ({ userHandle, isOwnProfile }) => {
   const {
     items: tutorials,
     isLoading,
@@ -431,8 +424,8 @@ const AboutTabContent = ({ user, isOwnProfile }) => (
               {user.creatorType === "artisan"
                 ? "هنرمند"
                 : user.creatorType === "tour_leader"
-                ? "راهنمای گردشگری"
-                : "کاربر"}
+                  ? "راهنمای گردشگری"
+                  : "کاربر"}
             </span>
           </div>
           {isOwnProfile && (
