@@ -163,12 +163,31 @@ app.use("/api/auth/register", authLimiter);
 app.use("/api/uploads", uploadsLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Secure static file serving for uploads
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "uploads"), {
-    setHeaders: (res) => {
+    // Security headers
+    setHeaders: (res, filePath) => {
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      
+      // Only serve WebP images (our processed format)
+      if (path.extname(filePath).toLowerCase() === ".webp") {
+        res.setHeader("Content-Type", "image/webp");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        // Block non-WebP files
+        res.status(403).end();
+      }
     },
+    // Prevent directory listing
+    index: false,
+    // Don't follow symlinks (security)
+    dotfiles: "deny",
+    // Disable etag for better caching control
+    etag: true,
   }),
 );
 

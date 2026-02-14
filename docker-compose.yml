@@ -38,7 +38,7 @@ services:
       NODE_ENV: development
     volumes:
       - ./backend/logs:/app/logs
-      - ./backend/uploads:/app/uploads
+      - uploads-data:/app/uploads
     depends_on:
       mongodb:
         condition: service_healthy
@@ -92,6 +92,9 @@ volumes:
     name: nakhsha-mongodb-data
   mongodb-config:
     name: nakhsha-mongodb-config
+  uploads-data:
+    name: nakhsha-uploads-data
+    driver: local
 
 networks:
   nakhsha-network:
