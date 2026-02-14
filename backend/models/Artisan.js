@@ -50,7 +50,7 @@ const ArtisanSchema = new mongoose.Schema(
                 "مینیاتور و نقاشی",
                 "چرم‌دوزی",
                 "سایر",
-              ].includes(type)
+              ].includes(type),
             )
           );
         },
@@ -69,22 +69,30 @@ const ArtisanSchema = new mongoose.Schema(
         type: String,
         trim: true,
       },
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        index: "2dsphere",
-        required: true,
-        validate: {
-          validator: function (v) {
-            return (
-              Array.isArray(v) &&
-              v.length === 2 &&
-              v[0] >= -180 &&
-              v[0] <= 180 && // longitude
-              v[1] >= -90 &&
-              v[1] <= 90
-            ); // latitude
+      // GeoJSON Point for MongoDB geospatial queries
+      geometry: {
+        type: {
+          type: String,
+          enum: ["Point"],
+          required: true,
+          default: "Point",
+        },
+        coordinates: {
+          type: [Number], // [longitude, latitude]
+          required: true,
+          validate: {
+            validator: function (coords) {
+              return (
+                Array.isArray(coords) &&
+                coords.length === 2 &&
+                coords[0] >= -180 &&
+                coords[0] <= 180 && // longitude
+                coords[1] >= -90 &&
+                coords[1] <= 90
+              ); // latitude
+            },
+            message: "مختصات جغرافیایی نامعتبر است",
           },
-          message: "مختصات نامعتبر",
         },
       },
     },
@@ -154,8 +162,11 @@ const ArtisanSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
+
+// Geospatial index for location searches
+ArtisanSchema.index({ "location.geometry": "2dsphere" });
 
 // Text search on name, bio, craftTypes
 ArtisanSchema.index(
@@ -175,17 +186,39 @@ ArtisanSchema.index(
       "location.neighborhood": 1,
     },
     name: "artisan_text_search",
-  }
+  },
 );
 
 // Compound indexes for common queries
 ArtisanSchema.index({ verified: 1, craftTypes: 1, "rating.average": -1 });
 ArtisanSchema.index({ "location.city": 1, verified: 1, "rating.average": -1 });
 
+// Pre-save middleware to normalize legacy coordinates to GeoJSON
+ArtisanSchema.pre("save", function (next) {
+  try {
+    // If location has coordinates array but no geometry, convert to GeoJSON
+    if (
+      this.location &&
+      Array.isArray(this.location.coordinates) &&
+      this.location.coordinates.length === 2 &&
+      (!this.location.geometry ||
+        !Array.isArray(this.location.geometry.coordinates))
+    ) {
+      this.location.geometry = {
+        type: "Point",
+        coordinates: this.location.coordinates,
+      };
+    }
+  } catch (e) {
+    // Allow validation to handle any issues
+  }
+  next();
+});
+
 // Methods to manage reviews and ratings
 ArtisanSchema.methods.addReview = async function (userId, rating, text) {
   const existingIdx = this.reviews.findIndex(
-    (r) => String(r.userId) === String(userId)
+    (r) => String(r.userId) === String(userId),
   );
 
   if (existingIdx !== -1) {
@@ -218,7 +251,7 @@ ArtisanSchema.methods.addReview = async function (userId, rating, text) {
 
 ArtisanSchema.methods.removeReview = async function (userId) {
   const idx = this.reviews.findIndex(
-    (r) => String(r.userId) === String(userId)
+    (r) => String(r.userId) === String(userId),
   );
   if (idx === -1) return;
 
@@ -247,6 +280,18 @@ ArtisanSchema.set("toJSON", {
     ret.id = ret._id;
     delete ret._id;
     delete ret.__v;
+
+    // Expose coordinates at top level for backward compatibility
+    if (
+      ret.location &&
+      ret.location.geometry &&
+      Array.isArray(ret.location.geometry.coordinates)
+    ) {
+      ret.location.coordinates = ret.location.geometry.coordinates;
+      // Don't expose nested geometry structure to API consumers
+      delete ret.location.geometry;
+    }
+
     // حذف اطلاعات حساس
     if (ret.verificationDocuments) {
       ret.verificationDocuments = ret.verificationDocuments.map((d) => ({

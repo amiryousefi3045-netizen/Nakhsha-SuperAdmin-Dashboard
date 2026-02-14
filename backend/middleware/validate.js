@@ -52,29 +52,52 @@ const pointSchema = z.object({
   ]),
 });
 
+// Schema for location with optional geometry
+const locationSchema = z
+  .object({
+    city: z.string().optional(),
+    neighborhood: z.string().optional(),
+    geometry: pointSchema.optional(),
+    // Support legacy coordinates array format
+    coordinates: z
+      .tuple([
+        z.number().min(-180).max(180), // longitude
+        z.number().min(-90).max(90), // latitude
+      ])
+      .optional(),
+  })
+  .optional();
+
 // Schema for creating a new craft
 const createCraftSchema = z.object({
   title: z.string().min(3, "عنوان باید حداقل ۳ کاراکتر باشد"),
   description: z.string().min(10, "توضیحات باید حداقل ۱۰ کاراکتر باشد"),
-  category: z.enum(
-    [
-      "carpet",
-      "pottery",
-      "metalwork",
-      "woodwork",
-      "textile",
-      "jewelry",
-      "leather",
-      "other",
-    ],
-    {
-      errorMap: () => ({ message: "دسته‌بندی نامعتبر است" }),
-    }
-  ),
+  craftType: z
+    .enum(
+      [
+        "carpet",
+        "pottery",
+        "metalwork",
+        "woodwork",
+        "textile",
+        "jewelry",
+        "leather",
+        "other",
+      ],
+      {
+        errorMap: () => ({ message: "دسته‌بندی نامعتبر است" }),
+      },
+    )
+    .optional(),
   price: z.number().nonnegative().optional(),
   images: z.array(z.string()).optional(),
-  city: z.string().optional(),
-  location: pointSchema.optional(),
+  tags: z.array(z.string()).optional(),
+  forSale: z.boolean().optional(),
+  location: locationSchema,
+  isPublished: z.boolean().optional(),
+  culturalStory: z.string().optional(),
+  sale: z.any().optional(),
+  barter: z.any().optional(),
 });
 
 // Schema for near query parameters
@@ -122,11 +145,13 @@ const createPostSchema = z.object({
     .object({
       city: z.string().trim().optional(),
       neighborhood: z.string().trim().optional(),
+      geometry: pointSchema.optional(),
+      // Support legacy coordinates format for backward compatibility
       coordinates: z
-        .object({
-          lat: z.number().min(-90).max(90),
-          lng: z.number().min(-180).max(180),
-        })
+        .tuple([
+          z.number().min(-180).max(180), // longitude
+          z.number().min(-90).max(90), // latitude
+        ])
         .optional(),
     })
     .optional(),

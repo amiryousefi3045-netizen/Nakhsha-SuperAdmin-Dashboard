@@ -1,19 +1,8 @@
 const mongoose = require("mongoose");
 const express = require("express");
 const router = express.Router();
-const Craft = require("../models/Craft"); // use Craft model (backwards-compatible to `listings` collection)
-
-// Validate coordinates
-function isValidCoordinates(lng, lat) {
-  return (
-    typeof lng === "number" &&
-    typeof lat === "number" &&
-    lng >= -180 &&
-    lng <= 180 &&
-    lat >= -90 &&
-    lat <= 90
-  );
-}
+const Craft = require("../models/Craft");
+const { isValidCoordinates } = require("../utils/geospatial");
 
 /**
  * GET /api/listings/near
@@ -48,6 +37,18 @@ router.get("/near", async (req, res) => {
     // Parse coordinates and validate
     const longitude = parseFloat(lng);
     const latitude = parseFloat(lat);
+
+    // Validate coordinates
+    if (
+      !isValidCoordinates(longitude, latitude) &&
+      (lng !== undefined || lat !== undefined)
+    ) {
+      return res.status(400).json({
+        message: "مختصات جغرافیایی نامعتبر است",
+        error: "lng باید بین -180 تا 180 و lat باید بین -90 تا 90 باشد",
+      });
+    }
+
     const radius = Math.min(Math.max(1, parseFloat(radiusKm)), 100); // Limit radius between 1-100km
     const skip = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
 
@@ -136,7 +137,7 @@ router.get("/near", async (req, res) => {
             averageRating: 1,
             totalLikes: 1,
           },
-        }
+        },
       );
 
       // Execute pipeline

@@ -10,6 +10,10 @@ const {
   createCraftSchema,
   nearQuerySchema,
 } = require("../middleware/validate");
+const {
+  isValidCoordinates,
+  normalizeLocation,
+} = require("../utils/geospatial");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -102,7 +106,7 @@ router.get("/", async (req, res) => {
             e,
             w,
             rawQuery,
-          }
+          },
         );
       } else {
         try {
@@ -332,7 +336,7 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
       try {
         const indexes = await Craft.collection.indexes();
         const hasText = indexes.some((ix) =>
-          Object.values(ix.key || {}).some((v) => v === "text")
+          Object.values(ix.key || {}).some((v) => v === "text"),
         );
         console.log("[crafts:near] text index present:", !!hasText);
         if (hasText) {
@@ -346,7 +350,7 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
       } catch (e) {
         console.warn(
           "[crafts:near] index check failed, falling back to regex",
-          e && e.message
+          e && e.message,
         );
         // If index check fails, fall back to safe regex behavior
         query.$or = [
@@ -374,7 +378,7 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
         "[crafts:near] using geo search near=[%d,%d] radiusKm=%d",
         longitude,
         latitude,
-        radius
+        radius,
       );
       const pipeline = [
         {
@@ -414,7 +418,7 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
         agg.length,
         "items in",
         Date.now() - start,
-        "ms"
+        "ms",
       );
       const results = agg.map((doc) => ({
         id: doc._id,
@@ -443,7 +447,7 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
     // No valid coordinates: fallback to same filters used above and sort by createdAt
     const docs = await Craft.find(query)
       .select(
-        "title description images craftType price forSale location tags createdAt"
+        "title description images craftType price forSale location tags createdAt",
       )
       .limit(100)
       .sort({ createdAt: -1 });
@@ -451,7 +455,7 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
     console.log(
       "[crafts:near] fallback non-geo query, docsReturned=%d, elapsed=%dms",
       docs.length,
-      Date.now() - start
+      Date.now() - start,
     );
     const formatted = docs.map((doc) => ({
       id: doc._id,
@@ -485,7 +489,7 @@ router.get("/seed/dev", async (req, res) => {
 
   const count = Math.min(
     Math.max(parseInt(req.query.count || "2", 10) || 2, 1),
-    1000
+    1000,
   );
 
   try {
@@ -665,7 +669,7 @@ router.get("/:id", async (req, res) => {
         if (u?.id) {
           liked = craft.likes.some((l) => String(l.user) === String(u.id));
           disliked = craft.dislikes.some(
-            (d) => String(d.user) === String(u.id)
+            (d) => String(d.user) === String(u.id),
           );
         }
       }
@@ -725,8 +729,33 @@ router.post("/", auth, validate(createCraftSchema), async (req, res) => {
       });
     }
 
-    // Note: Basic validation already done by Zod middleware
-    // Coordinates already validated and transformed by createCraftSchema
+    // Extract and validate coordinates from request body
+    // Validation schema ensures proper GeoJSON format if location is provided
+    let locationData = {
+      city: b.location?.city || "",
+      neighborhood: b.location?.neighborhood || "",
+    };
+
+    // If location geometry is provided, use it
+    if (b.location?.geometry?.coordinates) {
+      locationData.geometry = {
+        type: "Point",
+        coordinates: b.location.geometry.coordinates,
+      };
+    }
+    // Support legacy coordinates format [lng, lat]
+    else if (
+      Array.isArray(b.location?.coordinates) &&
+      b.location.coordinates.length === 2
+    ) {
+      const [lng, lat] = b.location.coordinates;
+      if (lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+        locationData.geometry = {
+          type: "Point",
+          coordinates: [lng, lat],
+        };
+      }
+    }
 
     const doc = await Craft.create({
       title: b.title,
@@ -737,11 +766,7 @@ router.post("/", auth, validate(createCraftSchema), async (req, res) => {
       price: b.price,
       forSale: b.forSale !== false,
       tags: b.tags || [],
-      location: {
-        city: b.location?.city || "",
-        neighborhood: b.location?.neighborhood || "",
-        coordinates,
-      },
+      location: locationData,
       isPublished: b.isPublished !== false,
       culturalStory: b.culturalStory,
       sale: b.sale || undefined,
@@ -792,23 +817,44 @@ router.put("/:id", auth, loadCraft, ownerOrAdmin, async (req, res) => {
         : [];
     }
 
-    // Location update
+    // Location update with proper validation
     if (b.location) {
       const loc = b.location;
       if (loc.city !== undefined) update["location.city"] = loc.city;
       if (loc.neighborhood !== undefined)
         update["location.neighborhood"] = loc.neighborhood;
-      let coordinates = loc.coordinates;
-      if (
-        !coordinates &&
-        typeof loc.lat === "number" &&
-        typeof loc.lng === "number"
-      ) {
+
+      // Extract coordinates from various formats
+      let coordinates = null;
+
+      // GeoJSON geometry
+      if (loc.geometry && Array.isArray(loc.geometry.coordinates)) {
+        coordinates = loc.geometry.coordinates;
+      }
+      // Array format [lng, lat]
+      else if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+        coordinates = loc.coordinates;
+      }
+      // Object format {lng, lat}
+      else if (typeof loc.lng === "number" && typeof loc.lat === "number") {
         coordinates = [loc.lng, loc.lat];
       }
-      if (Array.isArray(coordinates) && coordinates.length === 2) {
-        // Use GeoJSON geometry for updates (findByIdAndUpdate bypasses save hooks)
-        update["location.geometry"] = { type: "Point", coordinates };
+
+      // Validate and update coordinates
+      if (coordinates && coordinates.length === 2) {
+        const [lng, lat] = coordinates;
+        if (isValidCoordinates(lng, lat)) {
+          // Use GeoJSON geometry for updates (findByIdAndUpdate bypasses save hooks)
+          update["location.geometry"] = {
+            type: "Point",
+            coordinates: [lng, lat],
+          };
+        } else {
+          return res.status(400).json({
+            message: "مختصات جغرافیایی نامعتبر است",
+            details: { lng, lat },
+          });
+        }
       }
     }
 
@@ -1085,7 +1131,7 @@ router.patch(
       }
 
       const proposal = req.craft.barter?.proposals?.find(
-        (p) => String(p._id) === proposalId
+        (p) => String(p._id) === proposalId,
       );
       if (!proposal) {
         return res.status(404).json({ message: "Proposal not found" });
@@ -1100,7 +1146,7 @@ router.patch(
       console.error("barter status error", e);
       res.status(500).json({ message: "Server error" });
     }
-  }
+  },
 );
 
 module.exports = router;

@@ -9,6 +9,7 @@ const User = require("../models/User");
 const { validate, createPostSchema } = require("../middleware/validate");
 const { requireAuth } = require("../middleware/auth");
 const { createErrorResponse } = require("../utils/userDto");
+const { normalizeLocation } = require("../utils/geospatial");
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ function formatPostDTO(post, req) {
     title: post.title,
     description: post.description,
     images: (post.images || []).map((imagePath) =>
-      imagePath.startsWith("http") ? imagePath : `${baseUrl}${imagePath}`
+      imagePath.startsWith("http") ? imagePath : `${baseUrl}${imagePath}`,
     ),
     location: post.location,
     owner: post.owner
@@ -74,8 +75,8 @@ router.post("/", requireAuth, validate(createPostSchema), async (req, res) => {
           createErrorResponse(
             "USER_NOT_FOUND",
             "کاربر یافت نشد",
-            "User not found"
-          )
+            "User not found",
+          ),
         );
     }
 
@@ -90,7 +91,19 @@ router.post("/", requireAuth, validate(createPostSchema), async (req, res) => {
     // Add optional fields if provided
     if (category) postData.category = category;
     if (price !== undefined) postData.price = price;
-    if (location) postData.location = location;
+
+    // Normalize location to GeoJSON format if provided
+    if (location) {
+      const normalized = normalizeLocation(location);
+      if (normalized) {
+        postData.location = normalized;
+      } else {
+        postData.location = {
+          city: location.city || "",
+          neighborhood: location.neighborhood || "",
+        };
+      }
+    }
 
     const post = await Post.create(postData);
 
@@ -108,7 +121,7 @@ router.post("/", requireAuth, validate(createPostSchema), async (req, res) => {
 
     if (error.name === "ValidationError") {
       const details = Object.values(error.errors || {}).map(
-        (err) => err.message
+        (err) => err.message,
       );
       return res
         .status(400)
@@ -116,8 +129,8 @@ router.post("/", requireAuth, validate(createPostSchema), async (req, res) => {
           createErrorResponse(
             "VALIDATION_ERROR",
             "اطلاعات ارسالی نامعتبر است",
-            details
-          )
+            details,
+          ),
         );
     }
 
@@ -129,8 +142,8 @@ router.post("/", requireAuth, validate(createPostSchema), async (req, res) => {
           "خطای سرور. لطفاً دوباره تلاش کنید",
           process.env.NODE_ENV === "development"
             ? error.message
-            : "Internal server error"
-        )
+            : "Internal server error",
+        ),
       );
   }
 });
@@ -149,7 +162,7 @@ router.post(
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "شناسه پست نامعتبر است", {
             field: "id",
-          })
+          }),
         );
       }
 
@@ -159,7 +172,7 @@ router.post(
         return res.status(404).json(
           createErrorResponse("POST_NOT_FOUND", "پست یافت نشد", {
             field: "id",
-          })
+          }),
         );
       }
 
@@ -168,7 +181,7 @@ router.post(
         return res.status(403).json(
           createErrorResponse("FORBIDDEN", "دسترسی محدود", {
             field: "owner",
-          })
+          }),
         );
       }
 
@@ -177,7 +190,7 @@ router.post(
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "هیچ تصویری ارسال نشده است", {
             field: "images",
-          })
+          }),
         );
       }
 
@@ -186,7 +199,7 @@ router.post(
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "حداکثر ۶ تصویر مجاز است", {
             field: "images",
-          })
+          }),
         );
       }
 
@@ -226,8 +239,8 @@ router.post(
               "خطا در پردازش تصویر",
               {
                 field: "images",
-              }
-            )
+              },
+            ),
           );
         }
       }
@@ -256,8 +269,8 @@ router.post(
             "حجم فایل نباید از ۲ مگابایت بیشتر باشد",
             {
               field: "images",
-            }
-          )
+            },
+          ),
         );
       }
 
@@ -265,7 +278,7 @@ router.post(
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "حداکثر ۶ تصویر مجاز است", {
             field: "images",
-          })
+          }),
         );
       }
 
@@ -276,8 +289,8 @@ router.post(
             "فرمت تصویر باید JPEG، PNG یا WebP باشد",
             {
               field: "images",
-            }
-          )
+            },
+          ),
         );
       }
 
@@ -289,11 +302,11 @@ router.post(
             "خطای سرور. لطفاً دوباره تلاش کنید",
             process.env.NODE_ENV === "development"
               ? error.message
-              : "Internal server error"
-          )
+              : "Internal server error",
+          ),
         );
     }
-  }
+  },
 );
 
 module.exports = router;

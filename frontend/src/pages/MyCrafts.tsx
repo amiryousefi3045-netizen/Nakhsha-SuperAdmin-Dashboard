@@ -68,7 +68,7 @@ export default function MyCrafts(): React.ReactElement {
                   }`,
             hasImage: !!(Array.isArray(r.images) && r.images[0]),
             isHandmade: !!r.isHandmade,
-          }))
+          })),
         );
         setError("");
       })
@@ -110,7 +110,7 @@ export default function MyCrafts(): React.ReactElement {
           </div>
         )}
         <div className="bg-white rounded-lg border">
-          <CraftList items={items} loading={loading} />
+          <CraftList items={items} loading={loading} scrollRootRef={null} />
         </div>
       </div>
     </div>

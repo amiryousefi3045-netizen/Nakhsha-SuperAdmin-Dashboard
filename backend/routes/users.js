@@ -7,6 +7,10 @@ const User = require("../models/User");
 const { requireAuth } = require("../middleware/auth");
 const { createUserDTO, createErrorResponse } = require("../utils/userDto");
 const logger = require("../utils/logger");
+const {
+  isValidCoordinates,
+  normalizeLocation,
+} = require("../utils/geospatial");
 
 const router = express.Router();
 
@@ -39,7 +43,7 @@ router.post(
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "No avatar file provided", {
             field: "avatar",
-          })
+          }),
         );
       }
 
@@ -59,8 +63,8 @@ router.post(
           .json(
             createErrorResponse(
               "INTERNAL_ERROR",
-              "Failed to create upload directory"
-            )
+              "Failed to create upload directory",
+            ),
           );
       }
 
@@ -78,7 +82,7 @@ router.post(
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         { avatar: relativePath },
-        { new: true }
+        { new: true },
       );
 
       if (!updatedUser) {
@@ -88,7 +92,7 @@ router.post(
         } catch (cleanupError) {
           logger.error(
             "Failed to cleanup avatar file after user not found",
-            cleanupError
+            cleanupError,
           );
         }
 
@@ -118,8 +122,8 @@ router.post(
             {
               field: "avatar",
               allowedTypes: ["image/jpeg", "image/png", "image/webp"],
-            }
-          )
+            },
+          ),
         );
       }
 
@@ -130,8 +134,8 @@ router.post(
             createErrorResponse(
               "VALIDATION_ERROR",
               "File too large. Maximum size is 2MB",
-              { field: "avatar", maxSize: "2MB" }
-            )
+              { field: "avatar", maxSize: "2MB" },
+            ),
           );
       }
 
@@ -143,8 +147,8 @@ router.post(
             createErrorResponse(
               "VALIDATION_ERROR",
               "Invalid image file or corrupted data",
-              { field: "avatar" }
-            )
+              { field: "avatar" },
+            ),
           );
       }
 
@@ -153,7 +157,7 @@ router.post(
         .status(500)
         .json(createErrorResponse("INTERNAL_ERROR", "Failed to upload avatar"));
     }
-  }
+  },
 );
 
 // PATCH /api/users/me - Update current user profile
@@ -178,7 +182,7 @@ router.patch("/me", requireAuth, async (req, res) => {
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "Name must be a string", {
             field: "name",
-          })
+          }),
         );
       }
       const trimmedName = allowedFields.name.trim();
@@ -189,8 +193,8 @@ router.patch("/me", requireAuth, async (req, res) => {
             createErrorResponse(
               "VALIDATION_ERROR",
               "Name must be 60 characters or less",
-              { field: "name" }
-            )
+              { field: "name" },
+            ),
           );
       }
       updateData.name = trimmedName;
@@ -202,7 +206,7 @@ router.patch("/me", requireAuth, async (req, res) => {
         return res.status(400).json(
           createErrorResponse("VALIDATION_ERROR", "Bio must be a string", {
             field: "bio",
-          })
+          }),
         );
       }
       const trimmedBio = allowedFields.bio.trim();
@@ -213,8 +217,8 @@ router.patch("/me", requireAuth, async (req, res) => {
             createErrorResponse(
               "VALIDATION_ERROR",
               "Bio must be 300 characters or less",
-              { field: "bio" }
-            )
+              { field: "bio" },
+            ),
           );
       }
       updateData.bio = trimmedBio;
@@ -232,8 +236,8 @@ router.patch("/me", requireAuth, async (req, res) => {
             createErrorResponse(
               "VALIDATION_ERROR",
               "Avatar must be a string or null",
-              { field: "avatar" }
-            )
+              { field: "avatar" },
+            ),
           );
       }
       updateData.avatar = allowedFields.avatar;
@@ -251,8 +255,8 @@ router.patch("/me", requireAuth, async (req, res) => {
             createErrorResponse(
               "VALIDATION_ERROR",
               "Location must be an object or null",
-              { field: "location" }
-            )
+              { field: "location" },
+            ),
           );
       }
 
@@ -274,8 +278,8 @@ router.patch("/me", requireAuth, async (req, res) => {
                 createErrorResponse(
                   "VALIDATION_ERROR",
                   "Location city must be a string or null",
-                  { field: "location.city" }
-                )
+                  { field: "location.city" },
+                ),
               );
           }
           updateData["location.city"] = allowedFields.location.city;
@@ -293,93 +297,100 @@ router.patch("/me", requireAuth, async (req, res) => {
                 createErrorResponse(
                   "VALIDATION_ERROR",
                   "Location neighborhood must be a string or null",
-                  { field: "location.neighborhood" }
-                )
+                  { field: "location.neighborhood" },
+                ),
               );
           }
           updateData["location.neighborhood"] =
             allowedFields.location.neighborhood;
         }
 
-        // Validate and process coordinates
+        // Validate and process coordinates (supports both legacy and GeoJSON formats)
         if (allowedFields.location.coordinates !== undefined) {
-          if (
-            allowedFields.location.coordinates !== null &&
-            typeof allowedFields.location.coordinates !== "object"
-          ) {
-            return res
-              .status(400)
-              .json(
-                createErrorResponse(
-                  "VALIDATION_ERROR",
-                  "Location coordinates must be an object or null",
-                  { field: "location.coordinates" }
-                )
-              );
-          }
-
-          if (allowedFields.location.coordinates === null) {
-            // Set coordinates to null
-            updateData["location.coordinates"] = null;
-          } else {
-            // Process individual coordinate fields
-            let hasCoordinates = false;
-
-            // Validate and set lat
-            if (allowedFields.location.coordinates.lat !== undefined) {
-              if (
-                allowedFields.location.coordinates.lat !== null &&
-                typeof allowedFields.location.coordinates.lat !== "number"
-              ) {
+          // Handle array format [lng, lat]
+          if (Array.isArray(allowedFields.location.coordinates)) {
+            const coords = allowedFields.location.coordinates;
+            if (coords.length === 2) {
+              const [lng, lat] = coords;
+              if (isValidCoordinates(lng, lat)) {
+                updateData["location.geometry"] = {
+                  type: "Point",
+                  coordinates: [lng, lat],
+                };
+              } else {
                 return res
                   .status(400)
                   .json(
                     createErrorResponse(
                       "VALIDATION_ERROR",
-                      "Location coordinates lat must be a number or null",
-                      { field: "location.coordinates.lat" }
-                    )
+                      "مختصات جغرافیایی نامعتبر است",
+                      { field: "location.coordinates", lng, lat },
+                    ),
                   );
               }
-              updateData["location.coordinates.lat"] =
-                allowedFields.location.coordinates.lat;
-              if (allowedFields.location.coordinates.lat !== null) {
-                hasCoordinates = true;
-              }
-            }
-
-            // Validate and set lng
-            if (allowedFields.location.coordinates.lng !== undefined) {
-              if (
-                allowedFields.location.coordinates.lng !== null &&
-                typeof allowedFields.location.coordinates.lng !== "number"
-              ) {
-                return res
-                  .status(400)
-                  .json(
-                    createErrorResponse(
-                      "VALIDATION_ERROR",
-                      "Location coordinates lng must be a number or null",
-                      { field: "location.coordinates.lng" }
-                    )
-                  );
-              }
-              updateData["location.coordinates.lng"] =
-                allowedFields.location.coordinates.lng;
-              if (allowedFields.location.coordinates.lng !== null) {
-                hasCoordinates = true;
-              }
-            }
-
-            // If both lat and lng are null or neither is provided, set coordinates to null
-            if (
-              !hasCoordinates &&
-              ((allowedFields.location.coordinates.lat === null &&
-                allowedFields.location.coordinates.lng === null) ||
-                (allowedFields.location.coordinates.lat === undefined &&
-                  allowedFields.location.coordinates.lng === undefined))
+            } else if (
+              coords.length === 0 ||
+              allowedFields.location.coordinates === null
             ) {
-              updateData["location.coordinates"] = null;
+              updateData["location.geometry"] = null;
+            }
+          }
+          // Handle null
+          else if (allowedFields.location.coordinates === null) {
+            updateData["location.geometry"] = null;
+          }
+          // Handle legacy object format {lat, lng}
+          else if (typeof allowedFields.location.coordinates === "object") {
+            const { lat, lng } = allowedFields.location.coordinates;
+            if (lat !== undefined && lng !== undefined) {
+              if (lat === null && lng === null) {
+                updateData["location.geometry"] = null;
+              } else if (typeof lat === "number" && typeof lng === "number") {
+                if (isValidCoordinates(lng, lat)) {
+                  updateData["location.geometry"] = {
+                    type: "Point",
+                    coordinates: [lng, lat],
+                  };
+                } else {
+                  return res
+                    .status(400)
+                    .json(
+                      createErrorResponse(
+                        "VALIDATION_ERROR",
+                        "مختصات جغرافیایی نامعتبر است",
+                        { field: "location.coordinates", lng, lat },
+                      ),
+                    );
+                }
+              }
+            }
+          }
+        }
+
+        // Also support direct geometry field (GeoJSON format)
+        if (allowedFields.location.geometry !== undefined) {
+          if (allowedFields.location.geometry === null) {
+            updateData["location.geometry"] = null;
+          } else if (
+            allowedFields.location.geometry.type === "Point" &&
+            Array.isArray(allowedFields.location.geometry.coordinates)
+          ) {
+            const [lng, lat] = allowedFields.location.geometry.coordinates;
+            if (isValidCoordinates(lng, lat)) {
+              updateData["location.geometry"] = {
+                type: "Point",
+                coordinates: [lng, lat],
+              };
+            } else {
+              return res
+                .status(400)
+                .json(
+                  createErrorResponse(
+                    "VALIDATION_ERROR",
+                    "مختصات جغرافیایی نامعتبر است",
+                    { field: "location.geometry", lng, lat },
+                  ),
+                );
             }
           }
         }
@@ -394,8 +405,8 @@ router.patch("/me", requireAuth, async (req, res) => {
           createErrorResponse(
             "VALIDATION_ERROR",
             "No valid fields provided for update",
-            { field: null }
-          )
+            { field: null },
+          ),
         );
     }
 
@@ -406,9 +417,9 @@ router.patch("/me", requireAuth, async (req, res) => {
       {
         new: true,
         runValidators: true,
-      }
+      },
     ).select(
-      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt",
     );
 
     if (!updatedUser) {
@@ -433,7 +444,7 @@ router.patch("/me", requireAuth, async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", firstError.message, {
           field: firstError.path,
-        })
+        }),
       );
     }
 
@@ -451,7 +462,7 @@ router.get("/handle/:handle", async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", "Handle is required", {
           field: "handle",
-        })
+        }),
       );
     }
 
@@ -459,14 +470,14 @@ router.get("/handle/:handle", async (req, res) => {
 
     // Find user by handle
     const user = await User.findOne({ handle: cleanHandle }).select(
-      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt"
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt",
     );
 
     if (!user) {
       return res.status(404).json(
         createErrorResponse("NOT_FOUND", "User not found", {
           handle: cleanHandle,
-        })
+        }),
       );
     }
 
@@ -494,7 +505,7 @@ router.get("/handle/:handle/content", async (req, res) => {
       return res.status(400).json(
         createErrorResponse("VALIDATION_ERROR", "Handle is required", {
           field: "handle",
-        })
+        }),
       );
     }
 
@@ -508,8 +519,8 @@ router.get("/handle/:handle/content", async (req, res) => {
           {
             field: "type",
             validTypes,
-          }
-        )
+          },
+        ),
       );
     }
 
@@ -522,7 +533,7 @@ router.get("/handle/:handle/content", async (req, res) => {
       return res.status(404).json(
         createErrorResponse("NOT_FOUND", "User not found", {
           handle: cleanHandle,
-        })
+        }),
       );
     }
 
@@ -544,7 +555,7 @@ router.get("/handle/:handle/content", async (req, res) => {
       for (let i = 0; i < count; i++) {
         const randomCity = cities[Math.floor(Math.random() * cities.length)];
         const randomDate = new Date(
-          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000,
         );
 
         const baseItem = {
