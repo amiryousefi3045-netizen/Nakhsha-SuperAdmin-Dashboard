@@ -73,7 +73,7 @@ function validateFileSignature(filePath) {
 function generateSafeFilename(originalname = "upload") {
   const timestamp = Date.now();
   const random = crypto.randomBytes(6).toString("hex");
-  
+
   // Sanitize original name: remove path separators, null bytes, and special chars
   const safeName = originalname
     .replace(/[\/\\\0]/g, "") // Remove path separators and null bytes
@@ -82,7 +82,7 @@ function generateSafeFilename(originalname = "upload") {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "") // Remove leading/trailing hyphens
     .slice(0, 40);
-  
+
   return `${safeName || "file"}-${timestamp}-${random}.webp`;
 }
 
@@ -93,15 +93,15 @@ function sanitizePath(basePath, filename) {
   // Remove any path traversal attempts
   const sanitized = filename.replace(/\.\.\/|\.\.\\/g, "");
   const fullPath = path.join(basePath, sanitized);
-  
+
   // Ensure the resolved path is within the base directory
   const resolvedPath = path.resolve(fullPath);
   const resolvedBase = path.resolve(basePath);
-  
+
   if (!resolvedPath.startsWith(resolvedBase)) {
     throw new Error("مسیر فایل نامعتبر است");
   }
-  
+
   return resolvedPath;
 }
 
@@ -134,14 +134,14 @@ const upload = multer({
     if (!allowedTypes.includes(file.mimetype)) {
       return cb(new Error("فقط تصاویر JPEG/PNG/WebP مجاز هستند"));
     }
-    
+
     // Validate file extension
     const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
       return cb(new Error("پسوند فایل نامعتبر است"));
     }
-    
+
     cb(null, true);
   },
 });
@@ -199,10 +199,10 @@ function cleanupTempFiles() {
   if (!fs.existsSync(tempDir)) return;
 
   const oneHourAgo = Date.now() - 60 * 60 * 1000;
-  
+
   fs.readdir(tempDir, (err, files) => {
     if (err) return;
-    
+
     files.forEach((file) => {
       const filePath = path.join(tempDir, file);
       fs.stat(filePath, (err, stats) => {
@@ -239,7 +239,11 @@ router.post("/", (req, res) => {
       const finalFilename = generateSafeFilename(req.file.originalname);
 
       // Validate filename doesn't contain path traversal
-      if (finalFilename.includes("..") || finalFilename.includes("/") || finalFilename.includes("\\")) {
+      if (
+        finalFilename.includes("..") ||
+        finalFilename.includes("/") ||
+        finalFilename.includes("\\")
+      ) {
         throw new Error("نام فایل نامعتبر است");
       }
 
@@ -255,11 +259,12 @@ router.post("/", (req, res) => {
       });
     } catch (err) {
       console.error("Image processing error:", err);
-      
+
       // Provide specific error messages
       const isSigError = err.message.includes("signature");
-      const isPathError = err.message.includes("مسیر") || err.message.includes("نام فایل");
-      
+      const isPathError =
+        err.message.includes("مسیر") || err.message.includes("نام فایل");
+
       res.status(isSigError || isPathError ? 400 : 500).json({
         message: err.message || "خطا در پردازش تصویر",
       });

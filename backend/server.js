@@ -172,7 +172,7 @@ app.use(
     setHeaders: (res, filePath) => {
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      
+
       // Only serve WebP images (our processed format)
       if (path.extname(filePath).toLowerCase() === ".webp") {
         res.setHeader("Content-Type", "image/webp");
