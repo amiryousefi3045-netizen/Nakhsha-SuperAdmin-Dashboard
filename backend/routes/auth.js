@@ -91,9 +91,7 @@ router.get("/me", requireAuth, async (req, res) => {
 });
 
 // Start OTP flow: generate and store (hashed) code, enforce resend rate-limit
-// TODO: Re-enable otpRateLimit for production after testing
-// router.post("/otp/start", otpRateLimit, async (req, res) => {
-router.post("/otp/start", async (req, res) => {
+router.post("/otp/start", otpRateLimit, async (req, res) => {
   const startTime = Date.now();
 
   try {
@@ -177,29 +175,109 @@ router.post("/otp/start", async (req, res) => {
       );
     }
 
-    // Rate limiting disabled in development for easier testing
-    if (process.env.NODE_ENV !== "development") {
-      // Check resend cooldown - only in production
-      const existing = await OtpCode.findOne({ phone: normPhone });
-      if (existing && existing.lastSentAt) {
-        const delta = Date.now() - new Date(existing.lastSentAt).getTime();
-        const timeSinceLastSent = delta / 1000; // in seconds
+    // Check for existing OTP record
+    const existing = await OtpCode.findOne({ phone: normPhone });
 
-        if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
-          const retryAfterSeconds = Math.ceil(
-            OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent,
-          );
-          return res.status(429).json(
-            createErrorResponse(
-              "RATE_LIMITED",
-              `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
-              {
-                retryAfterSeconds,
-                cooldown: true,
-              },
-            ),
-          );
-        }
+    // Check if phone is temporarily blocked
+    if (
+      existing &&
+      existing.blockedUntil &&
+      existing.blockedUntil > new Date()
+    ) {
+      const retryAfterSeconds = Math.ceil(
+        (existing.blockedUntil.getTime() - Date.now()) / 1000,
+      );
+      const retryAfterMinutes = Math.ceil(retryAfterSeconds / 60);
+
+      logger.warn("Phone temporarily blocked due to abuse", {
+        phone: normPhone,
+        blockedUntil: existing.blockedUntil,
+        clientIP: req.ip,
+      });
+
+      return res.status(429).json(
+        createErrorResponse(
+          "TEMPORARILY_BLOCKED",
+          `به دلیل تلاش‌های مشکوک، این شماره موقتاً مسدود شده است. ${retryAfterMinutes} دقیقه صبر کنید`,
+          {
+            retryAfterSeconds,
+            retryAfterMinutes,
+            blocked: true,
+          },
+        ),
+      );
+    }
+
+    // Check resend cooldown
+    if (existing && existing.lastSentAt) {
+      const delta = Date.now() - new Date(existing.lastSentAt).getTime();
+      const timeSinceLastSent = delta / 1000; // in seconds
+
+      if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
+        const retryAfterSeconds = Math.ceil(
+          OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent,
+        );
+
+        logger.info("OTP resend blocked - cooldown active", {
+          phone: normPhone,
+          timeSinceLastSent,
+          retryAfterSeconds,
+          clientIP: req.ip,
+        });
+
+        return res.status(429).json(
+          createErrorResponse(
+            "RATE_LIMITED",
+            `لطفاً ${retryAfterSeconds} ثانیه صبر کنید`,
+            {
+              retryAfterSeconds,
+              cooldown: true,
+            },
+          ),
+        );
+      }
+    }
+
+    // Check resend attempt limit (max 10 resends per hour)
+    const MAX_RESEND_PER_HOUR = 10;
+    const RESEND_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+    if (existing) {
+      const timeSinceCreated =
+        Date.now() - new Date(existing.createdAt).getTime();
+
+      // Reset resend counter if window has passed
+      if (timeSinceCreated > RESEND_WINDOW_MS) {
+        existing.resendCount = 0;
+      }
+
+      // Check if resend limit exceeded
+      if (existing.resendCount >= MAX_RESEND_PER_HOUR) {
+        // Block phone for 30 minutes
+        const blockDurationMinutes = 30;
+        existing.blockedUntil = new Date(
+          Date.now() + blockDurationMinutes * 60 * 1000,
+        );
+        await existing.save();
+
+        logger.warn("OTP resend limit exceeded - phone blocked", {
+          phone: normPhone,
+          resendCount: existing.resendCount,
+          blockedUntil: existing.blockedUntil,
+          clientIP: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+
+        return res.status(429).json(
+          createErrorResponse(
+            "TOO_MANY_RESENDS",
+            `تعداد درخواست کد بیش از حد. این شماره به مدت ${blockDurationMinutes} دقیقه مسدود شد`,
+            {
+              retryAfterSeconds: blockDurationMinutes * 60,
+              blocked: true,
+            },
+          ),
+        );
       }
     }
 
@@ -208,13 +286,41 @@ router.post("/otp/start", async (req, res) => {
     const codeHash = hashCode(code, normPhone);
     const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000);
 
-    // Store hashed code with expiry
+    // Track IP addresses for this phone number
+    const clientIP = req.ip || req.connection.remoteAddress || "unknown";
+    const ipAddresses = existing?.ipAddresses || [];
+    if (!ipAddresses.includes(clientIP)) {
+      ipAddresses.push(clientIP);
+      // Keep only last 5 IPs
+      if (ipAddresses.length > 5) {
+        ipAddresses.shift();
+      }
+    }
+
+    // Increment resend count
+    const resendCount = (existing?.resendCount || 0) + 1;
+
+    // Store hashed code with expiry and security tracking
     await OtpCode.findOneAndUpdate(
       { phone: normPhone },
-      { codeHash, expiresAt, attempts: 0, lastSentAt: new Date() },
+      {
+        codeHash,
+        expiresAt,
+        attempts: 0,
+        lastSentAt: new Date(),
+        resendCount,
+        ipAddresses,
+        blockedUntil: null, // Clear any previous block
+      },
       { upsert: true, setDefaultsOnInsert: true },
     );
-    logger.info("otp/start: saved", { phone: normPhone, expiresAt });
+
+    logger.info("otp/start: saved", {
+      phone: normPhone,
+      expiresAt,
+      resendCount,
+      clientIP,
+    });
     // Respond immediately without awaiting SMS send
     const response = {
       ok: true,
@@ -269,9 +375,7 @@ router.post("/otp/start", async (req, res) => {
 });
 
 // Verify OTP and issue JWT (auto-register if needed)
-// TODO: Re-enable otpRateLimit for production after testing
-// router.post("/otp/verify", otpRateLimit, async (req, res) => {
-router.post("/otp/verify", async (req, res) => {
+router.post("/otp/verify", otpRateLimit, async (req, res) => {
   const startTime = Date.now();
 
   try {
@@ -338,9 +442,43 @@ router.post("/otp/verify", async (req, res) => {
         clientIP: req.ip,
         userAgent: req.get("User-Agent"),
       });
+
+      // Log suspicious activity (trying to verify without requesting OTP)
+      otpMetrics.recordSuspiciousActivity(
+        ["verify_without_request"],
+        normPhone,
+        req.ip,
+        req.get("User-Agent"),
+      );
+
       return res
         .status(400)
         .json(createErrorResponse("OTP_INVALID", "", { field: "code" }));
+    }
+
+    // Check if phone is temporarily blocked
+    if (record.blockedUntil && record.blockedUntil > new Date()) {
+      const retryAfterSeconds = Math.ceil(
+        (record.blockedUntil.getTime() - Date.now()) / 1000,
+      );
+      const retryAfterMinutes = Math.ceil(retryAfterSeconds / 60);
+
+      logger.warn("Verification blocked - phone temporarily blocked", {
+        phone: normPhone,
+        blockedUntil: record.blockedUntil,
+        clientIP: req.ip,
+      });
+
+      return res.status(429).json(
+        createErrorResponse(
+          "TEMPORARILY_BLOCKED",
+          `این شماره به دلیل تلاش‌های ناموفق زیاد، موقتاً مسدود است. ${retryAfterMinutes} دقیقه صبر کنید`,
+          {
+            retryAfterSeconds,
+            blocked: true,
+          },
+        ),
+      );
     }
 
     // Check expiration
@@ -366,9 +504,9 @@ router.post("/otp/verify", async (req, res) => {
     // Verify the code using timing-safe comparison
     const isValid = verifyHash(trimmedCode, normPhone, record.codeHash);
     if (!isValid) {
-      // Increment attempts and persist
+      // Increment attempts and update last attempt time
       record.attempts = (record.attempts || 0) + 1;
-      await record.save();
+      record.lastAttemptAt = new Date();
 
       logger.warn("OTP verification failed - invalid code", {
         phone: normPhone,
@@ -378,45 +516,46 @@ router.post("/otp/verify", async (req, res) => {
         maxAttempts: OTP_MAX_ATTEMPTS,
       });
 
-      // Rate limit after max attempts
+      // Check if max attempts exceeded
       if (record.attempts >= OTP_MAX_ATTEMPTS) {
-        // Reset attempts after 10 minutes
-        const timeSinceLastAttempt =
-          Date.now() - new Date(record.lastSentAt).getTime();
-        const resetTimeMinutes = 10;
+        // Block phone for 15 minutes after max failed attempts
+        const blockDurationMinutes = 15;
+        record.blockedUntil = new Date(
+          Date.now() + blockDurationMinutes * 60 * 1000,
+        );
+        await record.save();
 
-        if (timeSinceLastAttempt < resetTimeMinutes * 60 * 1000) {
-          const remainingMinutes = Math.ceil(
-            (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / (60 * 1000),
-          );
+        logger.warn("OTP attempts exceeded - phone blocked", {
+          phone: normPhone,
+          attempts: record.attempts,
+          blockedUntil: record.blockedUntil,
+          clientIP: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
 
-          logger.warn("OTP attempts exceeded limit", {
-            phone: normPhone,
-            attempts: record.attempts,
-            remainingMinutes,
-            clientIP: req.ip,
-          });
+        // Log as suspicious activity
+        otpMetrics.recordSuspiciousActivity(
+          ["too_many_verification_attempts"],
+          normPhone,
+          req.ip,
+          req.get("User-Agent"),
+        );
 
-          return res.status(429).json(
-            createErrorResponse(
-              "TOO_MANY_ATTEMPTS",
-              `تعداد تلاش‌ها بیش از حد. لطفاً ${remainingMinutes} دقیقه صبر کنید.`,
-              {
-                retryAfterSeconds: Math.ceil(
-                  (resetTimeMinutes * 60 * 1000 - timeSinceLastAttempt) / 1000,
-                ),
-                field: "code",
-                tooManyAttempts: true,
-                remainingMinutes,
-              },
-            ),
-          );
-        } else {
-          // Reset attempts if enough time has passed
-          record.attempts = 1;
-          await record.save();
-        }
+        return res.status(429).json(
+          createErrorResponse(
+            "TOO_MANY_ATTEMPTS",
+            `تعداد تلاش‌های ناموفق بیش از حد. این شماره به مدت ${blockDurationMinutes} دقیقه مسدود شد`,
+            {
+              retryAfterSeconds: blockDurationMinutes * 60,
+              blocked: true,
+            },
+          ),
+        );
       }
+
+      // Save incremented attempts
+      await record.save();
+
       return res.status(400).json(
         createErrorResponse("OTP_INVALID", "", {
           field: "code",

@@ -26,6 +26,59 @@ function isValidCoordinates(lng, lat) {
 }
 
 /**
+ * Detect if coordinates are likely reversed (lat, lng instead of lng, lat)
+ *
+ * @param {number} first - First coordinate value
+ * @param {number} second - Second coordinate value
+ * @returns {boolean} True if coordinates appear to be reversed
+ */
+function areCoordinatesReversed(first, second) {
+  // If first value is in lat range (-90 to 90) and second is outside that range
+  // but within lng range, they're likely reversed
+  return (
+    typeof first === "number" &&
+    typeof second === "number" &&
+    !isNaN(first) &&
+    !isNaN(second) &&
+    Math.abs(first) <= 90 &&
+    Math.abs(second) > 90 &&
+    Math.abs(second) <= 180
+  );
+}
+
+/**
+ * Normalize coordinate input that might be in (lat, lng) order to proper [lng, lat]
+ * Attempts to detect and fix reversed coordinates
+ *
+ * @param {number} first - First coordinate
+ * @param {number} second - Second coordinate
+ * @param {boolean} assumeLngFirst - If true, assumes input is [lng, lat] (default: true)
+ * @returns {Array|null} [lng, lat] array or null if invalid
+ */
+function normalizeCoordinateOrder(first, second, assumeLngFirst = true) {
+  if (assumeLngFirst) {
+    // Expecting [lng, lat]
+    if (isValidCoordinates(first, second)) {
+      return [first, second];
+    }
+    // Check if reversed
+    if (isValidCoordinates(second, first)) {
+      return [second, first];
+    }
+  } else {
+    // Expecting [lat, lng] - convert to [lng, lat]
+    if (isValidCoordinates(second, first)) {
+      return [second, first];
+    }
+    // Already in correct order?
+    if (isValidCoordinates(first, second)) {
+      return [first, second];
+    }
+  }
+  return null;
+}
+
+/**
  * Validate if a coordinate array is valid [longitude, latitude]
  *
  * @param {Array} coords - Coordinate array [lng, lat]
@@ -212,6 +265,8 @@ function createBoundsQuery(north, south, east, west) {
 
 module.exports = {
   isValidCoordinates,
+  areCoordinatesReversed,
+  normalizeCoordinateOrder,
   isValidCoordinateArray,
   createGeoJSONPoint,
   extractCoordinates,

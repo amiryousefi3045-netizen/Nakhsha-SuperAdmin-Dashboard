@@ -89,8 +89,24 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-// Geospatial index for location searches (sparse since not all users have locations)
+// ============================================================================
+// PRODUCTION INDEXES
+// ============================================================================
+
+// Unique index on phone for authentication (enforced at DB level)
+userSchema.index({ phone: 1 }, { unique: true });
+
+// Index on handle for profile lookups (sparse allows null, unique for non-null)
+userSchema.index({ handle: 1 }, { unique: true, sparse: true });
+
+// Index on createdAt for sorting users by join date
+userSchema.index({ createdAt: -1 });
+
+// Geospatial index for location-based searches (sparse since not all users have locations)
 userSchema.index({ "location.geometry": "2dsphere" }, { sparse: true });
+
+// Compound index for role-based queries
+userSchema.index({ role: 1, isVerified: 1 });
 
 // Pre-save middleware to normalize legacy coordinates to GeoJSON
 userSchema.pre("save", function (next) {

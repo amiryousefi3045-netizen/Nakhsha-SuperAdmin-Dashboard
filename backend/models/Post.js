@@ -83,10 +83,20 @@ const postSchema = new mongoose.Schema(
 // Geospatial index for location searches
 postSchema.index({ "location.geometry": "2dsphere" });
 
-// Index for filtering
+// ============================================================================
+// PRODUCTION INDEXES
+// ============================================================================
+
+// Compound index: owner + createdAt for user's post feed
+postSchema.index({ owner: 1, createdAt: -1 });
+
+// Index on createdAt for global feed sorting (descending for latest first)
+postSchema.index({ createdAt: -1 });
+
+// Compound indexes for filtering
 postSchema.index({ status: 1, createdAt: -1 });
 postSchema.index({ owner: 1, status: 1 });
-postSchema.index({ category: 1, status: 1 });
+postSchema.index({ category: 1, status: 1, createdAt: -1 });
 
 // Pre-save middleware to normalize legacy coordinates to GeoJSON
 postSchema.pre("save", function (next) {

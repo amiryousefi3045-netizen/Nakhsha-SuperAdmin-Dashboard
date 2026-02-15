@@ -102,11 +102,30 @@ const craftSchema = new mongoose.Schema(
     isPublished: { type: Boolean, default: true },
     extra: { type: mongoose.Schema.Types.Mixed },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-// Geospatial index for location searches
+// ============================================================================
+// PRODUCTION INDEXES
+// ============================================================================
+
+// Geospatial index for location-based searches (CRITICAL for nearby queries)
 craftSchema.index({ "location.geometry": "2dsphere" });
+
+// Compound index: author + createdAt for user's craft feed (descending for latest first)
+craftSchema.index({ author: 1, createdAt: -1 });
+
+// Index on createdAt for global feed sorting (descending for latest first)
+craftSchema.index({ createdAt: -1 });
+
+// Compound index for published crafts filtering
+craftSchema.index({ isPublished: 1, createdAt: -1 });
+
+// Compound index for kind-based filtering
+craftSchema.index({ kind: 1, isPublished: 1, createdAt: -1 });
+
+// Compound index for craftType filtering
+craftSchema.index({ craftType: 1, isPublished: 1 });
 
 // Full text search on common fields with weights
 craftSchema.index(
@@ -118,14 +137,12 @@ craftSchema.index(
       tags: 3,
     },
     name: "craft_text_search",
-  }
+  },
 );
 
-// Indexes for fast lookups
+// Indexes for user interaction lookups
 craftSchema.index({ "likes.user": 1 });
 craftSchema.index({ "dislikes.user": 1 });
-craftSchema.index({ author: 1, isPublished: 1 });
-craftSchema.index({ kind: 1, isPublished: 1 });
 
 // Virtuals
 craftSchema.virtual("averageRating").get(function () {
@@ -229,7 +246,7 @@ craftSchema.statics.ensureIndexes = async function () {
       if (!hasGeo) {
         await this.collection.createIndex(
           { "location.geometry": "2dsphere" },
-          { background: true }
+          { background: true },
         );
       }
       if (!hasText) {
@@ -243,7 +260,7 @@ craftSchema.statics.ensureIndexes = async function () {
             },
             name: "craft_text_search",
             background: true,
-          }
+          },
         );
       }
       console.log("Craft indexes created successfully");

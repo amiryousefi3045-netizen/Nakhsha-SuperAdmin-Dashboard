@@ -9,15 +9,15 @@ const rateLimitStore = new Map();
 
 // Configuration
 const RATE_LIMIT_CONFIG = {
-  // IP-based limits
+  // IP-based limits - prevent brute force from single IP
   IP_WINDOW_MINUTES: 15,
   IP_MAX_ATTEMPTS: 10,
 
-  // Phone-based limits
+  // Phone-based limits - prevent targeting specific phone numbers
   PHONE_WINDOW_MINUTES: 2,
   PHONE_MAX_ATTEMPTS: 5,
 
-  // Global limits
+  // Global limits - prevent system-wide attacks
   GLOBAL_WINDOW_MINUTES: 5,
   GLOBAL_MAX_ATTEMPTS: 100,
 };
@@ -195,6 +195,7 @@ function otpRateLimit(req, res, next) {
 
 /**
  * Advanced suspicious activity detection
+ * Detects potential brute-force attacks and bot activity
  */
 function detectSuspiciousActivity(req, phone) {
   const clientIP = req.ip || req.connection.remoteAddress;
@@ -205,29 +206,84 @@ function detectSuspiciousActivity(req, phone) {
   // Check for missing or suspicious User-Agent
   if (!userAgent || userAgent === "unknown" || userAgent.length < 10) {
     suspiciousIndicators.push("suspicious_user_agent");
+    logger.warn("Suspicious: Missing or short User-Agent", {
+      clientIP,
+      phone,
+      userAgent,
+    });
   }
 
   // Check for common bot patterns
-  const botPatterns = ["bot", "spider", "crawler", "curl", "wget", "python"];
+  const botPatterns = [
+    "bot",
+    "spider",
+    "crawler",
+    "curl",
+    "wget",
+    "python",
+    "axios",
+    "node",
+  ];
   if (
     botPatterns.some((pattern) => userAgent.toLowerCase().includes(pattern))
   ) {
     suspiciousIndicators.push("bot_user_agent");
+    logger.warn("Suspicious: Bot-like User-Agent detected", {
+      clientIP,
+      phone,
+      userAgent,
+    });
   }
 
   // Check for rapid requests from same IP
-  const recentRequests = rateLimitStore.get(`recent:${clientIP}`);
-  if (recentRequests && recentRequests.count > 20) {
-    suspiciousIndicators.push("rapid_requests");
+  const recentKey = `recent:${clientIP}`;
+  let recentRequests = rateLimitStore.get(recentKey);
+  const now = Date.now();
+
+  if (!recentRequests || recentRequests.resetTime < now) {
+    recentRequests = { count: 1, resetTime: now + 60000 }; // 1 minute window
+    rateLimitStore.set(recentKey, recentRequests);
+  } else {
+    recentRequests.count++;
   }
 
-  // Log suspicious activity
+  if (recentRequests.count > 20) {
+    suspiciousIndicators.push("rapid_requests");
+    logger.warn("Suspicious: Rapid requests from IP", {
+      clientIP,
+      phone,
+      count: recentRequests.count,
+    });
+  }
+
+  // Check for multiple phone numbers from same IP
+  const ipPhoneKey = `ip_phones:${clientIP}`;
+  let ipPhones = rateLimitStore.get(ipPhoneKey);
+
+  if (!ipPhones || ipPhones.resetTime < now) {
+    ipPhones = { phones: new Set([phone]), resetTime: now + 3600000 }; // 1 hour window
+    rateLimitStore.set(ipPhoneKey, ipPhones);
+  } else {
+    ipPhones.phones.add(phone);
+  }
+
+  if (ipPhones.phones.size > 5) {
+    suspiciousIndicators.push("multiple_phones_from_ip");
+    logger.warn("Suspicious: Multiple phone numbers from same IP", {
+      clientIP,
+      phoneCount: ipPhones.phones.size,
+    });
+  }
+
+  // Log comprehensive suspicious activity
   if (suspiciousIndicators.length > 0) {
     logger.warn("Suspicious OTP activity detected", {
       clientIP,
       phone,
       userAgent,
       indicators: suspiciousIndicators,
+      indicatorCount: suspiciousIndicators.length,
+      timestamp: new Date().toISOString(),
     });
   }
 

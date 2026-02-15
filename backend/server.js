@@ -235,20 +235,73 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000,
     });
     app.locals.dbReady = true;
-    logger.info("MongoDB connected successfully");
+    logger.info("MongoDB connected successfully", {
+      uri: uri.replace(/\/\/.*@/, "//***@"),
+    });
+
+    // ========================================================================
+    // INDEX SYNCHRONIZATION - Production Safety
+    // ========================================================================
+    logger.info("Synchronizing database indexes...");
+
+    try {
+      // Sync all model indexes (Mongoose will create missing indexes)
+      await mongoose.connection.syncIndexes();
+      logger.info("✓ All model indexes synchronized successfully");
+
+      // Log index details for each collection
+      const User = require("./models/User");
+      const OtpCode = require("./models/OtpCode");
+      const Craft = require("./models/Craft");
+      const Post = require("./models/Post");
+
+      const collections = [
+        { name: "users", model: User },
+        { name: "otpcodes", model: OtpCode },
+        { name: "crafts (listings)", model: Craft },
+        { name: "posts", model: Post },
+      ];
+
+      for (const { name, model } of collections) {
+        const indexes = await model.collection.getIndexes();
+        const indexNames = Object.keys(indexes);
+        logger.info(`✓ ${name}: ${indexNames.length} indexes active`, {
+          indexes: indexNames.filter((i) => i !== "_id_"), // Exclude default _id index
+        });
+      }
+
+      // Verify critical geospatial indexes
+      const craftIndexes = await Craft.collection.getIndexes();
+      if (craftIndexes["location.geometry_2dsphere"]) {
+        logger.info(
+          "✓ Geospatial index verified for crafts (nearby search ready)",
+        );
+      } else {
+        logger.warn(
+          "⚠ WARNING: Missing 2dsphere index on crafts.location.geometry",
+        );
+      }
+
+      // Verify TTL index on OTP codes
+      const otpIndexes = await OtpCode.collection.getIndexes();
+      const ttlIndex = Object.values(otpIndexes).find(
+        (idx) => idx.expireAfterSeconds === 0,
+      );
+      if (ttlIndex) {
+        logger.info(
+          "✓ TTL index verified for OTP codes (auto-cleanup enabled)",
+        );
+      } else {
+        logger.warn("⚠ WARNING: Missing TTL index on otpcodes.expiresAt");
+      }
+    } catch (indexErr) {
+      logger.error("Index synchronization failed", { error: indexErr.message });
+      throw indexErr;
+    }
 
     // Start OTP cleanup service
     otpCleanupService.start();
-
-    // Ensure geospatial index exists for Craft model
-    try {
-      await Craft.collection.createIndex({ "location.geometry": "2dsphere" });
-      logger.info("Geospatial index ensured for crafts");
-    } catch (indexErr) {
-      logger.warn("Warning: Could not create geospatial index", {
-        error: indexErr.message,
-      });
-    }
+    logger.info("OTP cleanup service started");
   } catch (error) {
     app.locals.dbReady = false;
     logger.warn("MongoDB not available, continuing without DB (dev mode)", {

@@ -1,25 +1,21 @@
 version: "3.8"
 
 services:
-  # MongoDB Database
   mongodb:
     image: mongo:7
     container_name: nakhsha-mongodb
     restart: unless-stopped
-    ports:
-      - "27018:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-nakhsha123}
-      MONGO_INITDB_DATABASE: nakhsha
-    # Production-ready MongoDB configuration
     command: >
       mongod
       --wiredTigerCacheSizeGB 1
       --wiredTigerCollectionBlockCompressor snappy
-      --logappend
       --logpath /var/log/mongodb/mongod.log
+      --logappend
       --bind_ip_all
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-nakhsha123}
+      MONGO_INITDB_DATABASE: nakhsha
     volumes:
       - mongodb-data:/data/db
       - mongodb-config:/data/configdb
@@ -31,55 +27,53 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 40s
 
-  # Backend API
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: omid3179/nakhsha-backend:latest
     container_name: nakhsha-backend
     restart: unless-stopped
     ports:
       - "5000:5000"
-    env_file:
-      - ./backend/.env
     environment:
-      NODE_ENV: development
-    volumes:
-      - ./backend/logs:/app/logs
-      - uploads-data:/app/uploads
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-nakhsha123}@mongodb:27017/nakhsha?authSource=admin
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
       - nakhsha-network
+    volumes:
+      - uploads-data:/app/uploads
+      - backend-logs:/app/logs
     healthcheck:
       test:
         [
           "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://localhost:5000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:5000/api/health",
         ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  # Frontend
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: omid3179/nakhsha-frontend:latest
     container_name: nakhsha-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
-    environment:
-      VITE_API_BASE: /api
-      VITE_SERVER_ORIGIN: http://localhost:5000
+      - "80:80"
+      - "443:443"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - nakhsha-network
     healthcheck:
@@ -95,19 +89,15 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
 volumes:
   mongodb-data:
-    name: nakhsha-mongodb-data
   mongodb-config:
-    name: nakhsha-mongodb-config
   mongodb-logs:
-    name: nakhsha-mongodb-logs
   uploads-data:
-    name: nakhsha-uploads-data
-    driver: local
+  backend-logs:
 
 networks:
   nakhsha-network:
-    name: nakhsha-network
     driver: bridge
