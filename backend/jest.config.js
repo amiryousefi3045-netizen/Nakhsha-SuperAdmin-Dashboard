@@ -1,5 +1,8 @@
 module.exports = {
   testEnvironment: "node",
+  // Runs before any test module is evaluated — guarantees JWT_SECRET is set
+  // before server.js (and its route modules) are require()'d by test files.
+  setupFiles: ["./jest.setup.js"],
   coverageDirectory: "coverage",
   collectCoverageFrom: [
     "routes/**/*.js",

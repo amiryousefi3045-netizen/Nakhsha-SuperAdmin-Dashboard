@@ -1,7 +1,21 @@
 const jwt = require("jsonwebtoken");
 const { createErrorResponse } = require("../utils/userDto");
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+/**
+ * Fail-fast secret accessor.
+ * Throws at call time if JWT_SECRET is missing so the server never verifies
+ * tokens with an empty or default key.
+ */
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET environment variable is not set — " +
+        "set it in backend/.env (see backend/.env.example).",
+    );
+  }
+  return secret;
+}
 
 /**
  * Authentication middleware for protected routes
@@ -22,13 +36,13 @@ function requireAuth(req, res, next) {
       .json(
         createErrorResponse(
           "UNAUTHORIZED",
-          "Missing or invalid authorization token"
-        )
+          "Missing or invalid authorization token",
+        ),
       );
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, getJwtSecret());
     req.user = { id: payload.id, role: payload.role };
     next();
   } catch {
@@ -57,7 +71,7 @@ function requireRole(...roles) {
       return res.status(403).json(
         createErrorResponse("FORBIDDEN", "Access denied", {
           requiredRoles: roles,
-        })
+        }),
       );
     }
 

@@ -16,7 +16,23 @@ const { generateUniqueHandle } = require("../utils/handleGenerator");
 const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+/**
+ * Fail-fast secret accessor.
+ * Throws at call time if JWT_SECRET is not set so a missing secret is caught
+ * on the very first token operation rather than silently using a weak default.
+ */
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET environment variable is not set — " +
+        "server cannot sign or verify tokens. " +
+        "Set it in backend/.env (see backend/.env.example).",
+    );
+  }
+  return secret;
+}
+
 const TOKEN_TTL = process.env.JWT_TTL || "7d";
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
 const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
@@ -25,7 +41,7 @@ const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "8", 10);
 const iranPhoneRegex = /^09\d{9}$/;
 
 function sign(user) {
-  return jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
+  return jwt.sign({ id: user._id, role: user.role }, getJwtSecret(), {
     expiresIn: TOKEN_TTL,
   });
 }

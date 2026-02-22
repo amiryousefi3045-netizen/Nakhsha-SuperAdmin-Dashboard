@@ -40,10 +40,11 @@ beforeEach(async () => {
     isVerified: true,
   });
 
-  // Generate auth token manually for testing
+  // Generate auth token manually for testing — JWT_SECRET is set by jest.setup.js
   const jwt = require("jsonwebtoken");
-  const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-  authToken = jwt.sign({ id: testUser._id, role: testUser.role }, JWT_SECRET);
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET not set in test environment");
+  authToken = jwt.sign({ id: testUser._id, role: testUser.role }, secret);
 
   // Create artisan profile
   testArtisan = await Artisan.create({
