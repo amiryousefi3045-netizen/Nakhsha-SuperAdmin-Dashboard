@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import AuthModal from "../components/auth/AuthModal";
+import { uploadAvatar as uploadAvatarService } from "../services/auth";
 
 interface FormData {
   name: string;
@@ -145,24 +146,10 @@ const ProfilePage: React.FC = () => {
 
     setIsUploadingAvatar(true);
     try {
-      const formData = new FormData();
-      formData.append("avatar", avatarFile);
+      // Delegate to the centralized auth service — token is injected by apiClient
+      await uploadAvatarService(avatarFile);
 
-      const token = localStorage.getItem("nakhsha_token");
-      const response = await fetch("/api/users/me/avatar", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || "خطا در آپلود عکس");
-      }
-
-      // Refresh user data to get the new avatar
+      // Refresh user data to get the new avatar URL
       await refreshMe();
 
       // Clear avatar preview and file
@@ -334,7 +321,7 @@ const ProfilePage: React.FC = () => {
                   <div className="flex gap-2 flex-wrap">
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-medium ${getRoleBadgeColor(
-                        user.role
+                        user.role,
                       )}`}
                     >
                       {getRoleLabel(user.role)}
@@ -342,7 +329,7 @@ const ProfilePage: React.FC = () => {
                     {user.creatorType && (
                       <span
                         className={`px-3 py-1 rounded-full text-sm font-medium ${getCreatorTypeBadgeColor(
-                          user.creatorType
+                          user.creatorType,
                         )}`}
                       >
                         {getCreatorTypeLabel(user.creatorType)}
@@ -443,7 +430,7 @@ const ProfilePage: React.FC = () => {
                           setAvatarPreview(null);
                           // Reset file input
                           const input = document.getElementById(
-                            "avatar-upload"
+                            "avatar-upload",
                           ) as HTMLInputElement;
                           if (input) input.value = "";
                         }}

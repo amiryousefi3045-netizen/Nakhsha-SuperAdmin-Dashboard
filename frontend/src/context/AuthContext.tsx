@@ -20,7 +20,8 @@ interface AuthContextType {
   isAuthed: boolean;
   loginWithOtpVerify: (
     phone: string,
-    code: string
+    code: string,
+    rememberMe?: boolean,
   ) => Promise<{ token: string; user: User }>;
   logout: () => void;
   refreshMe: () => Promise<void>;
@@ -58,8 +59,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const loginWithOtpVerify = async (phone: string, code: string) => {
-    const result = await verifyOtp(phone, code);
+  const loginWithOtpVerify = async (
+    phone: string,
+    code: string,
+    rememberMe = false,
+  ) => {
+    const result = await verifyOtp(phone, code, rememberMe);
     setUser(result.user);
     return result;
   };
@@ -128,6 +133,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       .finally(() => {
         setIsLoading(false);
       });
+  }, []);
+
+  // Keep React state in sync when the apiClient interceptor detects a 401.
+  // The interceptor already calls TokenManager.clear(); here we clear the user.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+    };
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("auth:unauthorized", handleUnauthorized);
+    };
   }, []);
 
   const value: AuthContextType = {

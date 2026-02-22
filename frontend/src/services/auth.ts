@@ -51,11 +51,15 @@ export async function otpStart(phone: string): Promise<OtpStartResponse> {
 
 /**
  * Step 2 of OTP flow: verify the code and receive a JWT token + user.
- * Automatically persists the token on success.
+ *
+ * @param rememberMe  When true the token is persisted to localStorage so the
+ *                    session survives full page reloads. Defaults to false
+ *                    (in-memory / session-only — safer against XSS).
  */
 export async function verifyOtp(
   phone: string,
   code: string,
+  rememberMe = false,
 ): Promise<{ token: string; user: User }> {
   const result = await apiClient.post<{ token: string; user: User }>(
     "/auth/otp/verify",
@@ -63,7 +67,7 @@ export async function verifyOtp(
   );
   if (!result.success) throw result.error!;
   const payload = result.data!;
-  if (payload.token) TokenManager.set(payload.token);
+  if (payload.token) TokenManager.set(payload.token, rememberMe);
   return payload;
 }
 

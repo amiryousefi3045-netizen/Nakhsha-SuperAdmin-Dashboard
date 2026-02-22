@@ -32,30 +32,57 @@ const TOKEN_KEY = "nakhsha_token";
 const isDev = import.meta.env.DEV;
 
 /**
- * Token management utilities
+ * Token management utilities.
+ *
+ * Security model:
+ *  - The token lives in a module-level variable (_memoryToken) — never in the DOM or
+ *    accessible to arbitrary JS via window/document.
+ *  - On startup the module checks localStorage once: if a persisted token is found
+ *    (placed there by a previous "remember me" login) it is loaded into memory and the
+ *    localStorage copy is left intact so the session survives page reloads.
+ *  - TokenManager.set(token, true)  → write to memory AND localStorage ("remember me").
+ *  - TokenManager.set(token, false) → write to memory ONLY (token is lost on tab close).
+ *  - TokenManager.clear()          → wipe both memory and localStorage unconditionally.
  */
+let _memoryToken: string | null = null;
+
+// Hydrate from localStorage once at module load (restores "remember me" sessions)
+try {
+  const persisted = localStorage.getItem(TOKEN_KEY);
+  if (persisted) _memoryToken = persisted;
+} catch {
+  // localStorage not available (e.g. private browsing with restrictions)
+}
+
 class TokenManager {
   static get(): string | null {
-    try {
-      return localStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
+    return _memoryToken;
+  }
+
+  /**
+   * @param token     JWT to store.
+   * @param persist   When true the token is also written to localStorage so it
+   *                  survives full page reloads ("remember me" behaviour).
+   *                  Defaults to false (session-only / in-memory).
+   */
+  static set(token: string, persist = false): void {
+    _memoryToken = token;
+    if (persist) {
+      try {
+        localStorage.setItem(TOKEN_KEY, token);
+      } catch (error) {
+        console.warn("Failed to persist token:", error);
+      }
     }
   }
 
-  static set(token: string): void {
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-    } catch (error) {
-      console.warn("Failed to save token:", error);
-    }
-  }
-
+  /** Remove token from both memory and localStorage. */
   static clear(): void {
+    _memoryToken = null;
     try {
       localStorage.removeItem(TOKEN_KEY);
     } catch (error) {
-      console.warn("Failed to clear token:", error);
+      console.warn("Failed to clear persisted token:", error);
     }
   }
 }

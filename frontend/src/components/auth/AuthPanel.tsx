@@ -13,6 +13,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const [step, setStep] = useState<"PHONE" | "CODE">("PHONE");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(120);
@@ -120,7 +121,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     setLoading(true);
     try {
       const phoneNormalized = normalizePhone(phone.trim());
-      const { user } = await loginWithOtpVerify(phoneNormalized, c);
+      const { user } = await loginWithOtpVerify(phoneNormalized, c, rememberMe);
       onSuccess && onSuccess(user);
       onClose();
     } catch (e: any) {
@@ -601,6 +602,22 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
                 </p>
               </div>
             ) : null}
+
+            {/* Remember me */}
+            <label
+              className="flex items-center gap-2 mb-4 cursor-pointer select-none"
+              dir="rtl"
+            >
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 accent-[#1A5F7A] cursor-pointer"
+              />
+              <span className="text-sm" style={{ color: "#444" }}>
+                مرا به خاطر بسپار
+              </span>
+            </label>
 
             <div className="flex gap-3">
               <button
