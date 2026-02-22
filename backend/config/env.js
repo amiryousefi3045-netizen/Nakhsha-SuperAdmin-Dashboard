@@ -1,4 +1,4 @@
-const { cleanEnv, str, port, url, num } = require("envalid");
+const { cleanEnv, str, port, url, num, bool } = require("envalid");
 
 /**
  * Environment Variables Validation
@@ -57,6 +57,12 @@ const validateEnv = () => {
       choices: ["error", "warn", "info", "http", "debug"],
       default: "info",
       desc: "سطح لاگ",
+    }),
+
+    // Database index management
+    SYNC_INDEXES: bool({
+      default: false,
+      desc: "اگر true باشد، هنگام راه‌اندازی syncIndexes() اجرا می‌شود. فقط در اولین deploy یا بعد از تغییر schema فعال کنید.",
     }),
 
     // Optional: File Upload

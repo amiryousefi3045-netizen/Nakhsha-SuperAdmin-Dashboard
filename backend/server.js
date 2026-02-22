@@ -278,63 +278,75 @@ const connectDB = async () => {
     });
 
     // ========================================================================
-    // INDEX SYNCHRONIZATION - Production Safety
+    // INDEX SYNCHRONIZATION  (opt-in via SYNC_INDEXES=true)
     // ========================================================================
-    logger.info("Synchronizing database indexes...");
+    // Disabled by default because syncIndexes() drops and recreates indexes,
+    // which can be slow and briefly block queries on large collections.
+    // Enable it explicitly during first deploy or after schema changes.
+    if (process.env.SYNC_INDEXES === "true") {
+      logger.info("SYNC_INDEXES=true — synchronizing database indexes...");
 
-    try {
-      // Sync all model indexes (Mongoose will create missing indexes)
-      await mongoose.connection.syncIndexes();
-      logger.info("✓ All model indexes synchronized successfully");
+      try {
+        // Sync all model indexes (Mongoose will create missing indexes)
+        await mongoose.connection.syncIndexes();
+        logger.info("✓ All model indexes synchronized successfully");
 
-      // Log index details for each collection
-      const User = require("./models/User");
-      const OtpCode = require("./models/OtpCode");
-      const Craft = require("./models/Craft");
-      const Post = require("./models/Post");
+        // Log index details for each collection
+        const User = require("./models/User");
+        const OtpCode = require("./models/OtpCode");
+        const Craft = require("./models/Craft");
+        const Post = require("./models/Post");
 
-      const collections = [
-        { name: "users", model: User },
-        { name: "otpcodes", model: OtpCode },
-        { name: "crafts (listings)", model: Craft },
-        { name: "posts", model: Post },
-      ];
+        const collections = [
+          { name: "users", model: User },
+          { name: "otpcodes", model: OtpCode },
+          { name: "crafts (listings)", model: Craft },
+          { name: "posts", model: Post },
+        ];
 
-      for (const { name, model } of collections) {
-        const indexes = await model.collection.getIndexes();
-        const indexNames = Object.keys(indexes);
-        logger.info(`✓ ${name}: ${indexNames.length} indexes active`, {
-          indexes: indexNames.filter((i) => i !== "_id_"), // Exclude default _id index
+        for (const { name, model } of collections) {
+          const indexes = await model.collection.getIndexes();
+          const indexNames = Object.keys(indexes);
+          logger.info(`✓ ${name}: ${indexNames.length} indexes active`, {
+            indexes: indexNames.filter((i) => i !== "_id_"), // Exclude default _id index
+          });
+        }
+
+        // Verify critical geospatial indexes
+        const craftIndexes = await Craft.collection.getIndexes();
+        if (craftIndexes["location.geometry_2dsphere"]) {
+          logger.info(
+            "✓ Geospatial index verified for crafts (nearby search ready)",
+          );
+        } else {
+          logger.warn(
+            "⚠ WARNING: Missing 2dsphere index on crafts.location.geometry",
+          );
+        }
+
+        // Verify TTL index on OTP codes
+        const otpIndexes = await OtpCode.collection.getIndexes();
+        const ttlIndex = Object.values(otpIndexes).find(
+          (idx) => idx.expireAfterSeconds === 0,
+        );
+        if (ttlIndex) {
+          logger.info(
+            "✓ TTL index verified for OTP codes (auto-cleanup enabled)",
+          );
+        } else {
+          logger.warn("⚠ WARNING: Missing TTL index on otpcodes.expiresAt");
+        }
+      } catch (indexErr) {
+        logger.error("Index synchronization failed", {
+          error: indexErr.message,
         });
+        throw indexErr;
       }
-
-      // Verify critical geospatial indexes
-      const craftIndexes = await Craft.collection.getIndexes();
-      if (craftIndexes["location.geometry_2dsphere"]) {
-        logger.info(
-          "✓ Geospatial index verified for crafts (nearby search ready)",
-        );
-      } else {
-        logger.warn(
-          "⚠ WARNING: Missing 2dsphere index on crafts.location.geometry",
-        );
-      }
-
-      // Verify TTL index on OTP codes
-      const otpIndexes = await OtpCode.collection.getIndexes();
-      const ttlIndex = Object.values(otpIndexes).find(
-        (idx) => idx.expireAfterSeconds === 0,
+    } else {
+      logger.info(
+        "Index synchronization skipped (SYNC_INDEXES is not 'true'). " +
+          "Set SYNC_INDEXES=true to enable on startup.",
       );
-      if (ttlIndex) {
-        logger.info(
-          "✓ TTL index verified for OTP codes (auto-cleanup enabled)",
-        );
-      } else {
-        logger.warn("⚠ WARNING: Missing TTL index on otpcodes.expiresAt");
-      }
-    } catch (indexErr) {
-      logger.error("Index synchronization failed", { error: indexErr.message });
-      throw indexErr;
     }
 
     // Start OTP cleanup service
