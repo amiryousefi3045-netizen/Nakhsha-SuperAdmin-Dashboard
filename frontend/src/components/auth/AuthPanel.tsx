@@ -83,12 +83,12 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       setHasReturnedFromCode(false); // Reset when successfully sending code
       if ((res as any)?.devCode) setDevCode((res as any).devCode);
     } catch (e: any) {
-      if (e?.status === 429 && e?.retryAfterSeconds) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
         // start a live rate-limit countdown and do NOT enter CODE step
         setError(e?.message || "تعداد درخواست‌ها زیاد بوده");
         setRateLimitActive(true);
         setCanAutoSubmit(false);
-        setSecondsLeft(e.retryAfterSeconds);
+        setSecondsLeft(e.details.retryAfterSeconds);
       } else {
         // Handle other errors more gracefully
         const errorMessage = e?.message || "خطا در ارسال کد";
@@ -124,11 +124,11 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       onSuccess && onSuccess(user);
       onClose();
     } catch (e: any) {
-      if (e?.status === 429 && e?.retryAfterSeconds) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
         setError(e?.message || "تعداد تلاش‌ها زیاد بوده");
         setRateLimitActive(true);
         setCanAutoSubmit(false);
-        setSecondsLeft(e.retryAfterSeconds);
+        setSecondsLeft(e.details.retryAfterSeconds);
       } else {
         const errorMessage = e?.message || "کد واردشده نادرست است.";
         setError(errorMessage);
@@ -155,11 +155,11 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
       setCanAutoSubmit(true);
       if ((res as any)?.devCode) setDevCode((res as any).devCode);
     } catch (e: any) {
-      if (e?.status === 429 && e?.retryAfterSeconds) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
         setError(e?.message || "تعداد درخواست‌ها زیاد بوده");
         setRateLimitActive(true);
         setCanAutoSubmit(false);
-        setSecondsLeft(e.retryAfterSeconds);
+        setSecondsLeft(e.details.retryAfterSeconds);
       } else {
         const errorMessage = e?.message || "خطا در ارسال مجدد کد";
         setError(errorMessage);

@@ -1,92 +1,52 @@
-import { AxiosError } from "axios";
-import { http } from "../lib/http";
-import type { CreatePostRequest, CreatePostResponse, Post } from "../types/api";
+/**
+ * Posts Service
+ *
+ * Create, fetch and manage post content.
+ * Uses the centralized apiClient for consistent normalizeError handling.
+ */
 
-interface NormalizedError {
-  code: string;
-  message: string;
-  details?: any;
+import { apiClient } from "../lib/apiClient";
+import type { CreatePostRequest, Post } from "../types/api";
+
+interface PostResponse {
+  item: Post;
 }
 
-// Helper function to normalize errors
-function normalizeError(error: any): NormalizedError {
-  if (error instanceof AxiosError && error.response?.data?.error) {
-    const errorData = error.response.data.error;
-    return {
-      code: errorData.code || "UNKNOWN_ERROR",
-      message: errorData.message || "An unknown error occurred",
-      details: errorData.details,
-    };
-  }
-
-  return {
-    code: "NETWORK_ERROR",
-    message: "خطا در ارتباط با سرور",
-    details: null,
-  };
-}
+// ── API functions ──────────────────────────────────────────────────────────
 
 /**
- * Create a new post
- * @param data Post creation data
- * @returns Promise resolving to created post
- * @throws NormalizedError on failure
+ * Create a new post.
  */
 export async function createPost(data: CreatePostRequest): Promise<Post> {
-  try {
-    const response = await http.post<CreatePostResponse>("/posts", data);
-    return response.data.item;
-  } catch (error) {
-    throw normalizeError(error);
-  }
+  const result = await apiClient.post<PostResponse>("/posts", data);
+  if (!result.success) throw result.error!;
+  return result.data!.item;
 }
 
 /**
- * Upload images to an existing post
- * @param postId ID of the post to upload images to
- * @param files Array of image files to upload
- * @returns Promise resolving to updated post
- * @throws NormalizedError on failure
+ * Upload one or more images and attach them to an existing post.
  */
 export async function uploadPostImages(
   postId: string,
-  files: File[]
+  files: File[],
 ): Promise<Post> {
-  try {
-    const formData = new FormData();
+  const formData = new FormData();
+  files.forEach((file) => formData.append("images", file));
 
-    // Add each file to form data
-    files.forEach((file) => {
-      formData.append("images", file);
-    });
-
-    const response = await http.post<CreatePostResponse>(
-      `/posts/${postId}/images`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      }
-    );
-
-    return response.data.item;
-  } catch (error) {
-    throw normalizeError(error);
-  }
+  const result = await apiClient.post<PostResponse>(
+    `/posts/${postId}/images`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  if (!result.success) throw result.error!;
+  return result.data!.item;
 }
 
 /**
- * Get a single post by ID
- * @param postId ID of the post to retrieve
- * @returns Promise resolving to post data
- * @throws NormalizedError on failure
+ * Fetch a single post by ID.
  */
 export async function getPost(postId: string): Promise<Post> {
-  try {
-    const response = await http.get<{ item: Post }>(`/posts/${postId}`);
-    return response.data.item;
-  } catch (error) {
-    throw normalizeError(error);
-  }
+  const result = await apiClient.get<{ item: Post }>(`/posts/${postId}`);
+  if (!result.success) throw result.error!;
+  return result.data!.item;
 }

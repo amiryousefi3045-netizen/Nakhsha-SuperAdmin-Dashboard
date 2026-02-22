@@ -3,9 +3,10 @@ import { otpStart } from "../services/auth";
 import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
-interface OtpError extends Error {
+interface OtpError {
   status?: number;
-  retryAfterSeconds?: number;
+  message?: string;
+  details?: { retryAfterSeconds?: number };
 }
 
 export default function NakhshaOtpAuthMobile() {
@@ -22,7 +23,7 @@ export default function NakhshaOtpAuthMobile() {
   const [rateLimitActive, setRateLimitActive] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [lastSubmittedCode, setLastSubmittedCode] = useState<string | null>(
-    null
+    null,
   );
 
   const phoneRegex = /^09\d{9}$/;
@@ -51,11 +52,11 @@ export default function NakhshaOtpAuthMobile() {
       setSecondsLeft(120);
     } catch (err) {
       const e = err as OtpError;
-      if (e?.status === 429 && e?.retryAfterSeconds) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
         // start live countdown
         setError(null);
         setRateLimitActive(true);
-        setSecondsLeft(e.retryAfterSeconds);
+        setSecondsLeft(e.details.retryAfterSeconds);
       } else {
         setError(e?.message || "خرابی در ارسال کد");
       }
@@ -84,15 +85,15 @@ export default function NakhshaOtpAuthMobile() {
       nav("/");
     } catch (err) {
       const e = err as OtpError;
-      if (e?.status === 429 && e?.retryAfterSeconds) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
         // rate-limit: start live countdown and block auto-submit
         setError(null);
         setRateLimitActive(true);
-        setSecondsLeft(e.retryAfterSeconds);
+        setSecondsLeft(e.details.retryAfterSeconds);
       } else {
         setError(
           e?.message ||
-            "کد واردشده اشتباه است. کد ارسال را بررسی و دوباره وارد کنید."
+            "کد واردشده اشتباه است. کد ارسال را بررسی و دوباره وارد کنید.",
         );
       }
     } finally {
@@ -110,11 +111,11 @@ export default function NakhshaOtpAuthMobile() {
       setSecondsLeft(120);
     } catch (err) {
       const e = err as OtpError;
-      if (e?.status === 429 && e?.retryAfterSeconds) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
         // start live countdown
         setError(null);
         setRateLimitActive(true);
-        setSecondsLeft(e.retryAfterSeconds);
+        setSecondsLeft(e.details.retryAfterSeconds);
       } else {
         setError(e?.message || "خرابی در ارسال مجدد کد");
       }
@@ -313,8 +314,8 @@ export default function NakhshaOtpAuthMobile() {
               const underlineColor = error
                 ? "#DC2626"
                 : otpFocused || otp.length > 0
-                ? "#1A5F7A"
-                : "#C7CCD8";
+                  ? "#1A5F7A"
+                  : "#C7CCD8";
               return (
                 <div
                   key={idx}

@@ -1,64 +1,76 @@
-import { http, buildQuery } from "../lib/http";
+/**
+ * Listings Service
+ *
+ * Geospatial and traditional listing queries.
+ * Uses the centralized apiClient for consistent normalizeError handling.
+ */
+
+import { apiClient } from "../lib/apiClient";
 import type {
   NearListingsParams,
   NearListingsResponse,
   ListingWithDistance,
 } from "../types/listings";
-import type { ApiResponse } from "../types/api";
+
+// ── API functions ──────────────────────────────────────────────────────────
 
 /**
- * Fetch listings near a location with optional filters
+ * Fetch listings near a location using a radius query.
+ * Requires `lng` and `lat`; `radiusKm` defaults to 10.
  */
 export async function fetchNearListings(
-  params: NearListingsParams
+  params: NearListingsParams,
 ): Promise<NearListingsResponse> {
-  const query = buildQuery({
-    ...params,
-    radiusKm: params.radiusKm || 10,
+  const queryParams = { ...params, radiusKm: params.radiusKm ?? 10 };
+  const result = await apiClient.get<NearListingsResponse>("/listings/near", {
+    params: queryParams,
   });
-
-  const { data } = await http.get<NearListingsResponse>("/listings/near", {
-    params: query,
-  });
-  return data;
+  if (!result.success) throw result.error!;
+  return result.data!;
 }
 
 /**
- * Fetch listings with traditional filters (no location)
+ * Fetch listings with keyword / filter params (no location required).
  */
 export async function fetchListings(
-  params: Omit<NearListingsParams, "lng" | "lat" | "radiusKm">
-) {
-  const { data } = await http.get<ApiResponse<ListingWithDistance[]>>(
+  params: Omit<NearListingsParams, "lng" | "lat" | "radiusKm">,
+): Promise<{
+  items: ListingWithDistance[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}> {
+  const result = await apiClient.getPaginated<ListingWithDistance>(
     "/listings",
-    {
-      params: buildQuery(params),
-    }
+    params,
   );
-
-  const items = Array.isArray(data?.items)
-    ? (data.items as ListingWithDistance[])
-    : [];
+  if (!result.success) throw result.error!;
   return {
-    items,
-    total: data.total || 0,
-    page: data.page || 1,
-    limit: data.limit || 20,
-    hasMore: false, // Backend needs to implement this
+    items: result.data ?? [],
+    total: result.meta?.total ?? 0,
+    page: result.meta?.page ?? 1,
+    limit: result.meta?.limit ?? 20,
+    hasMore: false,
   };
 }
 
 /**
- * Smart fetch that uses near search when coordinates are provided
+ * Smart fetch: uses geospatial search when coordinates are provided,
+ * falls back to keyword search otherwise.
  */
 export async function fetchListingsAuto(
-  params: Partial<NearListingsParams>
+  params: Partial<NearListingsParams>,
 ): Promise<NearListingsResponse> {
   const { lng, lat, ...rest } = params;
-
   if (typeof lng === "number" && typeof lat === "number") {
     return fetchNearListings({ lng, lat, ...rest });
   }
-
-  return fetchListings(rest);
+  const flat = await fetchListings(rest);
+  return {
+    items: flat.items,
+    total: flat.total,
+    page: flat.page,
+    limit: flat.limit,
+  };
 }

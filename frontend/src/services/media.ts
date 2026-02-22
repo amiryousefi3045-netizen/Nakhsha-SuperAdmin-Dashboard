@@ -1,6 +1,4 @@
-import axios from "axios";
-// Ensure auth interceptor is registered when uploads are used
-import "./auth";
+import { apiClient } from "../lib/apiClient";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 let SERVER_ORIGIN = "";
@@ -44,8 +42,8 @@ export interface ReverseGeocodeResult {
 export async function uploadImage(file: File | Blob): Promise<string> {
   const form = new FormData();
   form.append("file", file, file instanceof File ? file.name : "upload");
-  const { data } = await axios.post<UploadResponse>(
-    `${API_BASE}/uploads`,
+  const { data } = await apiClient.axios.post<UploadResponse>(
+    "/uploads",
     form,
     {
       headers: { "Content-Type": "multipart/form-data" },

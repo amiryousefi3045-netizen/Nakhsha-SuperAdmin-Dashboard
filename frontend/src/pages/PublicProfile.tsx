@@ -7,7 +7,7 @@ import {
   isProfileSaved,
   saveProfile,
   unsaveProfile,
-} from "../services/profile";
+} from "../services/users";
 import ProfileBanner from "../components/ProfileBanner";
 import ProfileHeader from "../components/ProfileHeader";
 import ProfileTabs from "../components/ProfileTabs";
@@ -52,17 +52,21 @@ const PublicProfile: FC = () => {
     try {
       let profileData: PublicProfileUser;
       if (handle) {
-        profileData = await getPublicProfile(handle);
+        profileData = (await getPublicProfile(
+          handle,
+        )) as unknown as PublicProfileUser;
       } else if (id) {
-        profileData = await getProfileById(id);
+        profileData = (await getProfileById(
+          id,
+        )) as unknown as PublicProfileUser;
       } else {
         throw new Error("مشخصات کاربر نامعتبر است");
       }
       setProfileUser(profileData);
     } catch (err: unknown) {
       console.error("Failed to load profile:", err);
-      const e = err as { response?: { status?: number }; message?: string };
-      if (e.response?.status === 404) {
+      const e = err as { status?: number; message?: string };
+      if (e.status === 404) {
         setError("کاربری با این مشخصات یافت نشد");
       } else {
         setError(e?.message || "خطا در بارگذاری پروفایل");

@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import {
-  getPublicUserByHandle,
-  getPublicUserContent,
-} from "../services/profile";
+import { getPublicUserByHandle, getPublicUserContent } from "../services/users";
 import type { User, ContentItem } from "../types/api";
 import ContentCard from "../components/ContentCard";
 
@@ -676,8 +673,8 @@ const PublicProfilePage = () => {
                           {profileUser.creatorType === "artisan"
                             ? "هنرمند"
                             : profileUser.creatorType === "tour_leader"
-                            ? "راهنمای گردشگری"
-                            : getRoleLabel(profileUser.role)}
+                              ? "راهنمای گردشگری"
+                              : getRoleLabel(profileUser.role)}
                         </span>
                       </div>
                     </div>
