@@ -55,7 +55,12 @@ function assertErrorEnvelope(body, status, code) {
 describe("createErrorResponse helper (utils/response.js)", () => {
   it("returns canonical envelope with reqId", () => {
     const fakeReqId = "00000000-0000-4000-8000-000000000001";
-    const body = createErrorResponse("TEST_CODE", "test message", null, fakeReqId);
+    const body = createErrorResponse(
+      "TEST_CODE",
+      "test message",
+      null,
+      fakeReqId,
+    );
 
     expect(body).toEqual({
       success: false,

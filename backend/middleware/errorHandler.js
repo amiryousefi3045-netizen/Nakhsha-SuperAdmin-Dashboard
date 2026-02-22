@@ -102,7 +102,9 @@ const errorHandler = (err, req, res, next) => {
     };
   }
 
-  res.status(statusCode).json(createErrorResponse(code, message, responseDetails, reqId));
+  res
+    .status(statusCode)
+    .json(createErrorResponse(code, message, responseDetails, reqId));
 };
 
 /**
@@ -125,14 +127,16 @@ const asyncHandler = (fn) => (req, res, next) => {
  */
 const notFoundHandler = (req, res, next) => {
   const reqId = req.id ?? null;
-  res.status(404).json(
-    createErrorResponse(
-      "NOT_FOUND",
-      `مسیر ${req.originalUrl} یافت نشد`,
-      null,
-      reqId,
-    ),
-  );
+  res
+    .status(404)
+    .json(
+      createErrorResponse(
+        "NOT_FOUND",
+        `مسیر ${req.originalUrl} یافت نشد`,
+        null,
+        reqId,
+      ),
+    );
 };
 
 module.exports = {

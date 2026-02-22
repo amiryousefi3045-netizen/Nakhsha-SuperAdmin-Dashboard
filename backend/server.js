@@ -160,7 +160,10 @@ const authLimiter = rateLimit({
   // Message follows canonical error envelope; responseEnricher fills in reqId
   message: {
     success: false,
-    error: { code: "TOO_MANY_REQUESTS", message: "درخواست‌های زیاد. لطفاً کمی صبر کنید" },
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message: "درخواست‌های زیاد. لطفاً کمی صبر کنید",
+    },
     reqId: null,
   },
   handler: (req, res, _next, options) => {
@@ -174,7 +177,10 @@ const uploadsLimiter = rateLimit({
   limit: 30, // 30 uploads per hour
   message: {
     success: false,
-    error: { code: "TOO_MANY_REQUESTS", message: "محدودیت آپلود. لطفاً بعداً تلاش کنید" },
+    error: {
+      code: "TOO_MANY_REQUESTS",
+      message: "محدودیت آپلود. لطفاً بعداً تلاش کنید",
+    },
     reqId: null,
   },
   handler: (req, res, _next, options) => {

@@ -38,7 +38,7 @@ const consoleFormat = winston.format.combine(
   winston.format.printf((info) => {
     const reqTag = info.reqId ? `[${info.reqId}] ` : "";
     return `${info.timestamp} ${info.level}: ${reqTag}${info.message}`;
-  })
+  }),
 );
 
 // فرمت برای محیط Production (JSON structured)
@@ -46,7 +46,7 @@ const fileFormat = winston.format.combine(
   winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
   winston.format.errors({ stack: true }),
   winston.format.splat(),
-  winston.format.json()
+  winston.format.json(),
 );
 
 const transports = [
@@ -77,12 +77,12 @@ const logger = winston.createLogger({
 
 // Handle uncaught exceptions
 logger.exceptions.handle(
-  new winston.transports.File({ filename: "logs/exceptions.log" })
+  new winston.transports.File({ filename: "logs/exceptions.log" }),
 );
 
 // Handle unhandled promise rejections
 logger.rejections.handle(
-  new winston.transports.File({ filename: "logs/rejections.log" })
+  new winston.transports.File({ filename: "logs/rejections.log" }),
 );
 
 module.exports = logger;
