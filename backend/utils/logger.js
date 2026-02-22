@@ -30,12 +30,15 @@ const colors = {
 winston.addColors(colors);
 
 // فرمت برای محیط Development (خوانا برای انسان)
+// When the log metadata includes a `reqId`, it is prepended to the message
+// so that individual requests can be traced through the log stream.
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
   winston.format.colorize({ all: true }),
-  winston.format.printf(
-    (info) => `${info.timestamp} ${info.level}: ${info.message}`
-  )
+  winston.format.printf((info) => {
+    const reqTag = info.reqId ? `[${info.reqId}] ` : "";
+    return `${info.timestamp} ${info.level}: ${reqTag}${info.message}`;
+  })
 );
 
 // فرمت برای محیط Production (JSON structured)

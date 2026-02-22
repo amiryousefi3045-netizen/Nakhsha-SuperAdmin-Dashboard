@@ -9,6 +9,7 @@ const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const logger = require("./utils/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
+const { responseEnricher } = require("./middleware/responseEnricher");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
 const otpCleanupService = require("./services/otpCleanup");
@@ -34,11 +35,14 @@ logger.info("Origins allowed for CORS:", { origins: allowedOrigins });
 const app = express();
 app.locals.dbReady = false;
 
-// Request ID middleware
+// Request ID middleware — must be first so req.id is available everywhere
 app.use((req, res, next) => {
   req.id = crypto.randomUUID();
   next();
 });
+
+// Enrich inline error responses with success:false and reqId automatically
+app.use(responseEnricher);
 
 // Custom morgan format with request ID
 morgan.token("reqId", (req) => req.id);
@@ -48,7 +52,12 @@ const logFormat =
     : ":reqId :method :url :status :response-time ms";
 
 // Middleware
-app.use(morgan(logFormat));
+app.use(
+  morgan(logFormat, {
+    // Stream HTTP access logs through Winston so reqId appears in log files
+    stream: { write: (msg) => logger.http(msg.trim()) },
+  }),
+);
 
 // Debug CORS requests
 app.use((req, res, next) => {
@@ -148,13 +157,30 @@ app.use(
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 50, // 50 requests per windowMs
-  message: { message: "درخواست‌های زیاد. لطفاً کمی صبر کنید" },
+  // Message follows canonical error envelope; responseEnricher fills in reqId
+  message: {
+    success: false,
+    error: { code: "TOO_MANY_REQUESTS", message: "درخواست‌های زیاد. لطفاً کمی صبر کنید" },
+    reqId: null,
+  },
+  handler: (req, res, _next, options) => {
+    options.message.reqId = req.id ?? null;
+    res.status(options.statusCode).json(options.message);
+  },
 });
 
 const uploadsLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   limit: 30, // 30 uploads per hour
-  message: { message: "محدودیت آپلود. لطفاً بعداً تلاش کنید" },
+  message: {
+    success: false,
+    error: { code: "TOO_MANY_REQUESTS", message: "محدودیت آپلود. لطفاً بعداً تلاش کنید" },
+    reqId: null,
+  },
+  handler: (req, res, _next, options) => {
+    options.message.reqId = req.id ?? null;
+    res.status(options.statusCode).json(options.message);
+  },
 });
 
 // Apply rate limits to specific routes

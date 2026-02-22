@@ -15,34 +15,10 @@ const {
   normalizeLocation,
 } = require("../utils/geospatial");
 
+const { requireAuth } = require("../middleware/auth");
+const { createErrorResponse } = require("../utils/userDto");
+
 const router = express.Router();
-
-/**
- * Fail-fast secret accessor — throws if JWT_SECRET is not set.
- */
-function getJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error(
-      "JWT_SECRET environment variable is not set — " +
-        "set it in backend/.env (see backend/.env.example).",
-    );
-  }
-  return secret;
-}
-
-// Auth middleware
-function auth(req, res, next) {
-  const h = req.headers.authorization || "";
-  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
-  try {
-    req.user = jwt.verify(token, getJwtSecret());
-    next();
-  } catch {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-}
 
 // Load craft and check ownership
 async function loadCraft(req, res, next) {
@@ -60,13 +36,21 @@ async function loadCraft(req, res, next) {
   }
 }
 
+/**
+ * Ownership/admin gate — must run after requireAuth and loadCraft.
+ * Uses the standardized req.user shape { id, role } set by requireAuth.
+ */
 function ownerOrAdmin(req, res, next) {
   if (req.user?.role === "admin") return next();
   if (!req.craft?.artisanId?.userId) {
-    return res.status(403).json({ message: "Forbidden" });
+    return res
+      .status(403)
+      .json(createErrorResponse("FORBIDDEN", "Access denied"));
   }
   if (String(req.craft.artisanId.userId) !== String(req.user?.id)) {
-    return res.status(403).json({ message: "Forbidden" });
+    return res
+      .status(403)
+      .json(createErrorResponse("FORBIDDEN", "Access denied"));
   }
   next();
 }
@@ -678,7 +662,7 @@ router.get("/:id", async (req, res) => {
       const h = req.headers.authorization || "";
       const token = h.startsWith("Bearer ") ? h.slice(7) : null;
       if (token) {
-        const u = jwt.verify(token, JWT_SECRET);
+        const u = jwt.verify(token, process.env.JWT_SECRET);
         if (u?.id) {
           liked = craft.likes.some((l) => String(l.user) === String(u.id));
           disliked = craft.dislikes.some(
@@ -729,7 +713,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST /api/crafts - create new craft
-router.post("/", auth, validate(createCraftSchema), async (req, res) => {
+router.post("/", requireAuth, validate(createCraftSchema), async (req, res) => {
   try {
     const b = req.body || {};
 
@@ -798,7 +782,7 @@ router.post("/", auth, validate(createCraftSchema), async (req, res) => {
 });
 
 // PUT /api/crafts/:id - update craft
-router.put("/:id", auth, loadCraft, ownerOrAdmin, async (req, res) => {
+router.put("/:id", requireAuth, loadCraft, ownerOrAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const b = req.body || {};
@@ -893,22 +877,28 @@ router.put("/:id", auth, loadCraft, ownerOrAdmin, async (req, res) => {
 });
 
 // DELETE /api/crafts/:id
-router.delete("/:id", auth, loadCraft, ownerOrAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const doc = await Craft.findByIdAndDelete(id);
-    if (!doc) return res.status(404).json({ message: "Not found" });
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("DELETE /api/crafts/:id error", e);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+router.delete(
+  "/:id",
+  requireAuth,
+  loadCraft,
+  ownerOrAdmin,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const doc = await Craft.findByIdAndDelete(id);
+      if (!doc) return res.status(404).json({ message: "Not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("DELETE /api/crafts/:id error", e);
+      res.status(500).json({ message: "Server error" });
+    }
+  },
+);
 
 // Social interactions...
 
 // POST /api/crafts/:id/like - toggle like
-router.post("/:id/like", auth, async (req, res) => {
+router.post("/:id/like", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -942,7 +932,7 @@ router.post("/:id/like", auth, async (req, res) => {
 });
 
 // POST /api/crafts/:id/dislike - toggle dislike
-router.post("/:id/dislike", auth, async (req, res) => {
+router.post("/:id/dislike", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -978,7 +968,7 @@ router.post("/:id/dislike", auth, async (req, res) => {
 // Comments...
 
 // POST /api/crafts/:id/comments
-router.post("/:id/comments", auth, async (req, res) => {
+router.post("/:id/comments", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1032,7 +1022,7 @@ router.post("/:id/comments", auth, async (req, res) => {
 });
 
 // DELETE /api/crafts/:id/comments/:commentId
-router.delete("/:id/comments/:commentId", auth, async (req, res) => {
+router.delete("/:id/comments/:commentId", requireAuth, async (req, res) => {
   try {
     const { id, commentId } = req.params;
     if (
@@ -1083,7 +1073,7 @@ router.delete("/:id/comments/:commentId", auth, async (req, res) => {
 // Business interaction endpoints...
 
 // POST /api/crafts/:id/barter/propose
-router.post("/:id/barter/propose", auth, async (req, res) => {
+router.post("/:id/barter/propose", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1131,7 +1121,7 @@ router.post("/:id/barter/propose", auth, async (req, res) => {
 // PATCH /api/crafts/:id/barter/status/:proposalId
 router.patch(
   "/:id/barter/:proposalId/status",
-  auth,
+  requireAuth,
   loadCraft,
   ownerOrAdmin,
   async (req, res) => {

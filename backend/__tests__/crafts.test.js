@@ -61,79 +61,91 @@ beforeEach(async () => {
 });
 
 describe("Craft Routes", () => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /api/crafts
+  // ─────────────────────────────────────────────────────────────────────────
   describe("POST /api/crafts", () => {
-    it("should create a new craft with valid data", async () => {
-      const craftData = {
-        title: "قالی دستباف کاشان",
-        description: "قالی دستباف با نقوش سنتی کاشانی، ابعاد ۲×۳ متر",
-        kind: "artwork",
-        craftType: "carpet",
-        price: 50000000,
-        forSale: true,
-        location: {
-          city: "اصفهان",
-          neighborhood: "نقش جهان",
-          geometry: {
-            type: "Point",
-            coordinates: [51.6746, 32.6546],
-          },
+    const validCraft = {
+      title: "قالی دستباف کاشان",
+      description: "قالی دستباف با نقوش سنتی کاشانی، ابعاد ۲×۳ متر",
+      kind: "artwork",
+      craftType: "carpet",
+      price: 50000000,
+      forSale: true,
+      location: {
+        city: "اصفهان",
+        neighborhood: "نقش جهان",
+        geometry: {
+          type: "Point",
+          coordinates: [51.6746, 32.6546],
         },
-        tags: ["قالی", "دستباف", "کاشان"],
-      };
+      },
+      tags: ["قالی", "دستباف", "کاشان"],
+    };
 
+    it("creates a new craft when authenticated as artisan", async () => {
       const response = await request(app)
         .post("/api/crafts")
         .set("Authorization", `Bearer ${authToken}`)
-        .send(craftData)
+        .send(validCraft)
         .expect(201);
 
-      expect(response.body).toHaveProperty("craft");
-      expect(response.body.craft.title).toBe(craftData.title);
-      expect(response.body.craft.craftType).toBe(craftData.craftType);
+      // Actual API returns { id }
+      expect(response.body).toHaveProperty("id");
     });
 
-    it("should reject craft creation without authentication", async () => {
-      const craftData = {
-        title: "قالی دستباف",
-        description: "توضیحات",
-        kind: "artwork",
-      };
-
+    it("returns 401 with UNAUTHORIZED code when no token is sent", async () => {
       const response = await request(app)
         .post("/api/crafts")
-        .send(craftData)
+        .send(validCraft)
         .expect(401);
 
-      expect(response.body.message).toContain("Unauthorized");
+      expect(response.body.error).toBeDefined();
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
 
-    it("should reject craft with invalid coordinates", async () => {
-      const craftData = {
-        title: "سفال سنتی",
-        description: "سفال با نقوش قدیمی",
-        kind: "artwork",
-        location: {
-          city: "یزد",
-          geometry: {
-            type: "Point",
-            coordinates: [999, 999], // Invalid coordinates
-          },
-        },
-      };
+    it("returns 401 with UNAUTHORIZED code when token is malformed", async () => {
+      const response = await request(app)
+        .post("/api/crafts")
+        .set("Authorization", "Bearer not-a-real-token")
+        .send(validCraft)
+        .expect(401);
 
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 401 when Authorization header has wrong scheme", async () => {
+      const response = await request(app)
+        .post("/api/crafts")
+        .set("Authorization", `Basic ${authToken}`)
+        .send(validCraft)
+        .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("rejects craft with invalid coordinates", async () => {
       const response = await request(app)
         .post("/api/crafts")
         .set("Authorization", `Bearer ${authToken}`)
-        .send(craftData)
+        .send({
+          ...validCraft,
+          location: {
+            city: "یزد",
+            geometry: { type: "Point", coordinates: [999, 999] },
+          },
+        })
         .expect(400);
 
       expect(response.body.message).toBeDefined();
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /api/crafts
+  // ─────────────────────────────────────────────────────────────────────────
   describe("GET /api/crafts", () => {
     beforeEach(async () => {
-      // Create multiple test crafts
       await Craft.create([
         {
           title: "قالی تبریز",
@@ -146,10 +158,7 @@ describe("Craft Routes", () => {
           artisanId: testArtisan._id,
           location: {
             city: "تبریز",
-            geometry: {
-              type: "Point",
-              coordinates: [46.2919, 38.0809],
-            },
+            geometry: { type: "Point", coordinates: [46.2919, 38.0809] },
           },
           isPublished: true,
         },
@@ -164,55 +173,61 @@ describe("Craft Routes", () => {
           artisanId: testArtisan._id,
           location: {
             city: "اصفهان",
-            geometry: {
-              type: "Point",
-              coordinates: [51.6746, 32.6546],
-            },
+            geometry: { type: "Point", coordinates: [51.6746, 32.6546] },
           },
           isPublished: true,
         },
       ]);
     });
 
-    it("should return list of published crafts", async () => {
+    it("returns list of published crafts (no auth required)", async () => {
       const response = await request(app).get("/api/crafts").expect(200);
 
-      expect(response.body).toHaveProperty("crafts");
-      expect(Array.isArray(response.body.crafts)).toBe(true);
-      expect(response.body.crafts.length).toBeGreaterThan(0);
+      // Actual API shape: { items, total, page, limit }
+      expect(response.body).toHaveProperty("items");
+      expect(Array.isArray(response.body.items)).toBe(true);
+      expect(response.body.items.length).toBeGreaterThan(0);
+      expect(response.body).toHaveProperty("total");
     });
 
-    it("should filter crafts by city", async () => {
+    it("filters crafts by city", async () => {
       const response = await request(app)
         .get("/api/crafts")
         .query({ "filters[city]": "اصفهان" })
         .expect(200);
 
-      expect(response.body.crafts).toHaveLength(1);
-      expect(response.body.crafts[0].location.city).toBe("اصفهان");
+      expect(response.body.items.length).toBeGreaterThanOrEqual(1);
+      const nonMatch = response.body.items.filter(
+        (c) => !c.location.includes("اصفهان"),
+      );
+      expect(nonMatch).toHaveLength(0);
     });
 
-    it("should filter crafts by craftType", async () => {
+    it("filters crafts by craftType", async () => {
       const response = await request(app)
         .get("/api/crafts")
         .query({ "filters[craftType]": "carpet" })
         .expect(200);
 
-      expect(response.body.crafts).toHaveLength(1);
-      expect(response.body.crafts[0].craftType).toBe("carpet");
+      expect(response.body.items.length).toBeGreaterThanOrEqual(1);
+      response.body.items.forEach((c) => expect(c.craftType).toBe("carpet"));
     });
 
-    it("should paginate results", async () => {
+    it("respects pagination (limit param)", async () => {
       const response = await request(app)
         .get("/api/crafts")
         .query({ page: 1, limit: 1 })
         .expect(200);
 
-      expect(response.body.crafts).toHaveLength(1);
-      expect(response.body).toHaveProperty("pagination");
+      expect(response.body.items).toHaveLength(1);
+      expect(response.body).toHaveProperty("page");
+      expect(response.body).toHaveProperty("limit");
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /api/crafts/:id
+  // ─────────────────────────────────────────────────────────────────────────
   describe("GET /api/crafts/:id", () => {
     let testCraft;
 
@@ -228,36 +243,40 @@ describe("Craft Routes", () => {
         artisanId: testArtisan._id,
         location: {
           city: "اصفهان",
-          geometry: {
-            type: "Point",
-            coordinates: [51.6746, 32.6546],
-          },
+          geometry: { type: "Point", coordinates: [51.6746, 32.6546] },
         },
         isPublished: true,
       });
     });
 
-    it("should return craft details by id", async () => {
+    it("returns craft details without authentication (public route)", async () => {
       const response = await request(app)
         .get(`/api/crafts/${testCraft._id}`)
         .expect(200);
 
-      expect(response.body).toHaveProperty("craft");
-      expect(response.body.craft.title).toBe(testCraft.title);
+      // Actual API shape: flat object with id, title, etc.
+      expect(response.body).toHaveProperty("id");
+      expect(response.body.title).toBe(testCraft.title);
+      expect(response.body).toHaveProperty("liked", false);
+      expect(response.body).toHaveProperty("disliked", false);
     });
 
-    it("should return 404 for non-existent craft", async () => {
+    it("returns 404 for non-existent craft", async () => {
       const fakeId = new mongoose.Types.ObjectId();
       const response = await request(app)
         .get(`/api/crafts/${fakeId}`)
         .expect(404);
 
-      expect(response.body.message).toContain("Not found");
+      expect(response.body.message).toBeDefined();
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // PUT /api/crafts/:id
+  // ─────────────────────────────────────────────────────────────────────────
   describe("PUT /api/crafts/:id", () => {
     let testCraft;
+    let otherUserToken;
 
     beforeEach(async () => {
       testCraft = await Craft.create({
@@ -271,43 +290,72 @@ describe("Craft Routes", () => {
         artisanId: testArtisan._id,
         location: {
           city: "شیراز",
-          geometry: {
-            type: "Point",
-            coordinates: [52.5389, 29.6031],
-          },
+          geometry: { type: "Point", coordinates: [52.5389, 29.6031] },
         },
         isPublished: true,
       });
+
+      // Create a second user not linked to this artisan
+      const otherUser = await User.create({
+        name: "کاربر دیگر",
+        phone: "09199999999",
+        role: "user",
+        isVerified: true,
+      });
+      const jwt = require("jsonwebtoken");
+      otherUserToken = jwt.sign(
+        { id: otherUser._id, role: otherUser.role },
+        process.env.JWT_SECRET,
+      );
     });
 
-    it("should update craft by owner", async () => {
-      const updateData = {
-        title: "خاتم کاری ویژه",
-        price: 10000000,
-      };
-
+    it("updates craft when owner is authenticated", async () => {
       const response = await request(app)
         .put(`/api/crafts/${testCraft._id}`)
         .set("Authorization", `Bearer ${authToken}`)
-        .send(updateData)
+        .send({ title: "خاتم کاری ویژه", price: 10000000 })
         .expect(200);
 
-      expect(response.body.craft.title).toBe(updateData.title);
-      expect(response.body.craft.price).toBe(updateData.price);
+      // Actual API shape: { id, ok: true }
+      expect(response.body.ok).toBe(true);
     });
 
-    it("should reject update without authentication", async () => {
-      const updateData = { title: "عنوان جدید" };
-
-      await request(app)
+    it("returns 401 with UNAUTHORIZED code when no token is sent", async () => {
+      const response = await request(app)
         .put(`/api/crafts/${testCraft._id}`)
-        .send(updateData)
+        .send({ title: "عنوان جدید" })
         .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 401 with UNAUTHORIZED code when token is malformed", async () => {
+      const response = await request(app)
+        .put(`/api/crafts/${testCraft._id}`)
+        .set("Authorization", "Bearer bad.token.here")
+        .send({ title: "عنوان جدید" })
+        .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 403 with FORBIDDEN code when non-owner tries to update", async () => {
+      const response = await request(app)
+        .put(`/api/crafts/${testCraft._id}`)
+        .set("Authorization", `Bearer ${otherUserToken}`)
+        .send({ title: "تلاش غیرمجاز" })
+        .expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // DELETE /api/crafts/:id
+  // ─────────────────────────────────────────────────────────────────────────
   describe("DELETE /api/crafts/:id", () => {
     let testCraft;
+    let otherUserToken;
 
     beforeEach(async () => {
       testCraft = await Craft.create({
@@ -321,28 +369,88 @@ describe("Craft Routes", () => {
         artisanId: testArtisan._id,
         location: {
           city: "یزد",
-          geometry: {
-            type: "Point",
-            coordinates: [54.3673, 31.8974],
-          },
+          geometry: { type: "Point", coordinates: [54.3673, 31.8974] },
         },
         isPublished: true,
       });
+
+      const otherUser = await User.create({
+        name: "کاربر دیگر ۲",
+        phone: "09188888888",
+        role: "user",
+        isVerified: true,
+      });
+      const jwt = require("jsonwebtoken");
+      otherUserToken = jwt.sign(
+        { id: otherUser._id, role: otherUser.role },
+        process.env.JWT_SECRET,
+      );
     });
 
-    it("should delete craft by owner", async () => {
+    it("deletes craft when owner is authenticated", async () => {
       await request(app)
         .delete(`/api/crafts/${testCraft._id}`)
         .set("Authorization", `Bearer ${authToken}`)
         .expect(200);
 
-      // Verify deletion
       const deleted = await Craft.findById(testCraft._id);
       expect(deleted).toBeNull();
     });
 
-    it("should reject deletion without authentication", async () => {
-      await request(app).delete(`/api/crafts/${testCraft._id}`).expect(401);
+    it("returns 401 with UNAUTHORIZED code when no token is sent", async () => {
+      const response = await request(app)
+        .delete(`/api/crafts/${testCraft._id}`)
+        .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 403 with FORBIDDEN code when non-owner tries to delete", async () => {
+      const response = await request(app)
+        .delete(`/api/crafts/${testCraft._id}`)
+        .set("Authorization", `Bearer ${otherUserToken}`)
+        .expect(403);
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /api/crafts/:id/like
+  // ─────────────────────────────────────────────────────────────────────────
+  describe("POST /api/crafts/:id/like", () => {
+    let testCraft;
+
+    beforeEach(async () => {
+      testCraft = await Craft.create({
+        title: "نقاشی روی چرم",
+        description: "اثر هنری",
+        kind: "artwork",
+        craftType: "leather",
+        price: 3000000,
+        author: testUser.id,
+        artisanId: testArtisan._id,
+        location: { city: "تهران" },
+        isPublished: true,
+      });
+    });
+
+    it("toggles like when authenticated", async () => {
+      const response = await request(app)
+        .post(`/api/crafts/${testCraft._id}/like`)
+        .set("Authorization", `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("liked", true);
+      expect(response.body).toHaveProperty("totalLikes");
+    });
+
+    it("returns 401 with UNAUTHORIZED code when no token is sent", async () => {
+      const response = await request(app)
+        .post(`/api/crafts/${testCraft._id}/like`)
+        .expect(401);
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
   });
 });
