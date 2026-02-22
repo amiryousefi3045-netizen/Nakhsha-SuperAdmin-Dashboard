@@ -1,11 +1,26 @@
-const FilterToolbar = ({ filters, setFilters }) => {
+import type { FC } from "react";
+
+interface FilterValues {
+  city?: string;
+  craftType?: string;
+  priceRange?: [number, number] | string;
+  forSale?: boolean;
+  [key: string]: unknown;
+}
+
+interface FilterToolbarProps {
+  filters: FilterValues;
+  setFilters: (f: FilterValues) => void;
+}
+
+const FilterToolbar: FC<FilterToolbarProps> = ({ filters, setFilters }) => {
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <input
         type="text"
         placeholder="شهر"
         className="w-28 border border-nakhsha-border rounded-lg px-2.5 py-1.5 bg-white text-sm text-nakhsha-text placeholder:text-gray-400 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 transition-all duration-200 motion-reduce:transition-none"
-        value={filters.city}
+        value={(filters.city as string) || ""}
         onChange={(e) => setFilters({ ...filters, city: e.target.value })}
         aria-label="فیلتر بر اساس شهر"
       />
@@ -42,7 +57,7 @@ const FilterToolbar = ({ filters, setFilters }) => {
         <input
           type="checkbox"
           className="rounded text-primary-500 focus:ring-primary-500 focus:ring-offset-0 border-primary-300 cursor-pointer accent-primary-500"
-          checked={filters.forSale}
+          checked={!!filters.forSale}
           onChange={(e) =>
             setFilters({ ...filters, forSale: e.target.checked })
           }

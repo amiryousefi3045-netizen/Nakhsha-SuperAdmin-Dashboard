@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, type FC } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -13,60 +13,59 @@ import ProfileHeader from "../components/ProfileHeader";
 import ProfileTabs from "../components/ProfileTabs";
 import ProfileTabContent from "../components/ProfileTabContent";
 
-const PublicProfile = () => {
-  const { handle, id } = useParams();
+interface PublicProfileUser {
+  id: string;
+  name: string;
+  handle?: string;
+  bannerUrl?: string | null;
+  avatar: string;
+  bio?: string;
+  location: { neighborhood?: string; city?: string };
+  isVerified?: boolean;
+  role?: string;
+  creatorType?: string;
+}
+
+const PublicProfile: FC = () => {
+  const { handle, id } = useParams<{ handle?: string; id?: string }>();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const [searchParams] = useSearchParams();
 
-  const [profileUser, setProfileUser] = useState(null);
+  const [profileUser, setProfileUser] = useState<PublicProfileUser | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
 
-  // Get active tab from URL params
   const activeTab = searchParams.get("tab") || "posts";
-
-  // Determine if this is the current user's own profile
-  const isOwnProfile =
-    currentUser && profileUser && currentUser.id === profileUser.id;
-
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
-
-  useEffect(() => {
-    if (currentUser && profileUser && !isOwnProfile) {
-      checkIfSaved();
-    }
-  }, [currentUser, profileUser, isOwnProfile, checkIfSaved]);
+  const isOwnProfile = !!(
+    currentUser &&
+    profileUser &&
+    (currentUser as { id?: string }).id === profileUser.id
+  );
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-
     try {
-      let profileData;
-
+      let profileData: PublicProfileUser;
       if (handle) {
-        // Use the new getPublicProfile API for handle-based lookups
         profileData = await getPublicProfile(handle);
       } else if (id) {
-        // Fallback to ID-based lookup (legacy support)
         profileData = await getProfileById(id);
       } else {
         throw new Error("مشخصات کاربر نامعتبر است");
       }
-
       setProfileUser(profileData);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Failed to load profile:", err);
-
-      // Handle different error types
-      if (err.response?.status === 404) {
+      const e = err as { response?: { status?: number }; message?: string };
+      if (e.response?.status === 404) {
         setError("کاربری با این مشخصات یافت نشد");
       } else {
-        setError(err?.message || "خطا در بارگذاری پروفایل");
+        setError(e?.message || "خطا در بارگذاری پروفایل");
       }
     } finally {
       setIsLoading(false);
@@ -75,46 +74,39 @@ const PublicProfile = () => {
 
   const checkIfSaved = useCallback(async () => {
     if (!profileUser || !currentUser) return;
-
     try {
       const saved = await isProfileSaved(profileUser.id);
       setIsSaved(saved);
-    } catch (err) {
-      console.error("Failed to check saved status:", err);
-      // Fail silently for this feature
+    } catch {
       setIsSaved(false);
     }
   }, [profileUser, currentUser]);
 
-  const handleSaveToggle = async (shouldSave) => {
-    if (!profileUser || !currentUser) return;
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
+  useEffect(() => {
+    if (currentUser && profileUser && !isOwnProfile) checkIfSaved();
+  }, [currentUser, profileUser, isOwnProfile, checkIfSaved]);
+
+  const handleSaveToggle = async (shouldSave: boolean) => {
+    if (!profileUser || !currentUser) return;
     try {
-      if (shouldSave) {
-        await saveProfile(profileUser.id);
-      } else {
-        await unsaveProfile(profileUser.id);
-      }
+      if (shouldSave) await saveProfile(profileUser.id);
+      else await unsaveProfile(profileUser.id);
       setIsSaved(shouldSave);
     } catch (err) {
       console.error("Failed to toggle save status:", err);
-      // Could show a toast notification here
     }
   };
 
   const handleContact = () => {
     if (!profileUser) return;
-
-    // For now, this could open a modal or navigate to a contact page
-    // You could implement direct messaging, email, or phone contact
     console.log("Contact user:", profileUser.id);
-    // Example: navigate(`/contact/${profileUser.id}`);
   };
 
-  const handleEditProfile = () => {
-    // Navigate to profile edit page
-    navigate("/profile");
-  };
+  const handleEditProfile = () => navigate("/profile");
 
   if (isLoading) {
     return (
@@ -180,14 +172,12 @@ const PublicProfile = () => {
 
   return (
     <div className="min-h-screen bg-nakhsha-bg" dir="rtl">
-      {/* Profile Banner */}
-      <ProfileBanner />
+      <ProfileBanner bannerUrl={profileUser.bannerUrl} alt={profileUser.name} />
 
-      {/* Profile Header with Avatar, Name, Bio, Actions */}
       <div className="pb-8">
         <ProfileHeader
           user={profileUser}
-          isOwnProfile={!!isOwnProfile}
+          isOwnProfile={isOwnProfile}
           isSaved={isSaved}
           onSaveToggle={handleSaveToggle}
           onContact={handleContact}
@@ -195,10 +185,8 @@ const PublicProfile = () => {
         />
       </div>
 
-      {/* Profile Tabs */}
       <ProfileTabs />
 
-      {/* Profile Content Section */}
       <div className="bg-nakhsha-bg min-h-[400px]">
         <div className="px-4 md:px-6 lg:px-8 py-6">
           <div className="max-w-6xl mx-auto">
@@ -210,7 +198,7 @@ const PublicProfile = () => {
                 creatorType: profileUser.creatorType,
                 location: profileUser.location,
               }}
-              isOwnProfile={!!isOwnProfile}
+              isOwnProfile={isOwnProfile}
             />
           </div>
         </div>

@@ -16,9 +16,6 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
 
-    /* Allow JavaScript imports during migration */
-    "allowJs": true,
-
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

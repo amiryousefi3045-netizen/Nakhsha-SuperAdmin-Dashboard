@@ -1,22 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, type FC } from "react";
 import { useNavigate } from "react-router-dom";
 import { createCraft, uploadImage } from "../services/crafts";
 import { reverseGeocode } from "../services/media";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-const MapPicker = ({ value, onChange }) => {
+interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+interface MapPickerProps {
+  value: LatLng | null;
+  onChange: (pos: LatLng) => void;
+}
+
+const MapPicker: FC<MapPickerProps> = ({ value, onChange }) => {
   const id = "map-picker";
-  const mapRef = useRef(null);
-  const markerRef = useRef(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
   const onChangeRef = useRef(onChange);
 
-  // keep latest handler without re-subscribing the map
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // init map once
   useEffect(() => {
     const el = document.getElementById(id);
     if (!el || mapRef.current) return;
@@ -25,55 +33,80 @@ const MapPicker = ({ value, onChange }) => {
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
     }).addTo(map);
-    const placeMarker = (lat, lng, fire = true) => {
+
+    const placeMarker = (lat: number, lng: number, fire = true) => {
       if (markerRef.current) markerRef.current.remove();
       markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
       markerRef.current.on("dragend", () => {
-        const ll = markerRef.current.getLatLng();
+        const ll = markerRef.current!.getLatLng();
         onChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
       });
       if (fire) onChangeRef.current?.({ lat, lng });
     };
-    const onClick = (e) => {
-      const { lat, lng } = e.latlng;
-      placeMarker(lat, lng, true);
-    };
+
+    const onClick = (e: L.LeafletMouseEvent) =>
+      placeMarker(e.latlng.lat, e.latlng.lng);
     map.on("click", onClick);
     setTimeout(() => map.invalidateSize(), 0);
+
     return () => {
       try {
         map.off("click", onClick);
         map.remove();
       } catch {
-        // ignore cleanup errors
+        /* ignore */
       }
       mapRef.current = null;
       markerRef.current = null;
     };
   }, []);
 
-  // reflect external value on marker without firing onChange
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    if (value?.lat && value?.lng) {
-      if (markerRef.current) markerRef.current.remove();
-      markerRef.current = L.marker([value.lat, value.lng], {
-        draggable: true,
-      }).addTo(map);
-      markerRef.current.on("dragend", () => {
-        const ll = markerRef.current.getLatLng();
-        onChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
-      });
-    }
+    if (!map || !value?.lat || !value?.lng) return;
+    if (markerRef.current) markerRef.current.remove();
+    markerRef.current = L.marker([value.lat, value.lng], {
+      draggable: true,
+    }).addTo(map);
+    markerRef.current.on("dragend", () => {
+      const ll = markerRef.current!.getLatLng();
+      onChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
+    });
   }, [value?.lat, value?.lng]);
 
   return <div id={id} className="w-full h-64 rounded-md" />;
 };
 
-const CreateCraft = () => {
+// ---- Form types ----
+interface Ingredient {
+  name: string;
+  amount: string;
+  unit: string;
+}
+interface Instruction {
+  step: string;
+  title: string;
+  description: string;
+}
+interface CraftFormState {
+  title: string;
+  description: string;
+  ingredients: Ingredient[];
+  instructions: Instruction[];
+  images: string[];
+  cookingTime: { total: string };
+  difficulty: string;
+  servings: string;
+  category: string;
+  tags: string[];
+  isVegetarian: boolean;
+  location: { city: string; neighborhood: string; lat: number; lng: number };
+}
+type FormErrors = Partial<Record<string, string>>;
+
+const CreateCraft: FC = () => {
   const navigate = useNavigate();
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<CraftFormState>({
     title: "",
     description: "",
     ingredients: [{ name: "", amount: "", unit: "" }],
@@ -89,38 +122,54 @@ const CreateCraft = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<FormErrors>({});
   const [addressPreview, setAddressPreview] = useState("");
   const [submitError, setSubmitError] = useState("");
 
-  // Unified input style
   const inputClass =
     "mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:border-primary-500 placeholder:text-nakhsha-text/40 hover:border-primary-400";
 
-  const updateArrayField = (key, idx, patch) => {
+  const updateArrayField = <T,>(
+    key: "ingredients" | "instructions",
+    idx: number,
+    patch: Partial<T>,
+  ) => {
     setForm((f) => ({
       ...f,
-      [key]: f[key].map((x, i) => (i === idx ? { ...x, ...patch } : x)),
+      [key]: (f[key] as T[]).map((x, i) =>
+        i === idx ? { ...x, ...patch } : x,
+      ),
     }));
   };
 
-  const addRow = (key, row) =>
-    setForm((f) => ({ ...f, [key]: [...f[key], row] }));
-  const removeRow = (key, idx) =>
-    setForm((f) => ({ ...f, [key]: f[key].filter((_, i) => i !== idx) }));
+  const addRow = (
+    key: "ingredients" | "instructions",
+    row: Ingredient | Instruction,
+  ) =>
+    setForm((f) => ({
+      ...f,
+      [key]: [...(f[key] as (Ingredient | Instruction)[]), row],
+    }));
 
-  const onPickImages = async (e) => {
+  const removeRow = (key: "ingredients" | "instructions", idx: number) =>
+    setForm((f) => ({
+      ...f,
+      [key]: (f[key] as (Ingredient | Instruction)[]).filter(
+        (_, i) => i !== idx,
+      ),
+    }));
+
+  const onPickImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setUploading(true);
     try {
-      const urls = [];
-      for (const f of files) {
+      const urls: string[] = [];
+      for (const file of files) {
         try {
-          const url = await uploadImage(f);
-          urls.push(url);
+          urls.push(await uploadImage(file));
         } catch {
-          // skip failed file
+          /* skip */
         }
       }
       if (urls.length)
@@ -142,7 +191,7 @@ const CreateCraft = () => {
     setForm((f) => ({ ...f, images: [...(f.images || []), url].slice(0, 12) }));
   };
 
-  const setAsCover = (i) => {
+  const setAsCover = (i: number) => {
     setForm((f) => {
       const arr = [...(f.images || [])];
       if (i < 0 || i >= arr.length) return f;
@@ -151,8 +200,8 @@ const CreateCraft = () => {
     });
   };
 
-  const validate = () => {
-    const errs = {};
+  const validate = (): FormErrors => {
+    const errs: FormErrors = {};
     if (!form.title.trim()) errs.title = "عنوان الزامی است";
     if ((form.description || "").trim().length < 10)
       errs.description = "توضیحات حداقل ۱۰ کاراکتر";
@@ -163,7 +212,7 @@ const CreateCraft = () => {
     return errs;
   };
 
-  const onSubmit = async (e) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const v = validate();
     setErrors(v);
@@ -174,24 +223,19 @@ const CreateCraft = () => {
       const payload = {
         title: form.title,
         description: form.description,
-        ingredients: (form.ingredients || [])
-          .filter(
-            (x) =>
-              (x?.name || "").trim() &&
-              (x?.amount || "").trim() &&
-              (x?.unit || "").trim()
-          )
+        ingredients: form.ingredients
+          .filter((x) => x.name.trim() && x.amount.trim() && x.unit.trim())
           .map((x) => ({
-            name: String(x.name).trim(),
-            amount: String(x.amount).trim(),
-            unit: String(x.unit).trim(),
+            name: x.name.trim(),
+            amount: x.amount.trim(),
+            unit: x.unit.trim(),
           })),
-        instructions: (form.instructions || [])
-          .filter((x) => (x?.description || "").trim())
+        instructions: form.instructions
+          .filter((x) => x.description.trim())
           .map((x, i) => ({
             step: Number(x.step) || i + 1,
-            title: (x.title || "").trim() || undefined,
-            description: String(x.description).trim(),
+            title: x.title.trim() || undefined,
+            description: x.description.trim(),
           })),
         images: form.images.filter(Boolean),
         cookingTime: {
@@ -209,9 +253,15 @@ const CreateCraft = () => {
           lng: form.location.lng,
         },
       };
-      const { id } = await createCraft(payload);
-      navigate(`/craft/${id}`);
-    } catch (e) {
+      const result = await createCraft(payload);
+      navigate(`/craft/${(result as { id: string }).id}`);
+    } catch (err: unknown) {
+      const e = err as {
+        response?: {
+          status?: number;
+          data?: { message?: string; details?: string[] };
+        };
+      };
       const st = e?.response?.status;
       const body = e?.response?.data;
       let msg =
@@ -220,7 +270,7 @@ const CreateCraft = () => {
       else if (st === 400 && (body?.message || body?.details)) {
         msg =
           body?.message === "Validation error" && Array.isArray(body?.details)
-            ? `خطا در اعتبارسنجی: ${body.details[0]}`
+            ? `خطا در اعتبارسنجی: ${body.details![0]}`
             : body?.message || msg;
       }
       setSubmitError(msg);
@@ -229,22 +279,23 @@ const CreateCraft = () => {
     }
   };
 
-  // Reverse geocode when marker set
   const latVal = form.location?.lat;
   const lngVal = form.location?.lng;
+
   useEffect(() => {
     if (!latVal || !lngVal) return;
     let ignore = false;
     reverseGeocode(latVal, lngVal).then((a) => {
       if (ignore) return;
-      setAddressPreview(a.displayName || "");
-      // Auto-fill city/neighborhood from geocode
+      setAddressPreview((a as { displayName?: string }).displayName || "");
       setForm((f) => ({
         ...f,
         location: {
           ...f.location,
-          city: a.city || f.location.city,
-          neighborhood: a.neighborhood || f.location.neighborhood,
+          city: (a as { city?: string }).city || f.location.city,
+          neighborhood:
+            (a as { neighborhood?: string }).neighborhood ||
+            f.location.neighborhood,
         },
       }));
     });
@@ -253,10 +304,8 @@ const CreateCraft = () => {
     };
   }, [latVal, lngVal]);
 
-  // Live validation on key fields
   useEffect(() => {
     setErrors(validate());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     form.title,
     form.description,
@@ -287,7 +336,7 @@ const CreateCraft = () => {
               <button
                 type="submit"
                 disabled={submitting || uploading}
-                className="shrink-0 whitespace-nowrap px-6 py-2 rounded-lg text-sm font-bold bg-[var(--color-destructive)] hover:bg-[var(--color-destructive-dark)] disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-[var(--color-destructive-dark)]"
+                className="shrink-0 whitespace-nowrap px-6 py-2 rounded-lg text-sm font-bold disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2"
                 style={{
                   backgroundColor:
                     submitting || uploading
@@ -306,11 +355,13 @@ const CreateCraft = () => {
               </button>
             </div>
           </div>
+
           {submitError && (
             <div className="mt-3 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {submitError}
             </div>
           )}
+
           <div className="bg-nakhsha-bg rounded-2xl shadow-sm border border-nakhsha-border p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="text-sm">
               عنوان
@@ -413,7 +464,7 @@ const CreateCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={ing.name}
                     onChange={(e) =>
-                      updateArrayField("ingredients", i, {
+                      updateArrayField<Ingredient>("ingredients", i, {
                         name: e.target.value,
                       })
                     }
@@ -423,7 +474,7 @@ const CreateCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={ing.amount}
                     onChange={(e) =>
-                      updateArrayField("ingredients", i, {
+                      updateArrayField<Ingredient>("ingredients", i, {
                         amount: e.target.value,
                       })
                     }
@@ -434,7 +485,7 @@ const CreateCraft = () => {
                       className="border rounded-lg px-2 py-2 flex-1 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                       value={ing.unit}
                       onChange={(e) =>
-                        updateArrayField("ingredients", i, {
+                        updateArrayField<Ingredient>("ingredients", i, {
                           unit: e.target.value,
                         })
                       }
@@ -460,7 +511,7 @@ const CreateCraft = () => {
                 className="text-primary-600 text-xs"
                 onClick={() =>
                   addRow("instructions", {
-                    step: form.instructions.length + 1,
+                    step: String(form.instructions.length + 1),
                     title: "",
                     description: "",
                   })
@@ -481,7 +532,7 @@ const CreateCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={st.step}
                     onChange={(e) =>
-                      updateArrayField("instructions", i, {
+                      updateArrayField<Instruction>("instructions", i, {
                         step: e.target.value,
                       })
                     }
@@ -491,7 +542,7 @@ const CreateCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={st.title || ""}
                     onChange={(e) =>
-                      updateArrayField("instructions", i, {
+                      updateArrayField<Instruction>("instructions", i, {
                         title: e.target.value,
                       })
                     }
@@ -501,7 +552,7 @@ const CreateCraft = () => {
                     className="border rounded-lg px-2 py-2 h-20 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={st.description}
                     onChange={(e) =>
-                      updateArrayField("instructions", i, {
+                      updateArrayField<Instruction>("instructions", i, {
                         description: e.target.value,
                       })
                     }
@@ -681,7 +732,7 @@ const CreateCraft = () => {
             <button
               type="submit"
               disabled={submitting || uploading}
-              className="px-8 py-4 rounded-lg text-base font-bold bg-[var(--color-destructive)] hover:bg-[var(--color-destructive-dark)] disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-[var(--color-destructive-dark)]"
+              className="px-8 py-4 rounded-lg text-base font-bold disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2"
               style={{
                 backgroundColor:
                   submitting || uploading

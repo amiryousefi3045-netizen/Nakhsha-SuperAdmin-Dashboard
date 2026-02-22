@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, type FC } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import AuthModal from "./auth/AuthModal";
 import UserAvatarDropdown from "./UserAvatarDropdown";
 
-const Navbar = () => {
+const Navbar: FC = () => {
   const [showAuth, setShowAuth] = useState(false);
   const { user } = useAuth();
   return (
@@ -183,20 +183,18 @@ const Navbar = () => {
               </>
             ) : (
               <>
-                <>
-                  <button
-                    onClick={() => setShowAuth(true)}
-                    className="hidden sm:inline-block text-sm text-primary-700 hover:text-primary-800 focus-visible:ring-2 focus-visible:ring-primary-500 rounded px-3 py-2 transition-all duration-200"
-                    aria-label="ورود به حساب"
-                    title="ورود"
-                  >
-                    ورود
-                  </button>
-                  <AuthModal
-                    isOpen={showAuth}
-                    onClose={() => setShowAuth(false)}
-                  />
-                </>
+                <button
+                  onClick={() => setShowAuth(true)}
+                  className="hidden sm:inline-block text-sm text-primary-700 hover:text-primary-800 focus-visible:ring-2 focus-visible:ring-primary-500 rounded px-3 py-2 transition-all duration-200"
+                  aria-label="ورود به حساب"
+                  title="ورود"
+                >
+                  ورود
+                </button>
+                <AuthModal
+                  isOpen={showAuth}
+                  onClose={() => setShowAuth(false)}
+                />
 
                 {/* Mobile Login Icon */}
                 <button

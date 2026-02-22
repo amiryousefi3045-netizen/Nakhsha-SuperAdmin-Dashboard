@@ -1,49 +1,71 @@
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  type FC,
+  type RefObject,
+} from "react";
 import { Link } from "react-router-dom";
-import React, { useState, useRef, useEffect } from "react";
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22114%22 viewBox=%220 0 160 114%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2212%22 text-anchor=%22middle%22%3E%3Ctext x=%2280%22 y=%2258%22%3E%D8%A8%D8%AF%D9%88%D9%86 %D8%AA%D8%B5%D9%88%DB%8C%D8%B1%3C/text%3E%3C/g%3E%3C/svg%3E";
 
-const CraftCard = ({ craft }) => {
-  const [imgSrc, setImgSrc] = React.useState(
+export interface CraftItem {
+  id?: string;
+  title?: string;
+  image?: string | null;
+  images?: string[];
+  price?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  priceRange?: string;
+  location?: string | { city?: string; neighborhood?: string };
+  description?: string;
+  type?: string;
+  distanceMeters?: number;
+  isNew?: boolean;
+  isFeatured?: boolean;
+  craftingTime?: string;
+}
+
+interface CraftCardProps {
+  craft: CraftItem;
+  isVisible?: boolean;
+}
+
+const CraftCard: FC<CraftCardProps> = ({ craft }) => {
+  const [imgSrc, setImgSrc] = useState<string>(
     craft.image ||
       (Array.isArray(craft.images) && craft.images[0]) ||
-      PLACEHOLDER
+      PLACEHOLDER,
   );
 
-  const handleImgError = () => {
-    setImgSrc(PLACEHOLDER);
-  };
+  const handleImgError = () => setImgSrc(PLACEHOLDER);
 
-  // Calculate image count
   const imageCount = Array.isArray(craft.images)
     ? craft.images.length
     : craft.image
-    ? 1
-    : 0;
+      ? 1
+      : 0;
 
-  // Format price
-  const formatPrice = (price) => {
-    if (!price) return null;
-    return new Intl.NumberFormat("fa-IR").format(price);
-  };
+  const formatPrice = (price: number): string =>
+    new Intl.NumberFormat("fa-IR").format(price);
 
   const priceText = craft.price
     ? `${formatPrice(craft.price)} تومان`
     : craft.minPrice && craft.maxPrice
-    ? `${formatPrice(craft.minPrice)} - ${formatPrice(craft.maxPrice)} تومان`
-    : craft.priceRange
-    ? craft.priceRange
-    : null;
+      ? `${formatPrice(craft.minPrice)} - ${formatPrice(craft.maxPrice)} تومان`
+      : craft.priceRange
+        ? craft.priceRange
+        : null;
 
-  // Status tag
   const statusTag = craft.isNew
     ? "جدید"
     : craft.isFeatured
-    ? "ویژه"
-    : craft.distanceMeters && craft.distanceMeters < 1000
-    ? `نزدیک ${Math.round(craft.distanceMeters)} متر`
-    : null;
+      ? "ویژه"
+      : craft.distanceMeters && craft.distanceMeters < 1000
+        ? `نزدیک ${Math.round(craft.distanceMeters)} متر`
+        : null;
 
   return (
     <Link
@@ -87,35 +109,31 @@ const CraftCard = ({ craft }) => {
 
         {/* Text content */}
         <div className="flex-1 min-w-0 flex flex-col justify-between">
-          {/* Title - max 2 lines */}
           <div>
             <h3 className="font-semibold text-sm leading-5 text-nakhsha-text line-clamp-2">
               {craft.title}
             </h3>
 
-            {/* Price row */}
             {priceText && (
               <div className="mt-1 text-xs text-slate-600">
                 <span className="font-semibold">{priceText}</span>
               </div>
             )}
 
-            {/* Location/details row */}
             <div className="mt-1 text-xs text-slate-500 truncate">
               {typeof craft.location === "string"
                 ? craft.location
                 : craft.location && typeof craft.location === "object"
-                ? craft.location.city
-                  ? `${craft.location.city}${
-                      craft.location.neighborhood
-                        ? "، " + craft.location.neighborhood
-                        : ""
-                    }`
-                  : "—"
-                : craft.type || "—"}
+                  ? craft.location.city
+                    ? `${craft.location.city}${
+                        craft.location.neighborhood
+                          ? "، " + craft.location.neighborhood
+                          : ""
+                      }`
+                    : "—"
+                  : craft.type || "—"}
             </div>
 
-            {/* Description (if available) */}
             {craft.description && (
               <div className="mt-1 text-xs text-slate-500 truncate">
                 {craft.description}
@@ -123,7 +141,6 @@ const CraftCard = ({ craft }) => {
             )}
           </div>
 
-          {/* Bottom section with tag */}
           <div className="flex items-center justify-between gap-2">
             {statusTag && (
               <span className="text-xs text-red-500 font-medium">
@@ -142,11 +159,11 @@ const CraftCard = ({ craft }) => {
   );
 };
 
-const MemoizedCraftCard = React.memo(CraftCard, (prevProps, nextProps) => {
-  return prevProps.craft.id === nextProps.craft.id;
+const MemoizedCraftCard = React.memo(CraftCard, (prev, next) => {
+  return prev.craft.id === next.craft.id;
 });
 
-const Skeleton = () => (
+const Skeleton: FC = () => (
   <div className="p-4">
     <div className="flex gap-3">
       <div className="w-28 h-28 bg-nakhsha-border/30 rounded-xl animate-pulse shrink-0" />
@@ -160,19 +177,27 @@ const Skeleton = () => (
   </div>
 );
 
-const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
-  const [visibleIndices, setVisibleIndices] = useState(() => new Set());
-  const observerRef = useRef(null);
-  const itemRefsRef = useRef(new Map());
+interface CraftListProps {
+  items?: CraftItem[];
+  loading?: boolean;
+  scrollRootRef?: RefObject<HTMLElement>;
+}
 
-  // Reset visible indices when dataset changes
+const CraftList: FC<CraftListProps> = ({
+  items = [],
+  loading = false,
+  scrollRootRef,
+}) => {
+  const [visibleIndices, setVisibleIndices] = useState<Set<number>>(
+    () => new Set([0, 1, 2, 3, 4]),
+  );
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const itemRefsRef = useRef<Map<number, Element>>(new Map());
+
   useEffect(() => {
     setVisibleIndices(new Set([0, 1, 2, 3, 4]));
   }, [items]);
 
-  // Observe items within the correct scroll container.
-  // If the list is inside an overflow container, using root=null (viewport)
-  // can lead to only the first few items ever becoming "visible".
   useEffect(() => {
     if (loading) return;
 
@@ -182,7 +207,7 @@ const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
         setVisibleIndices((prev) => {
           const next = new Set(prev);
           for (const entry of entries) {
-            const idxAttr = entry.target?.dataset?.idx;
+            const idxAttr = (entry.target as HTMLElement).dataset?.idx;
             if (idxAttr == null) continue;
             const idx = Number(idxAttr);
             if (entry.isIntersecting) next.add(idx);
@@ -190,15 +215,10 @@ const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
           return next;
         });
       },
-      {
-        root: rootEl,
-        rootMargin: "200px 0px",
-        threshold: 0.01,
-      }
+      { root: rootEl, rootMargin: "200px 0px", threshold: 0.01 },
     );
 
     observerRef.current = observer;
-
     for (const node of itemRefsRef.current.values()) {
       if (node) observer.observe(node);
     }
@@ -234,7 +254,6 @@ const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
     <div className="divide-y divide-gray-100">
       {items.map((craft, idx) => {
         const shouldRender = visibleIndices.has(idx) || idx < 5;
-
         return (
           <div
             key={craft.id || idx}
@@ -252,7 +271,7 @@ const CraftList = ({ items = [], loading = false, scrollRootRef }) => {
             data-idx={idx}
           >
             {shouldRender ? (
-              <MemoizedCraftCard craft={craft} isVisible={true} />
+              <MemoizedCraftCard craft={craft} isVisible />
             ) : (
               <div className="p-4 h-32 bg-transparent" />
             )}

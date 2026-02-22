@@ -1,4 +1,10 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useImperativeHandle,
+  forwardRef,
+  type RefObject,
+} from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -12,14 +18,57 @@ import iconUrl from "leaflet/dist/images/marker-icon.png";
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 
-L.Icon.Default.mergeOptions({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl,
-});
+L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
 
-function pointInPolygon(point, polygon) {
-  // Ray casting algorithm for point in polygon
+interface MapBounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+interface MapCoords {
+  lat: number;
+  lng: number;
+}
+
+interface MapItem {
+  id?: string;
+  lat?: number;
+  lng?: number;
+  title?: string;
+  name?: string;
+  image?: string;
+  images?: string[];
+  description?: string;
+  type?: string;
+  location?: string | { city?: string; neighborhood?: string };
+  distanceMeters?: number;
+}
+
+interface MapProps {
+  className?: string;
+  onMoveEnd?: (data: { bounds: MapBounds }) => void;
+  center?: MapCoords | null;
+  items?: MapItem[];
+  showMyLocationButton?: boolean;
+  onLocate?: () => void;
+  onMapClick?: (coords: MapCoords) => void;
+  selectingLocation?: boolean;
+  selectedPos?: MapCoords | null;
+}
+
+export interface MapHandle {
+  flyTo(
+    lat: number,
+    lng: number,
+    opts?: { zoom?: number; duration?: number },
+  ): void;
+}
+
+type LatLngTuple = [number, number];
+
+function pointInPolygon(point: MapCoords, polygon: LatLngTuple[]): boolean {
   const [x, y] = [point.lng, point.lat];
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -34,7 +83,7 @@ function pointInPolygon(point, polygon) {
   return inside;
 }
 
-const Map = forwardRef(
+const Map = forwardRef<MapHandle, MapProps>(
   (
     {
       className = "",
@@ -47,36 +96,34 @@ const Map = forwardRef(
       selectingLocation = false,
       selectedPos = null,
     },
-    ref
+    ref,
   ) => {
-    const containerRef = useRef(null);
-    const mapRef = useRef(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const mapRef = useRef<L.Map | null>(null);
     const handlerRef = useRef(onMoveEnd);
     const onMapClickRef = useRef(onMapClick);
     const selectingLocationRef = useRef(selectingLocation);
-    const timeoutsRef = useRef([]);
-    const boundaryLayerRef = useRef(null);
-    const outsideMaskRef = useRef(null);
-    const markersLayerRef = useRef(null);
-    const currentCityRef = useRef(null);
+    const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    const boundaryLayerRef = useRef<L.Polygon | null>(null);
+    const outsideMaskRef = useRef<L.Polygon | null>(null);
+    const markersLayerRef = useRef<ReturnType<
+      typeof L.markerClusterGroup
+    > | null>(null);
+    const currentCityRef = useRef<string | null>(null);
+    const userMarkerRef = useRef<L.Marker | null>(null);
+    const selectedMarkerRef = useRef<L.Marker | null>(null);
+    const lastCenterRef = useRef<MapCoords | null>(null);
+    const initialCenterRef = useRef(center);
 
-    // Keep latest callbacks without re-initializing the map
     useEffect(() => {
       handlerRef.current = onMoveEnd;
     }, [onMoveEnd]);
-
     useEffect(() => {
       onMapClickRef.current = onMapClick;
     }, [onMapClick]);
-
     useEffect(() => {
       selectingLocationRef.current = selectingLocation;
     }, [selectingLocation]);
-
-    const userMarkerRef = useRef(null);
-    const selectedMarkerRef = useRef(null);
-    const lastCenterRef = useRef(null);
-    const initialCenterRef = useRef(center);
 
     useImperativeHandle(ref, () => ({
       flyTo(lat, lng, opts = {}) {
@@ -95,36 +142,33 @@ const Map = forwardRef(
 
     useEffect(() => {
       if (!containerRef.current || mapRef.current) return;
-      // Inject pulsing marker CSS once
+
       if (!document.getElementById("pulse-marker-style")) {
         const style = document.createElement("style");
         style.id = "pulse-marker-style";
         style.textContent = `@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');@keyframes pulseMapMarker{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1);opacity:.15}100%{transform:scale(.6);opacity:0}}.pulse-pin{position:relative;width:16px;height:16px}.pulse-pin span{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;background:#1A5F7A;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 1px rgba(26,95,122,.15)}.pulse-pin:after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;background:rgba(26,95,122,.35);border-radius:9999px;animation:pulseMapMarker 1.6s ease-out infinite}.leaflet-control-zoom{position:absolute !important;bottom:16px;right:16px;background:transparent !important;border:none !important;box-shadow:none !important}.leaflet-control-zoom-in,.leaflet-control-zoom-out{width:36px;height:36px;background:white !important;border:none !important;border-radius:9999px !important;font-size:16px;font-weight:bold;color:#1A5F7A !important;box-shadow:0 2px 8px rgba(26,95,122,0.1) !important;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s ease}.leaflet-control-zoom-in:hover,.leaflet-control-zoom-out:hover{background:white !important;box-shadow:0 4px 12px rgba(26,95,122,0.15) !important}.leaflet-control-zoom-in{margin-bottom:8px}.custom-marker-pill{font-family:Vazirmatn, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;font-weight:600;letter-spacing:0.3px}.craft-popup .leaflet-popup-content-wrapper{background:transparent !important;box-shadow:none !important;border:none !important;border-radius:16px !important;padding:0 !important}.craft-popup .leaflet-popup-content{margin:0 !important;padding:0 !important;width:100%;max-width:240px;line-height:1.4;border-radius:16px;overflow:hidden;font-family:Vazirmatn, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif}.craft-popup .leaflet-popup-tip{background:white;box-shadow:0 2px 8px rgba(0,0,0,0.1)}`;
         document.head.appendChild(style);
       }
-      const c = initialCenterRef.current;
-      const startCenter =
-        c && c.lat && c.lng ? [c.lat, c.lng] : [32.4279, 53.688];
-      const map = L.map(containerRef.current, {
-        zoomControl: true,
-      }).setView(startCenter, c ? 13 : 6);
-      mapRef.current = map;
 
-      // Position zoom controls to bottom-right with styling
+      const c = initialCenterRef.current;
+      const startCenter: [number, number] =
+        c && c.lat && c.lng ? [c.lat, c.lng] : [32.4279, 53.688];
+      const map = L.map(containerRef.current, { zoomControl: true }).setView(
+        startCenter,
+        c ? 13 : 6,
+      );
+      mapRef.current = map;
       map.zoomControl.setPosition("bottomright");
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
 
-      // Marker cluster layer for showing craft items (populated from props)
       markersLayerRef.current = L.markerClusterGroup({
         iconCreateFunction: (cluster) => {
           const count = cluster.getChildCount();
           return L.divIcon({
-            html: `<div style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 6px 10px; border-radius: 9999px; font-weight: 700; font-size: 13px; font-family: Vazirmatn, system-ui, -apple-system, 'Segoe UI', sans-serif; box-shadow: 0 6px 16px rgba(26, 95, 122, 0.25); border: 2px solid rgba(255,255,255,0.5);" title="کلیک کنید برای دیدن جزئیات">${count.toLocaleString(
-              "fa-IR"
-            )}</div>`,
+            html: `<div style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 6px 10px; border-radius: 9999px; font-weight: 700; font-size: 13px; font-family: Vazirmatn, system-ui, -apple-system, 'Segoe UI', sans-serif; box-shadow: 0 6px 16px rgba(26, 95, 122, 0.25); border: 2px solid rgba(255,255,255,0.5);" title="کلیک کنید برای دیدن جزئیات">${count.toLocaleString("fa-IR")}</div>`,
             className: "",
             iconSize: [50, 32],
           });
@@ -147,8 +191,7 @@ const Map = forwardRef(
         });
       };
 
-      // Manual location selection: if selectingLocation is true, allow click to select coords
-      const handleMapClick = (e) => {
+      const handleMapClick = (e: L.LeafletMouseEvent) => {
         if (selectingLocationRef.current && onMapClickRef.current) {
           onMapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
         }
@@ -176,78 +219,36 @@ const Map = forwardRef(
       const map = mapRef.current;
       const layer = markersLayerRef.current;
       if (!map || !layer) return;
-      // Clear existing markers
       layer.clearLayers();
 
       (items || [])
         .filter((i) => i && i.lat && i.lng)
         .forEach((it) => {
-          // Custom pill marker icon with brand color and premium styling - LARGER
           const customIcon = L.divIcon({
-            html: `<div class="custom-marker-pill" style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 8px 16px; border-radius: 9999px; font-size: 13px; font-weight: 700; box-shadow: 0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1); border: 2px solid rgba(217,164,65,0.4); white-space: nowrap; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.3px;" onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 8px 20px rgba(26,95,122,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1)'">${String(
-              it.title || it.name || "آثر"
-            ).substring(0, 25)}</div>`,
+            html: `<div class="custom-marker-pill" style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 8px 16px; border-radius: 9999px; font-size: 13px; font-weight: 700; box-shadow: 0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1); border: 2px solid rgba(217,164,65,0.4); white-space: nowrap; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.3px;" onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 8px 20px rgba(26,95,122,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1)'">${String(it.title || it.name || "آثر").substring(0, 25)}</div>`,
             className: "custom-marker-wrapper",
             iconSize: [160, 40],
             iconAnchor: [80, 20],
             popupAnchor: [0, -20],
           });
 
-          const marker = L.marker([it.lat, it.lng], {
-            icon: customIcon,
-          });
+          const marker = L.marker([it.lat!, it.lng!], { icon: customIcon });
 
-          // Create rich popup with image + title + description + button
+          const locationLabel =
+            typeof it.location === "string"
+              ? it.location
+              : it.location?.city || "موقعیت نامشخص";
+
           const popupHTML = `
             <div style="max-width: 260px; overflow: hidden; border-radius: 18px; background: white; box-shadow: 0 12px 32px rgba(0,0,0,0.15); font-family: Vazirmatn, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-              <!-- Image -->
               <div style="width: 100%; height: 150px; overflow: hidden; background: #f3f4f6; position: relative;">
-                <img 
-                  src="${String(
-                    it.image || (Array.isArray(it.images) && it.images[0]) || ""
-                  ).replace(/"/g, "&quot;")}" 
-                  alt="${String(it.title || "").replace(/"/g, "&quot;")}"
-                  style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;"
-                  onmouseover="this.style.transform='scale(1.05)'"
-                  onmouseout="this.style.transform='scale(1)'"
-                  onerror="this.src='data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22260%22 height=%22150%22 viewBox=%220 0 260 150%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%229ca3af%22 font-family=%22Vazirmatn, sans-serif%22 font-size=%2213%22 text-anchor=%22middle%22%3E%3Ctext x=%22130%22 y=%2280%22%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E'"
-                />
+                <img src="${String(it.image || (Array.isArray(it.images) && it.images[0]) || "").replace(/"/g, "&quot;")}" alt="${String(it.title || "").replace(/"/g, "&quot;")}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onerror="this.src='data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22260%22 height=%22150%22 viewBox=%220 0 260 150%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%229ca3af%22 font-family=%22Vazirmatn, sans-serif%22 font-size=%2213%22 text-anchor=%22middle%22%3E%3Ctext x=%22130%22 y=%2280%22%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E'" />
               </div>
-              
-              <!-- Content -->
               <div style="padding: 14px 14px 12px 14px; text-align: right;">
-                <!-- Title -->
-                <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #111827; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: Vazirmatn;">
-                  ${String(it.title || it.name || "بدون عنوان").replace(
-                    /</g,
-                    "&lt;"
-                  )}
-                </h3>
-                
-                <!-- Description -->
-                <p style="margin: 0 0 10px 0; font-size: 13px; color: #6b7280; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: Vazirmatn;">
-                  ${String(it.description || it.type || "بدون توضیح").replace(
-                    /</g,
-                    "&lt;"
-                  )}
-                </p>
-                
-                <!-- Location -->
-                <div style="margin-bottom: 10px; font-size: 13px; color: #666; font-family: Vazirmatn; display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
-                  <span>${String(
-                    typeof it.location === "string"
-                      ? it.location
-                      : it.location?.city || "موقعیت نامشخص"
-                  ).replace(/</g, "&lt;")}</span>
-                  <span style="font-size: 14px;">📍</span>
-                </div>
-                
-                <!-- Details Button -->
-                <a href="/craft/${
-                  it.id
-                }" style="display: inline-block; margin-top: 8px; padding: 8px 14px; background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; text-decoration: none; border-radius: 9999px; font-size: 13px; font-weight: 700; transition: all 0.2s; text-align: center; border: none; cursor: pointer; font-family: Vazirmatn; box-shadow: 0 4px 12px rgba(26, 95, 122, 0.2);" onmouseover="this.style.boxShadow='0 6px 16px rgba(26, 95, 122, 0.3)'; this.style.transform='scale(1.02)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(26, 95, 122, 0.2)'; this.style.transform='scale(1)'">
-                  جزئیات بیشتر
-                </a>
+                <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #111827; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: Vazirmatn;">${String(it.title || it.name || "بدون عنوان").replace(/</g, "&lt;")}</h3>
+                <p style="margin: 0 0 10px 0; font-size: 13px; color: #6b7280; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: Vazirmatn;">${String(it.description || it.type || "بدون توضیح").replace(/</g, "&lt;")}</p>
+                <div style="margin-bottom: 10px; font-size: 13px; color: #666; font-family: Vazirmatn; display: flex; align-items: center; justify-content: flex-end; gap: 6px;"><span>${String(locationLabel).replace(/</g, "&lt;")}</span><span style="font-size: 14px;">📍</span></div>
+                <a href="/craft/${it.id}" style="display: inline-block; margin-top: 8px; padding: 8px 14px; background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; text-decoration: none; border-radius: 9999px; font-size: 13px; font-weight: 700; transition: all 0.2s; text-align: center; border: none; cursor: pointer; font-family: Vazirmatn; box-shadow: 0 4px 12px rgba(26, 95, 122, 0.2);" onmouseover="this.style.boxShadow='0 6px 16px rgba(26, 95, 122, 0.3)'; this.style.transform='scale(1.02)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(26, 95, 122, 0.2)'; this.style.transform='scale(1)'">جزئیات بیشتر</a>
               </div>
             </div>
           `;
@@ -257,11 +258,9 @@ const Map = forwardRef(
             className: "craft-popup",
           });
 
-          // Add tooltip (hover text) with distance
           let tooltipText = it.title || it.name || "";
           if (it.distanceMeters && typeof it.distanceMeters === "number") {
-            const distanceKm = (it.distanceMeters / 1000).toFixed(1);
-            tooltipText += ` (${distanceKm} کم)`;
+            tooltipText += ` (${(it.distanceMeters / 1000).toFixed(1)} کم)`;
           }
           marker.bindTooltip(tooltipText, {
             permanent: false,
@@ -273,7 +272,7 @@ const Map = forwardRef(
         });
     }, [items]);
 
-    // Recenter / animate if center prop changes after init + boundary highlight
+    // Recenter / animate if center prop changes + boundary highlight
     useEffect(() => {
       if (!center || !mapRef.current) return;
       const { lat, lng } = center;
@@ -282,7 +281,7 @@ const Map = forwardRef(
         Math.abs(lastCenterRef.current.lat - lat) < 0.0005 &&
         Math.abs(lastCenterRef.current.lng - lng) < 0.0005
       ) {
-        return; // negligible movement
+        return;
       }
       lastCenterRef.current = { lat, lng };
       const map = mapRef.current;
@@ -291,12 +290,11 @@ const Map = forwardRef(
         map.flyTo([lat, lng], targetZoom, {
           duration: 1.2,
           easeLinearity: 0.25,
-          noMoveStart: false,
         });
       } catch {
         map.setView([lat, lng], targetZoom, { animate: true });
       }
-      // Update / add pulsing user location marker
+
       if (userMarkerRef.current) {
         map.removeLayer(userMarkerRef.current);
         userMarkerRef.current = null;
@@ -308,18 +306,18 @@ const Map = forwardRef(
         iconAnchor: [8, 8],
       });
       userMarkerRef.current = L.marker([lat, lng], { icon: userIcon }).addTo(
-        map
+        map,
       );
 
-      // City boundary detection & rendering
-      const pt = { lat, lng };
-      let matchedCity = null;
+      const pt: MapCoords = { lat, lng };
+      let matchedCity: (typeof CITY_POLYGONS)[number] | null = null;
       for (const city of CITY_POLYGONS) {
-        if (pointInPolygon(pt, city.coords)) {
+        if (pointInPolygon(pt, city.coords as LatLngTuple[])) {
           matchedCity = city;
           break;
         }
       }
+
       if (matchedCity?.name !== currentCityRef.current) {
         if (boundaryLayerRef.current) {
           map.removeLayer(boundaryLayerRef.current);
@@ -330,22 +328,22 @@ const Map = forwardRef(
           outsideMaskRef.current = null;
         }
         currentCityRef.current = matchedCity ? matchedCity.name : null;
-        if (matchedCity) {
-          // Multi-resolution shape: choose simplified version based on zoom
-          const z = map.getZoom();
-          let shape = matchedCity.coords;
-          if (z < 10) {
-            shape = simplifyDouglasPeucker(shape, 0.01);
-          } else if (z < 12) {
-            shape = simplifyDouglasPeucker(shape, 0.005);
-          } else if (z < 14) {
-            shape = simplifyDouglasPeucker(shape, 0.0025);
-          } else {
-            // high zoom: slightly smooth to remove sharp artifacts
-            shape = chaikinSmooth(simplifyDouglasPeucker(shape, 0.0015), 1);
-          }
 
-          // Determine theme (simple heuristic: body class dark or media query)
+        if (matchedCity) {
+          const z = map.getZoom();
+          let shape = matchedCity.coords as LatLngTuple[];
+          if (z < 10)
+            shape = simplifyDouglasPeucker(shape, 0.01) as LatLngTuple[];
+          else if (z < 12)
+            shape = simplifyDouglasPeucker(shape, 0.005) as LatLngTuple[];
+          else if (z < 14)
+            shape = simplifyDouglasPeucker(shape, 0.0025) as LatLngTuple[];
+          else
+            shape = chaikinSmooth(
+              simplifyDouglasPeucker(shape, 0.0015),
+              1,
+            ) as LatLngTuple[];
+
           const prefersDark =
             document.documentElement.classList.contains("dark") ||
             window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -364,46 +362,58 @@ const Map = forwardRef(
             interactive: false,
             opacity: 0.95,
           }).addTo(map);
-          const worldRing = [
+
+          const worldRing: LatLngTuple[] = [
             [90, -180],
             [90, 180],
             [-90, 180],
             [-90, -180],
           ];
-          outsideMaskRef.current = L.polygon([worldRing, shape], {
-            stroke: false,
-            fillColor: outsideFill,
-            fillOpacity: outsideOpacity,
-            interactive: false,
-            bubblingMouseEvents: false,
-          }).addTo(map);
+          outsideMaskRef.current = L.polygon(
+            [worldRing, shape] as Parameters<typeof L.polygon>[0],
+            {
+              stroke: false,
+              fillColor: outsideFill,
+              fillOpacity: outsideOpacity,
+              interactive: false,
+              bubblingMouseEvents: false,
+            },
+          ).addTo(map);
           outsideMaskRef.current.bringToBack();
           boundaryLayerRef.current.bringToFront();
         }
       } else if (matchedCity) {
-        // Update styling / resolution dynamically on zoom change or recenter
         const z = map.getZoom();
-        let shape = matchedCity.coords;
-        if (z < 10) shape = simplifyDouglasPeucker(shape, 0.01);
-        else if (z < 12) shape = simplifyDouglasPeucker(shape, 0.005);
-        else if (z < 14) shape = simplifyDouglasPeucker(shape, 0.0025);
-        else shape = chaikinSmooth(simplifyDouglasPeucker(shape, 0.0015), 1);
-        if (boundaryLayerRef.current) {
+        let shape = matchedCity.coords as LatLngTuple[];
+        if (z < 10)
+          shape = simplifyDouglasPeucker(shape, 0.01) as LatLngTuple[];
+        else if (z < 12)
+          shape = simplifyDouglasPeucker(shape, 0.005) as LatLngTuple[];
+        else if (z < 14)
+          shape = simplifyDouglasPeucker(shape, 0.0025) as LatLngTuple[];
+        else
+          shape = chaikinSmooth(
+            simplifyDouglasPeucker(shape, 0.0015),
+            1,
+          ) as LatLngTuple[];
+
+        if (boundaryLayerRef.current)
           boundaryLayerRef.current.setLatLngs(shape);
-        }
         if (outsideMaskRef.current) {
-          const worldRing = [
+          const worldRing: LatLngTuple[] = [
             [90, -180],
             [90, 180],
             [-90, 180],
             [-90, -180],
           ];
-          outsideMaskRef.current.setLatLngs([worldRing, shape]);
+          outsideMaskRef.current.setLatLngs([worldRing, shape] as Parameters<
+            typeof L.polygon
+          >[0]);
         }
       }
     }, [center]);
 
-    // Show a temporary selected marker when user picks a location on the map
+    // Show selected marker
     useEffect(() => {
       const map = mapRef.current;
       if (!map) return;
@@ -411,11 +421,11 @@ const Map = forwardRef(
         try {
           map.removeLayer(selectedMarkerRef.current);
         } catch {
-          // ignore remove errors
+          /* ignore */
         }
         selectedMarkerRef.current = null;
       }
-      if (selectedPos && selectedPos.lat && selectedPos.lng) {
+      if (selectedPos?.lat && selectedPos?.lng) {
         const selIcon = L.divIcon({
           html: '<div style="width:18px;height:18px;background: linear-gradient(135deg, #111827 0%, #1f2937 100%);border-radius:50%;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>',
           className: "",
@@ -424,7 +434,7 @@ const Map = forwardRef(
         });
         selectedMarkerRef.current = L.marker(
           [selectedPos.lat, selectedPos.lng],
-          { icon: selIcon }
+          { icon: selIcon },
         ).addTo(map);
       }
     }, [selectedPos]);
@@ -444,7 +454,9 @@ const Map = forwardRef(
         <div ref={containerRef} className="w-full h-full" />
       </div>
     );
-  }
+  },
 );
+
+Map.displayName = "Map";
 
 export default Map;

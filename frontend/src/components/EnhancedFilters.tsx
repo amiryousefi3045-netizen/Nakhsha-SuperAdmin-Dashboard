@@ -1,34 +1,43 @@
-import { useState } from "react";
+import { useState, type FC } from "react";
 
-/**
- * CategoryChip Component
- * A pill-style category selector with active state styling
- */
-const CategoryChip = ({ label, isActive, onClick }) => {
-  return (
-    <button
-      onClick={onClick}
-      data-active={isActive}
-      className="px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer"
-      style={{
-        backgroundColor: isActive ? "var(--color-text)" : "var(--color-bg)",
-        color: isActive ? "#ffffff" : "var(--color-text)",
-        borderWidth: "1px",
-        borderColor: isActive ? "var(--color-text)" : "transparent",
-      }}
-      aria-pressed={isActive}
-      title={`${label} را انتخاب کنید`}
-    >
-      {label}
-    </button>
-  );
-};
+interface FilterValues {
+  city?: string;
+  craftType?: string;
+  priceRange?: [number, number];
+  forSale?: boolean;
+  [key: string]: unknown;
+}
 
-/**
- * FiltersHeader Component
- * Sticky filter header with category chips and quick toggles
- */
-const FiltersHeader = ({ filters, setFilters }) => {
+interface CategoryChipProps {
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+const CategoryChip: FC<CategoryChipProps> = ({ label, isActive, onClick }) => (
+  <button
+    onClick={onClick}
+    data-active={isActive}
+    className="px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500 cursor-pointer"
+    style={{
+      backgroundColor: isActive ? "var(--color-text)" : "var(--color-bg)",
+      color: isActive ? "#ffffff" : "var(--color-text)",
+      borderWidth: "1px",
+      borderColor: isActive ? "var(--color-text)" : "transparent",
+    }}
+    aria-pressed={isActive}
+    title={`${label} را انتخاب کنید`}
+  >
+    {label}
+  </button>
+);
+
+interface FiltersHeaderProps {
+  filters: FilterValues;
+  setFilters: (f: FilterValues) => void;
+}
+
+const FiltersHeader: FC<FiltersHeaderProps> = ({ filters, setFilters }) => {
   const craftCategories = [
     { id: "weaving", label: "بافندگی", displayName: "پارچه‌بافی" },
     { id: "pottery", label: "سفالگری", displayName: "سفال و سرامیک" },
@@ -39,24 +48,20 @@ const FiltersHeader = ({ filters, setFilters }) => {
     { id: "carpet", label: "قالیبافی", displayName: "قالی و گلیم" },
   ];
 
-  const handleCategoryToggle = (categoryDisplayName) => {
+  const handleCategoryToggle = (categoryDisplayName: string) => {
     if (filters.craftType === categoryDisplayName) {
-      // Deselect if already selected
       setFilters({ ...filters, craftType: "" });
     } else {
-      // Select the category
       setFilters({ ...filters, craftType: categoryDisplayName });
     }
   };
 
   return (
     <div className="sticky top-0 z-10 bg-nakhsha-bg/90 backdrop-blur px-4 py-3 border-b border-nakhsha-border/60 space-y-4">
-      {/* Title */}
       <h2 className="text-sm font-semibold text-nakhsha-text text-right">
         فیلترها
       </h2>
 
-      {/* Category Chips */}
       <div className="space-y-2">
         <label className="block text-xs font-semibold text-nakhsha-text text-right">
           صنایع دستی
@@ -73,7 +78,6 @@ const FiltersHeader = ({ filters, setFilters }) => {
         </div>
       </div>
 
-      {/* For Sale Toggle Pill */}
       <div className="flex justify-end">
         <button
           onClick={() => setFilters({ ...filters, forSale: !filters.forSale })}
@@ -87,14 +91,13 @@ const FiltersHeader = ({ filters, setFilters }) => {
             borderWidth: "1px",
             borderColor: filters.forSale ? "var(--color-text)" : "transparent",
           }}
-          aria-pressed={filters.forSale}
+          aria-pressed={!!filters.forSale}
           title="فقط اثرهای برای فروش"
         >
           {filters.forSale ? "✓ برای فروش" : "برای فروش"}
         </button>
       </div>
 
-      {/* Active Filters Summary */}
       {(filters.city || filters.priceRange) && (
         <div className="pt-2 border-t border-nakhsha-border/40 space-y-1">
           {filters.city && (
@@ -122,11 +125,12 @@ const FiltersHeader = ({ filters, setFilters }) => {
   );
 };
 
-/**
- * EnhancedFilters Component
- * Complete filter panel with sticky header and detailed options
- */
-const EnhancedFilters = ({ filters, setFilters }) => {
+interface EnhancedFiltersProps {
+  filters: FilterValues;
+  setFilters: (f: FilterValues) => void;
+}
+
+const EnhancedFilters: FC<EnhancedFiltersProps> = ({ filters, setFilters }) => {
   const [showMorePopover, setShowMorePopover] = useState(false);
 
   const materials = [
@@ -142,12 +146,9 @@ const EnhancedFilters = ({ filters, setFilters }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Sticky Header with Quick Filters */}
       <FiltersHeader filters={filters} setFilters={setFilters} />
 
-      {/* Scrollable Detailed Filters */}
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        {/* City Filter */}
         <div>
           <label
             className="block text-xs font-semibold text-nakhsha-text mb-2 text-right"
@@ -159,27 +160,26 @@ const EnhancedFilters = ({ filters, setFilters }) => {
             id="filter-city"
             type="text"
             className="w-full p-2.5 border border-nakhsha-border rounded-xl bg-nakhsha-bg text-sm placeholder:text-nakhsha-text/40 hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200"
-            value={filters.city}
+            value={filters.city || ""}
             onChange={(e) => setFilters({ ...filters, city: e.target.value })}
             placeholder="نام شهر…"
             aria-label="فیلتر بر اساس شهر"
           />
         </div>
 
-        {/* Price Range Slider - Imported from PriceRange component */}
         <div>
           <label className="block text-xs font-semibold text-nakhsha-text mb-3 text-right">
             محدوده قیمت
           </label>
           <div className="rounded-2xl bg-nakhsha-bg p-4 shadow-sm border border-nakhsha-border/60 space-y-4">
-            {/* Simple slider visualization */}
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-nakhsha-text/60">
                 <span>
-                  {filters.priceRange?.[0]?.toLocaleString("fa-IR")} تومان
+                  {(filters.priceRange?.[0] ?? 0).toLocaleString("fa-IR")} تومان
                 </span>
                 <span>
-                  {filters.priceRange?.[1]?.toLocaleString("fa-IR")} تومان
+                  {(filters.priceRange?.[1] ?? 5000000).toLocaleString("fa-IR")}{" "}
+                  تومان
                 </span>
               </div>
               <input
@@ -191,7 +191,7 @@ const EnhancedFilters = ({ filters, setFilters }) => {
                   const newMin = parseInt(e.target.value, 10);
                   setFilters({
                     ...filters,
-                    priceRange: [newMin, filters.priceRange?.[1] || 5000000],
+                    priceRange: [newMin, filters.priceRange?.[1] ?? 5000000],
                   });
                 }}
                 className="w-full h-2 bg-nakhsha-border/30 rounded-full appearance-none cursor-pointer accent-primary-500"
@@ -206,7 +206,7 @@ const EnhancedFilters = ({ filters, setFilters }) => {
                   const newMax = parseInt(e.target.value, 10);
                   setFilters({
                     ...filters,
-                    priceRange: [filters.priceRange?.[0] || 0, newMax],
+                    priceRange: [filters.priceRange?.[0] ?? 0, newMax],
                   });
                 }}
                 className="w-full h-2 bg-nakhsha-border/30 rounded-full appearance-none cursor-pointer accent-primary-500"
@@ -216,7 +216,6 @@ const EnhancedFilters = ({ filters, setFilters }) => {
           </div>
         </div>
 
-        {/* Materials/Tags Popover */}
         <div className="relative">
           <button
             onClick={() => setShowMorePopover(!showMorePopover)}
@@ -225,7 +224,6 @@ const EnhancedFilters = ({ filters, setFilters }) => {
             گزینه‌های بیشتر ({materials.length})
           </button>
 
-          {/* Materials Popover Panel */}
           {showMorePopover && (
             <div className="absolute top-full right-0 mt-2 w-full bg-nakhsha-bg border border-nakhsha-border rounded-xl shadow-lg z-50 p-3 space-y-2">
               <p className="text-xs font-semibold text-nakhsha-text text-right mb-2">
@@ -236,10 +234,7 @@ const EnhancedFilters = ({ filters, setFilters }) => {
                   <button
                     key={material}
                     className="px-2.5 py-1 text-xs font-medium text-nakhsha-text bg-nakhsha-bg hover:bg-nakhsha-bg/95 rounded-full border border-nakhsha-border transition-colors duration-150"
-                    onClick={() => {
-                      // Could add material filtering here
-                      setShowMorePopover(false);
-                    }}
+                    onClick={() => setShowMorePopover(false)}
                   >
                     {material}
                   </button>
@@ -249,10 +244,8 @@ const EnhancedFilters = ({ filters, setFilters }) => {
           )}
         </div>
 
-        {/* Divider */}
         <div className="border-t border-nakhsha-border/60" />
 
-        {/* Reset Filters Button */}
         <button
           onClick={() =>
             setFilters({

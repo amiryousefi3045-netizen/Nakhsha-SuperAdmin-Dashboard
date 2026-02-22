@@ -1,121 +1,173 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, type FC } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { fetchCraftById, updateCraft, uploadImage } from "../services/crafts";
 import { reverseGeocode } from "../services/media";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-const MapPicker = ({ value, onChange }) => {
+interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+interface MapPickerProps {
+  value: LatLng | null;
+  onChange: (pos: LatLng) => void;
+}
+
+const MapPicker: FC<MapPickerProps> = ({ value, onChange }) => {
   const id = "map-picker-edit";
-  const mapRef = useRef(null);
-  const markerRef = useRef(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
   const onChangeRef = useRef(onChange);
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
   useEffect(() => {
     const el = document.getElementById(id);
     if (!el || mapRef.current) return;
-    const center = [32.4279, 53.688];
-    const map = L.map(el).setView(center, 6);
+    const map = L.map(el).setView([32.4279, 53.688], 6);
     mapRef.current = map;
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
     }).addTo(map);
-    const placeMarker = (lat, lng, fire = true) => {
+
+    const placeMarker = (lat: number, lng: number, fire = true) => {
       if (markerRef.current) markerRef.current.remove();
       markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
       markerRef.current.on("dragend", () => {
-        const ll = markerRef.current.getLatLng();
+        const ll = markerRef.current!.getLatLng();
         onChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
       });
       if (fire) onChangeRef.current?.({ lat, lng });
     };
-    const onClick = (e) => placeMarker(e.latlng.lat, e.latlng.lng, true);
+
+    const onClick = (e: L.LeafletMouseEvent) =>
+      placeMarker(e.latlng.lat, e.latlng.lng);
     map.on("click", onClick);
     setTimeout(() => map.invalidateSize(), 0);
+
     return () => {
       try {
         map.off("click", onClick);
         map.remove();
       } catch {
-        // ignore
+        /* ignore */
       }
       mapRef.current = null;
       markerRef.current = null;
     };
   }, []);
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    if (value?.lat && value?.lng) {
-      if (markerRef.current) markerRef.current.remove();
-      markerRef.current = L.marker([value.lat, value.lng], {
-        draggable: true,
-      }).addTo(map);
-      markerRef.current.on("dragend", () => {
-        const ll = markerRef.current.getLatLng();
-        onChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
-      });
-    }
+    if (!map || !value?.lat || !value?.lng) return;
+    if (markerRef.current) markerRef.current.remove();
+    markerRef.current = L.marker([value.lat, value.lng], {
+      draggable: true,
+    }).addTo(map);
+    markerRef.current.on("dragend", () => {
+      const ll = markerRef.current!.getLatLng();
+      onChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
+    });
   }, [value?.lat, value?.lng]);
+
   return <div id={id} className="w-full h-64 rounded-md" />;
 };
 
-const EditCraft = () => {
-  const { id } = useParams();
+// ---- Form types ----
+interface Ingredient {
+  name: string;
+  amount: string;
+  unit: string;
+}
+interface Instruction {
+  step: string;
+  title: string;
+  description: string;
+}
+interface CraftFormState {
+  title: string;
+  description: string;
+  ingredients: Ingredient[];
+  instructions: Instruction[];
+  images: string[];
+  cookingTime: { total: string };
+  difficulty: string;
+  servings: string;
+  category: string;
+  tags: string[];
+  isVegetarian: boolean;
+  location: { city: string; neighborhood: string; lat: number; lng: number };
+}
+type FormErrors = Partial<Record<string, string>>;
+
+const EditCraft: FC = () => {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState(null);
-  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState<CraftFormState | null>(null);
+  const [errors, setErrors] = useState<FormErrors>({});
   const [addressPreview, setAddressPreview] = useState("");
   const [submitError, setSubmitError] = useState("");
 
   const inputClass =
     "mt-1 w-full rounded-lg border border-nakhsha-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:border-primary-500 placeholder:text-nakhsha-text/40 hover:border-primary-400";
 
+  // Load existing craft
   useEffect(() => {
+    if (!id) return;
     let ignore = false;
     setLoading(true);
-    fetchCraftById(id).then((d) => {
+    fetchCraftById(id).then((d: unknown) => {
       if (ignore) return;
       if (!d) {
         setLoading(false);
         return;
       }
-      const loc = d.location || {};
+      const craft = d as Record<string, unknown>;
+      const loc = (craft.location as Record<string, unknown>) || {};
+      const coords = loc.coordinates as [number, number] | undefined;
       setForm({
-        title: d.title || "",
-        description: d.description || "",
-        ingredients: d.ingredients?.length
-          ? d.ingredients
-          : [{ name: "", amount: "", unit: "" }],
-        instructions: d.instructions?.length
-          ? d.instructions.map((x) => ({ ...x, step: String(x.step || 1) }))
-          : [{ step: "1", description: "" }],
+        title: String(craft.title || ""),
+        description: String(craft.description || ""),
+        ingredients:
+          Array.isArray(craft.ingredients) && craft.ingredients.length
+            ? (craft.ingredients as Ingredient[])
+            : [{ name: "", amount: "", unit: "" }],
+        instructions:
+          Array.isArray(craft.instructions) && craft.instructions.length
+            ? (craft.instructions as Array<Record<string, unknown>>).map(
+                (x) => ({
+                  step: String(x.step || 1),
+                  title: String(x.title || ""),
+                  description: String(x.description || ""),
+                }),
+              )
+            : [{ step: "1", title: "", description: "" }],
         images:
-          Array.isArray(d.images) && d.images.length
-            ? d.images.slice(0, 12)
+          Array.isArray(craft.images) && (craft.images as string[]).length
+            ? (craft.images as string[]).slice(0, 12)
             : [],
-        cookingTime: { total: String(d.cookingTime?.total ?? 0) },
-        difficulty: d.difficulty || "متوسط",
-        servings: String(d.servings || 2),
-        category: d.category || "خورش",
-        tags: d.tags || [],
-        isVegetarian: !!d.isVegetarian,
+        cookingTime: {
+          total: String(
+            (craft.cookingTime as Record<string, unknown>)?.total ?? 0,
+          ),
+        },
+        difficulty: String(craft.difficulty || "متوسط"),
+        servings: String(craft.servings || 2),
+        category: String(craft.category || "خورش"),
+        tags: Array.isArray(craft.tags) ? (craft.tags as string[]) : [],
+        isVegetarian: !!craft.isVegetarian,
         location: {
-          city: loc.city || "تهران",
-          neighborhood: loc.neighborhood || "",
-          lat:
-            typeof loc.coordinates?.[1] === "number"
-              ? loc.coordinates[1]
-              : 35.735,
-          lng:
-            typeof loc.coordinates?.[0] === "number"
-              ? loc.coordinates[0]
-              : 51.41,
+          city: String(loc.city || "تهران"),
+          neighborhood: String(loc.neighborhood || ""),
+          lat: typeof coords?.[1] === "number" ? coords[1] : 35.735,
+          lng: typeof coords?.[0] === "number" ? coords[0] : 51.41,
         },
       });
       setLoading(false);
@@ -125,37 +177,62 @@ const EditCraft = () => {
     };
   }, [id]);
 
-  const updateArrayField = (key, idx, patch) => {
-    setForm((f) => ({
-      ...f,
-      [key]: f[key].map((x, i) => (i === idx ? { ...x, ...patch } : x)),
-    }));
+  const updateArrayField = <T,>(
+    key: "ingredients" | "instructions",
+    idx: number,
+    patch: Partial<T>,
+  ) => {
+    setForm((f) =>
+      f
+        ? {
+            ...f,
+            [key]: (f[key] as T[]).map((x, i) =>
+              i === idx ? { ...x, ...patch } : x,
+            ),
+          }
+        : f,
+    );
   };
 
-  const addRow = (key, row) =>
-    setForm((f) => ({ ...f, [key]: [...f[key], row] }));
-  const removeRow = (key, idx) =>
-    setForm((f) => ({ ...f, [key]: f[key].filter((_, i) => i !== idx) }));
+  const addRow = (
+    key: "ingredients" | "instructions",
+    row: Ingredient | Instruction,
+  ) =>
+    setForm((f) =>
+      f
+        ? { ...f, [key]: [...(f[key] as (Ingredient | Instruction)[]), row] }
+        : f,
+    );
 
-  const onPickImages = async (e) => {
+  const removeRow = (key: "ingredients" | "instructions", idx: number) =>
+    setForm((f) =>
+      f
+        ? {
+            ...f,
+            [key]: (f[key] as (Ingredient | Instruction)[]).filter(
+              (_, i) => i !== idx,
+            ),
+          }
+        : f,
+    );
+
+  const onPickImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setUploading(true);
     try {
-      const urls = [];
-      for (const f of files) {
+      const urls: string[] = [];
+      for (const file of files) {
         try {
-          const url = await uploadImage(f);
-          urls.push(url);
+          urls.push(await uploadImage(file));
         } catch {
-          // skip failed
+          /* skip */
         }
       }
       if (urls.length)
-        setForm((f) => ({
-          ...f,
-          images: [...(f.images || []), ...urls].slice(0, 12),
-        }));
+        setForm((f) =>
+          f ? { ...f, images: [...(f.images || []), ...urls].slice(0, 12) } : f,
+        );
     } catch {
       alert("آپلود تصویر ناموفق بود.");
     } finally {
@@ -167,11 +244,14 @@ const EditCraft = () => {
   const addImageByUrl = () => {
     const url = prompt("لینک تصویر را وارد کنید:");
     if (!url) return;
-    setForm((f) => ({ ...f, images: [...(f.images || []), url].slice(0, 12) }));
+    setForm((f) =>
+      f ? { ...f, images: [...(f.images || []), url].slice(0, 12) } : f,
+    );
   };
 
-  const setAsCover = (i) => {
+  const setAsCover = (i: number) => {
     setForm((f) => {
+      if (!f) return f;
       const arr = [...(f.images || [])];
       if (i < 0 || i >= arr.length) return f;
       const [img] = arr.splice(i, 1);
@@ -179,8 +259,8 @@ const EditCraft = () => {
     });
   };
 
-  const validate = () => {
-    const errs = {};
+  const validate = (): FormErrors => {
+    const errs: FormErrors = {};
     if (!form?.title?.trim()) errs.title = "عنوان الزامی است";
     if ((form?.description || "").trim().length < 10)
       errs.description = "توضیحات حداقل ۱۰ کاراکتر";
@@ -189,14 +269,14 @@ const EditCraft = () => {
     if (!form?.location?.lat || !form?.location?.lng)
       errs.location = "لطفاً موقعیت را روی نقشه انتخاب کنید";
     const badIng = (form?.ingredients || []).find(
-      (x) => x.name && (!x.amount || !x.unit)
+      (x) => x.name && (!x.amount || !x.unit),
     );
     if (badIng)
       errs.ingredients = "برای موادِ دارای نام، مقدار و واحد را هم وارد کنید";
     return errs;
   };
 
-  const onSubmit = async (e) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form) return;
     const v = validate();
@@ -208,22 +288,15 @@ const EditCraft = () => {
       const payload = {
         title: form.title,
         description: form.description,
-        ingredients: (form.ingredients || []).filter(
-          (x) =>
-            x &&
-            x.name &&
-            String(x.name).trim() &&
-            x.amount &&
-            String(x.amount).trim() &&
-            x.unit &&
-            String(x.unit).trim()
+        ingredients: form.ingredients.filter(
+          (x) => x.name.trim() && x.amount.trim() && x.unit.trim(),
         ),
         instructions: form.instructions
-          .filter((x) => x.description)
+          .filter((x) => x.description.trim())
           .map((x, i) => ({
             step: Number(x.step) || i + 1,
-            title: (x.title || "").trim() || undefined,
-            description: String(x.description).trim(),
+            title: x.title.trim() || undefined,
+            description: x.description.trim(),
           })),
         images: form.images.filter(Boolean),
         cookingTime: {
@@ -246,52 +319,56 @@ const EditCraft = () => {
               : undefined,
         },
       };
-      await updateCraft(id, payload);
-      // Cache-busting query to avoid stale detail views
+      await updateCraft(id!, payload);
       navigate(`/craft/${id}?_=${Date.now()}`);
-    } catch (e) {
+    } catch (err: unknown) {
+      const e = err as {
+        response?: { status?: number; data?: { details?: string[] } };
+      };
       let msg =
         e?.response?.status === 401
           ? "برای ویرایش باید وارد شوید."
           : "ذخیره ناموفق. اتصال به سرور برقرار نیست یا ورودی‌ها نامعتبر است.";
       const details = e?.response?.data?.details;
-      if (Array.isArray(details) && details.length) {
+      if (Array.isArray(details) && details.length)
         msg += `\n${details.join("؛ ")}`;
-      }
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // reverse geocode for address preview / auto-fill
   const latVal = form?.location?.lat;
   const lngVal = form?.location?.lng;
+
   useEffect(() => {
     if (!latVal || !lngVal) return;
     let ignore = false;
     reverseGeocode(latVal, lngVal).then((a) => {
       if (ignore) return;
-      setAddressPreview(a.displayName || "");
-      setForm((f) => ({
-        ...f,
-        location: {
-          ...f.location,
-          city: a.city || f.location.city,
-          neighborhood: a.neighborhood || f.location.neighborhood,
-        },
-      }));
+      setAddressPreview((a as { displayName?: string }).displayName || "");
+      setForm((f) =>
+        f
+          ? {
+              ...f,
+              location: {
+                ...f.location,
+                city: (a as { city?: string }).city || f.location.city,
+                neighborhood:
+                  (a as { neighborhood?: string }).neighborhood ||
+                  f.location.neighborhood,
+              },
+            }
+          : f,
+      );
     });
     return () => {
       ignore = true;
     };
   }, [latVal, lngVal]);
 
-  // live validation on change
   useEffect(() => {
-    if (!form) return;
-    setErrors(validate());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (form) setErrors(validate());
   }, [
     form?.title,
     form?.description,
@@ -329,7 +406,7 @@ const EditCraft = () => {
               <button
                 type="submit"
                 disabled={submitting || uploading}
-                className="shrink-0 whitespace-nowrap px-6 py-2 rounded-lg text-sm font-bold bg-[var(--color-destructive)] hover:bg-[var(--color-destructive-dark)] disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-[var(--color-destructive-dark)]"
+                className="shrink-0 whitespace-nowrap px-6 py-2 rounded-lg text-sm font-bold disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2"
                 style={{
                   backgroundColor:
                     submitting || uploading
@@ -348,6 +425,7 @@ const EditCraft = () => {
               </button>
             </div>
           </div>
+
           {submitError && (
             <div className="mt-3 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {submitError}
@@ -393,7 +471,7 @@ const EditCraft = () => {
                 onChange={(e) => setForm({ ...form, servings: e.target.value })}
               />
               {errors.servings && (
-                <div className="text:[11px] text-red-600 mt-1">
+                <div className="text-[11px] text-red-600 mt-1">
                   {errors.servings}
                 </div>
               )}
@@ -455,7 +533,7 @@ const EditCraft = () => {
                     className="border border-nakhsha-border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={ing.name}
                     onChange={(e) =>
-                      updateArrayField("ingredients", i, {
+                      updateArrayField<Ingredient>("ingredients", i, {
                         name: e.target.value,
                       })
                     }
@@ -465,7 +543,7 @@ const EditCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={ing.amount}
                     onChange={(e) =>
-                      updateArrayField("ingredients", i, {
+                      updateArrayField<Ingredient>("ingredients", i, {
                         amount: e.target.value,
                       })
                     }
@@ -476,7 +554,7 @@ const EditCraft = () => {
                       className="border rounded-lg px-2 py-2 flex-1 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                       value={ing.unit}
                       onChange={(e) =>
-                        updateArrayField("ingredients", i, {
+                        updateArrayField<Ingredient>("ingredients", i, {
                           unit: e.target.value,
                         })
                       }
@@ -491,6 +569,11 @@ const EditCraft = () => {
                   </div>
                 </div>
               ))}
+              {errors.ingredients && (
+                <div className="text-[11px] text-red-600 mt-1">
+                  {errors.ingredients}
+                </div>
+              )}
             </div>
           </div>
 
@@ -502,7 +585,7 @@ const EditCraft = () => {
                 className="text-primary-600 text-xs"
                 onClick={() =>
                   addRow("instructions", {
-                    step: form.instructions.length + 1,
+                    step: String(form.instructions.length + 1),
                     title: "",
                     description: "",
                   })
@@ -523,7 +606,7 @@ const EditCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={st.step}
                     onChange={(e) =>
-                      updateArrayField("instructions", i, {
+                      updateArrayField<Instruction>("instructions", i, {
                         step: e.target.value,
                       })
                     }
@@ -533,7 +616,7 @@ const EditCraft = () => {
                     className="border rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={st.title || ""}
                     onChange={(e) =>
-                      updateArrayField("instructions", i, {
+                      updateArrayField<Instruction>("instructions", i, {
                         title: e.target.value,
                       })
                     }
@@ -543,7 +626,7 @@ const EditCraft = () => {
                     className="border rounded-lg px-2 py-2 h-20 focus:outline-none focus:ring-2 focus:ring-primary-500/60"
                     value={st.description}
                     onChange={(e) =>
-                      updateArrayField("instructions", i, {
+                      updateArrayField<Instruction>("instructions", i, {
                         description: e.target.value,
                       })
                     }
@@ -603,10 +686,16 @@ const EditCraft = () => {
                       <button
                         type="button"
                         onClick={() =>
-                          setForm((f) => ({
-                            ...f,
-                            images: f.images.filter((_, idx) => idx !== i),
-                          }))
+                          setForm((f) =>
+                            f
+                              ? {
+                                  ...f,
+                                  images: f.images.filter(
+                                    (_, idx) => idx !== i,
+                                  ),
+                                }
+                              : f,
+                          )
                         }
                         className="text-[10px] px-2 py-0.5 rounded bg-white/85 border"
                       >
@@ -723,7 +812,7 @@ const EditCraft = () => {
             <button
               type="submit"
               disabled={submitting || uploading}
-              className="px-8 py-4 rounded-lg text-base font-bold bg-[var(--color-destructive)] hover:bg-[var(--color-destructive-dark)] disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2 border-[var(--color-destructive-dark)]"
+              className="px-8 py-4 rounded-lg text-base font-bold disabled:bg-nakhsha-border/40 disabled:cursor-not-allowed transition-colors shadow-lg border-2"
               style={{
                 backgroundColor:
                   submitting || uploading

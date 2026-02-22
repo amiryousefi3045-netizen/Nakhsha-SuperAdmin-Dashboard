@@ -1,16 +1,30 @@
-const FilterChips = ({ filters, onClear }) => {
-  const items = [];
+import type { FC } from "react";
+
+interface FilterValues {
+  city?: string;
+  craftType?: string;
+  priceRange?: [number, number];
+  forSale?: boolean;
+  [key: string]: unknown;
+}
+
+interface FilterChipsProps {
+  filters: FilterValues;
+  onClear?: (key: string) => void;
+}
+
+const FilterChips: FC<FilterChipsProps> = ({ filters, onClear }) => {
+  const items: { key: string; label: string }[] = [];
   if (filters.city) items.push({ key: "city", label: filters.city });
   if (filters.craftType)
     items.push({ key: "craftType", label: filters.craftType });
   if (filters.priceRange && Array.isArray(filters.priceRange)) {
     const [min, max] = filters.priceRange;
-    // Only show chip if range is not the full default range
     if (min !== 0 || max !== 5000000) {
       items.push({
         key: "priceRange",
         label: `${min.toLocaleString("fa-IR")} - ${max.toLocaleString(
-          "fa-IR"
+          "fa-IR",
         )} تومان`,
       });
     }

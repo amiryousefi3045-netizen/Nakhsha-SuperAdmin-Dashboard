@@ -1,27 +1,45 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 
-// A lightweight drag-up bottom sheet for mobile (snap points: collapsed, mid, expanded)
-// Props:
-//  - header: ReactNode always visible (count summary / filters button)
-//  - children: sheet scrollable content (list)
-//  - initial: 'collapsed' | 'mid' | 'expanded'
-//  - onSnapChange(level)
-export default function MobileBottomSheet({
+type SnapLevel = "collapsed" | "mid" | "expanded";
+
+interface SnapConfig {
+  collapsed: number;
+  mid: number;
+  expanded: number;
+}
+
+interface MobileBottomSheetProps {
+  header?: ReactNode;
+  children: ReactNode;
+  initial?: SnapLevel;
+  onSnapChange?: (level: SnapLevel) => void;
+}
+
+function calcHeight(level: SnapLevel, vh: number, SNAP: SnapConfig): number {
+  if (level === "collapsed") return SNAP.collapsed;
+  if (level === "mid") return Math.round(SNAP.mid * vh);
+  return Math.round(SNAP.expanded * vh);
+}
+
+const MobileBottomSheet: FC<MobileBottomSheetProps> = ({
   header,
   children,
   initial = "collapsed",
   onSnapChange,
-}) {
-  const sheetRef = useRef(null);
-  const dragRef = useRef(null);
+}) => {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<HTMLDivElement>(null);
   const startYRef = useRef(0);
   const startHRef = useRef(0);
   const [vh, setVh] = useState(() => window.innerHeight);
-  const SNAP = useRef({ collapsed: 140, mid: 0.55, expanded: 0.88 }); // px for collapsed else fraction of vh
+  const SNAP = useRef<SnapConfig>({
+    collapsed: 140,
+    mid: 0.55,
+    expanded: 0.88,
+  });
   const [height, setHeight] = useState(0);
-  const levelRef = useRef(initial);
+  const levelRef = useRef<SnapLevel>(initial);
 
-  // compute initial height
   useEffect(() => {
     const h = calcHeight(initial, window.innerHeight, SNAP.current);
     setHeight(h);
@@ -31,34 +49,26 @@ export default function MobileBottomSheet({
     const onResize = () => {
       const newVh = window.innerHeight;
       setVh(newVh);
-      // Re-evaluate current level's pixel height
       setHeight(calcHeight(levelRef.current, newVh, SNAP.current));
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const onPointerDown = (e) => {
-    if (e.button !== undefined && e.button !== 0) return; // only primary
-    startYRef.current = e.clientY || e.touches?.[0]?.clientY;
-    startHRef.current = height;
-    document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp, { once: true });
-  };
-  const onPointerMove = (e) => {
-    const currentY = e.clientY || e.touches?.[0]?.clientY;
-    const dy = currentY - startYRef.current; // positive when moving down
-    let newH = startHRef.current - dy; // dragging up increases height
+  const onPointerMove = (e: PointerEvent) => {
+    const currentY = e.clientY;
+    const dy = currentY - startYRef.current;
+    let newH = startHRef.current - dy;
     const maxH = calcHeight("expanded", vh, SNAP.current);
     const minH = calcHeight("collapsed", vh, SNAP.current);
     if (newH < minH) newH = minH;
     if (newH > maxH) newH = maxH;
     setHeight(newH);
   };
+
   const onPointerUp = () => {
     document.removeEventListener("pointermove", onPointerMove);
-    // snap to nearest level
-    const levels = ["collapsed", "mid", "expanded"]; // order small->large
+    const levels: SnapLevel[] = ["collapsed", "mid", "expanded"];
     const distances = levels.map((lvl) => ({
       lvl,
       d: Math.abs(height - calcHeight(lvl, vh, SNAP.current)),
@@ -67,7 +77,15 @@ export default function MobileBottomSheet({
     const nearest = distances[0].lvl;
     levelRef.current = nearest;
     setHeight(calcHeight(nearest, vh, SNAP.current));
-    onSnapChange && onSnapChange(nearest);
+    onSnapChange?.(nearest);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    startYRef.current = e.clientY;
+    startHRef.current = height;
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp, { once: true });
   };
 
   return (
@@ -94,10 +112,6 @@ export default function MobileBottomSheet({
       </div>
     </div>
   );
-}
+};
 
-function calcHeight(level, vh, SNAP) {
-  if (level === "collapsed") return SNAP.collapsed; // px
-  if (level === "mid") return Math.round(SNAP.mid * vh);
-  return Math.round(SNAP.expanded * vh);
-}
+export default MobileBottomSheet;

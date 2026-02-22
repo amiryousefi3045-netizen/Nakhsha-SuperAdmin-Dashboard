@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  type FC,
+  type RefObject,
+} from "react";
 import { useSearchParams } from "react-router-dom";
-import Map from "../components/Map";
-import CraftList from "../components/CraftList";
+import Map, { type MapHandle } from "../components/Map";
+import CraftList, { type CraftItem } from "../components/CraftList";
 import SkeletonCard from "../components/SkeletonCard";
 import MobileBottomSheet from "../components/MobileBottomSheet";
 import FilterSidebar from "../components/FilterSidebar";
@@ -12,7 +19,39 @@ import { fetchCrafts, seedDev } from "../services/crafts";
 import { toFa } from "../utils/number";
 import useGeolocation from "../hooks/useGeolocation";
 
-const Home = () => {
+interface Filters {
+  city: string;
+  craftType: string;
+  priceRange: [number, number];
+  forSale: boolean;
+  [key: string]: unknown;
+}
+
+interface Bounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+interface UserPos {
+  lat: number;
+  lng: number;
+}
+
+const DEFAULT_FILTERS: Filters = {
+  city: "",
+  craftType: "",
+  priceRange: [0, 5000000],
+  forSale: false,
+};
+
+const isInIran = (lat: number, lng: number): boolean => {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return lat >= 25 && lat <= 40 && lng >= 44 && lng <= 64;
+};
+
+const Home: FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     position,
@@ -22,19 +61,13 @@ const Home = () => {
     providerBlocked,
   } = useGeolocation();
 
-  const [filters, setFilters] = useState({
-    city: "",
-    craftType: "",
-    priceRange: [0, 5000000],
-    forSale: false,
-  });
-
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [mapDirty, setMapDirty] = useState(false);
-  const [bounds, setBounds] = useState(null);
-  const [appliedBounds, setAppliedBounds] = useState(null);
-  const boundsDebounceRef = useRef(null);
+  const [bounds, setBounds] = useState<Bounds | null>(null);
+  const [appliedBounds, setAppliedBounds] = useState<Bounds | null>(null);
+  const boundsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState<CraftItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(50);
@@ -44,43 +77,36 @@ const Home = () => {
   const [sort, setSort] = useState("newest");
   const [typingQuery, setTypingQuery] = useState("");
   const [selectingLocation, setSelectingLocation] = useState(false);
-  const [manualError, setManualError] = useState(null);
-  const [manualSelectedPos, setManualSelectedPos] = useState(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [manualSelectedPos, setManualSelectedPos] = useState<UserPos | null>(
+    null,
+  );
   const [filterHeaderHasShadow, setFilterHeaderHasShadow] = useState(false);
-  const sidebarScrollRef = useRef(null);
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapHandle>(null);
 
   // Prevent page scrolling on desktop layout
   useEffect(() => {
-    const htmlElement = document.documentElement;
-    const bodyElement = document.body;
-
-    htmlElement.style.overflow = "hidden";
-    bodyElement.style.overflow = "hidden";
-
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
     return () => {
-      htmlElement.style.overflow = "";
-      bodyElement.style.overflow = "";
+      html.style.overflow = "";
+      body.style.overflow = "";
     };
   }, []);
 
-  // Convert geolocation position to userPos
-  const userPos = useMemo(() => {
-    // Do not treat IP-fallback positions as userPos for centering.
+  const userPos = useMemo<UserPos | null>(() => {
     if (!position?.coords) return null;
     if (usedIpFallback) return null;
-    return {
-      lat: position.coords.latitude,
-      lng: position.coords.longitude,
-    };
+    return { lat: position.coords.latitude, lng: position.coords.longitude };
   }, [position, usedIpFallback]);
 
-  // Handle manual map location selection
-  const handleMapClick = (coords) => {
+  const handleMapClick = (coords: UserPos) => {
     if (!selectingLocation || !coords) return;
     const { lat, lng } = coords;
-    // Clear selection mode regardless
     setSelectingLocation(false);
-    // Validate Iran bounding box
     if (isInIran(lat, lng)) {
       const clamped = {
         lat: Math.min(40, Math.max(25, lat)),
@@ -91,10 +117,10 @@ const Home = () => {
       try {
         localStorage.setItem(
           "geo.ir.good",
-          JSON.stringify({ lat: clamped.lat, lng: clamped.lng, ts: Date.now() })
+          JSON.stringify({ ...clamped, ts: Date.now() }),
         );
       } catch {
-        // ignore
+        /* ignore */
       }
     } else {
       setManualSelectedPos(null);
@@ -102,37 +128,25 @@ const Home = () => {
     }
   };
 
-  // Only consider positions that fall within Iran's rough bounding box
-  const isInIran = (lat, lng) => {
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-    return lat >= 25 && lat <= 40 && lng >= 44 && lng <= 64;
-  };
-
-  const safeUserPos =
+  const safeUserPos: UserPos | null =
     manualSelectedPos && isInIran(manualSelectedPos.lat, manualSelectedPos.lng)
       ? manualSelectedPos
       : userPos && isInIran(userPos.lat, userPos.lng)
-      ? userPos
-      : null;
+        ? userPos
+        : null;
 
-  // Update sort to 'distance' when we get location
   useEffect(() => {
     if (userPos && isInIran(userPos.lat, userPos.lng) && sort === "newest") {
       setSort("distance");
     }
   }, [userPos, sort]);
 
-  // Set initial map bounds when we get location
   useEffect(() => {
     if (!userPos || appliedBounds) return;
-
-    // Different zoom levels based on location source
-    const delta = position?.source === "GPS" ? 0.02 : 0.2;
-
-    // Only set bounds from user position if it's inside Iran; otherwise keep defaults
     if (!isInIran(userPos.lat, userPos.lng)) return;
-
-    const initial = {
+    const delta =
+      (position as { source?: string } | null)?.source === "GPS" ? 0.02 : 0.2;
+    const initial: Bounds = {
       north: userPos.lat + delta,
       south: userPos.lat - delta,
       east: userPos.lng + delta,
@@ -140,25 +154,19 @@ const Home = () => {
     };
     setBounds(initial);
     setAppliedBounds(initial);
-  }, [userPos, position?.source, appliedBounds]);
+  }, [userPos, position, appliedBounds]);
 
   const effectiveParams = useMemo(
     () => ({
-      // Only include bounds if they exist and are valid
-      ...(appliedBounds && {
-        bounds: appliedBounds,
-      }),
+      ...(appliedBounds && { bounds: appliedBounds }),
       filters,
       page,
       limit,
       q: query,
       sort,
-      ...(safeUserPos && {
-        lat: safeUserPos.lat,
-        lng: safeUserPos.lng,
-      }),
+      ...(safeUserPos && { lat: safeUserPos.lat, lng: safeUserPos.lng }),
     }),
-    [appliedBounds, filters, page, limit, query, sort, safeUserPos]
+    [appliedBounds, filters, page, limit, query, sort, safeUserPos],
   );
 
   // Load initial state from URL
@@ -168,27 +176,29 @@ const Home = () => {
     const isVegetarian = searchParams.get("veg") === "1";
     const q = searchParams.get("q") || "";
     const srt = searchParams.get("sort") || "newest";
-    const n = parseFloat(searchParams.get("n"));
-    const s = parseFloat(searchParams.get("s"));
-    const e = parseFloat(searchParams.get("e"));
-    const w = parseFloat(searchParams.get("w"));
+    const n = parseFloat(searchParams.get("n") || "");
+    const s = parseFloat(searchParams.get("s") || "");
+    const e = parseFloat(searchParams.get("e") || "");
+    const w = parseFloat(searchParams.get("w") || "");
     setFilters((f) => ({ ...f, city, difficulty, isVegetarian }));
     setQuery(q);
     setTypingQuery(q);
     setSort(srt);
     if ([n, s, e, w].every((v) => Number.isFinite(v))) {
-      const b = { north: n, south: s, east: e, west: w };
+      const b: Bounds = { north: n, south: s, east: e, west: w };
       setBounds(b);
       setAppliedBounds(b);
     }
-  }, [searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist state to URL
   useEffect(() => {
     if (mapDirty) return;
     const params = new URLSearchParams();
-    if (filters.city) params.set("city", filters.city);
-    if (filters.difficulty) params.set("difficulty", filters.difficulty);
+    if (filters.city) params.set("city", String(filters.city));
+    if (filters.difficulty)
+      params.set("difficulty", String(filters.difficulty));
     if (filters.isVegetarian) params.set("veg", "1");
     if (query) params.set("q", query);
     if (appliedBounds) {
@@ -207,7 +217,7 @@ const Home = () => {
     setPage(1);
   }, [appliedBounds, filters, query, sort]);
 
-  // Auto-apply bounds after user stops panning/zooming
+  // Auto-apply bounds after debounce
   useEffect(() => {
     if (!mapDirty || !bounds) return;
     if (boundsDebounceRef.current) clearTimeout(boundsDebounceRef.current);
@@ -245,10 +255,10 @@ const Home = () => {
           setItems(seeded.items);
           setTotal(seeded.total);
           setHasMore(
-            (seeded.page || 1) * (seeded.limit || limit) < (seeded.total || 0)
+            (seeded.page || 1) * (seeded.limit || limit) < (seeded.total || 0),
           );
         } catch {
-          // ignore seeding errors
+          /* ignore seeding errors */
         }
       }
       if (!ignore) setLoading(false);
@@ -259,11 +269,22 @@ const Home = () => {
     };
   }, [effectiveParams, triedSeed, page, limit]);
 
-  // Desktop layout
+  const clearFilterKey = (key: string) => {
+    if (key === "__all__") {
+      setFilters(DEFAULT_FILTERS);
+    } else {
+      setFilters({
+        ...filters,
+        [key]:
+          key === "forSale" ? false : key === "priceRange" ? [0, 5000000] : "",
+      });
+    }
+  };
+
   return (
     <>
+      {/* Desktop layout */}
       <div className="hidden md:grid h-[calc(100vh-80px)] grid-rows-[1fr] grid-cols-[1fr] overflow-hidden">
-        {/* Full Screen Map */}
         <section className="relative w-full h-full overflow-hidden rounded-tr-3xl">
           <div className="absolute top-4 right-4 z-10 bg-white/95 backdrop-blur px-4 py-2 rounded-xl shadow-md text-sm font-semibold text-nakhsha-text text-right">
             {total.toLocaleString("fa-IR")} اثر در این محدوده
@@ -273,7 +294,8 @@ const Home = () => {
               موقعیت تقریبی (IP)
             </div>
           )}
-          {(providerBlocked || geoError?.includes("403")) && (
+          {(providerBlocked ||
+            (typeof geoError === "string" && geoError.includes("403"))) && (
             <div className="absolute top-28 right-4 left-4 z-20 bg-red-50 text-red-700 text-xs px-4 py-3 rounded-lg shadow-md max-w-sm text-right">
               <div className="font-semibold mb-2">
                 سرویس موقعیت‌یابی در دسترس نیست
@@ -291,6 +313,7 @@ const Home = () => {
             </div>
           )}
           <Map
+            ref={mapRef}
             center={manualSelectedPos || safeUserPos}
             selectedPos={manualSelectedPos}
             items={items}
@@ -320,29 +343,20 @@ const Home = () => {
           )}
         </section>
 
-        {/* Right Sidebar Container - Floating Panel */}
+        {/* Right Sidebar */}
         <div
           className="fixed right-4 top-24 w-[450px] z-10 pointer-events-auto"
           style={{ height: "calc(100vh - 80px - 32px)" }}
         >
-          {/* Dotted Divider - Left Edge */}
-          <div className="absolute left-0 top-0 bottom-0 w-px border-l border-dotted border-nakhsha-border"></div>
-
-          {/* Apple-style Floating Sidebar */}
+          <div className="absolute left-0 top-0 bottom-0 w-px border-l border-dotted border-nakhsha-border" />
           <aside className="h-full rounded-3xl bg-white/95 backdrop-blur shadow-lg border border-nakhsha-border overflow-hidden flex flex-col">
-            {/* Header Section */}
             <div className="space-y-4 p-6 border-b border-nakhsha-border">
               <BreadcrumbBar />
               <FilterToolbar filters={filters} setFilters={setFilters} />
             </div>
-
-            {/* Search & Sort Section - Sticky Header */}
             <div
-              className={`sticky top-0 z-10 px-6 py-5 border-b border-nakhsha-border space-y-4 backdrop-blur bg-white/90 rounded-t-2xl transition-shadow duration-200 ${
-                filterHeaderHasShadow ? "shadow-md" : ""
-              }`}
+              className={`sticky top-0 z-10 px-6 py-5 border-b border-nakhsha-border space-y-4 backdrop-blur bg-white/90 rounded-t-2xl transition-shadow duration-200 ${filterHeaderHasShadow ? "shadow-md" : ""}`}
             >
-              {/* Title & Result Count */}
               <div className="flex items-center justify-between text-right">
                 <h2 className="text-xl md:text-2xl font-bold text-nakhsha-text">
                   آثار هنری
@@ -351,8 +365,6 @@ const Home = () => {
                   {toFa(total)}
                 </div>
               </div>
-
-              {/* Sort & Search Controls */}
               <div className="flex items-center gap-3">
                 <select
                   className="flex-1 border border-nakhsha-border rounded-xl px-4 py-2.5 text-sm bg-white text-nakhsha-text hover:border-primary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 transition-all duration-200 motion-reduce:transition-none"
@@ -367,7 +379,6 @@ const Home = () => {
                   <option value="priceDesc">گران‌ترین</option>
                   <option value="distance">نزدیک‌ترین</option>
                 </select>
-                {/* Search Input with Icon */}
                 <div className="flex-1 relative">
                   <svg
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-nakhsha-text/40 pointer-events-none"
@@ -392,51 +403,24 @@ const Home = () => {
                   />
                 </div>
               </div>
-
-              {/* Active Filters Chips */}
-              <FilterChips
-                filters={filters}
-                onClear={(key) => {
-                  if (key === "__all__") {
-                    setFilters({
-                      city: "",
-                      craftType: "",
-                      priceRange: [0, 5000000],
-                      forSale: false,
-                    });
-                  } else {
-                    setFilters({
-                      ...filters,
-                      [key]:
-                        key === "forSale"
-                          ? false
-                          : key === "priceRange"
-                          ? [0, 5000000]
-                          : "",
-                    });
-                  }
-                }}
-              />
+              <FilterChips filters={filters} onClear={clearFilterKey} />
             </div>
 
-            {/* Content Area - Items Grid */}
             <div
               ref={sidebarScrollRef}
-              onScroll={(e) => {
-                const scrollTop = e.currentTarget.scrollTop;
-                setFilterHeaderHasShadow(scrollTop > 2);
-              }}
+              onScroll={(e) =>
+                setFilterHeaderHasShadow(e.currentTarget.scrollTop > 2)
+              }
               className="flex-1 overflow-y-auto thin-scrollbar"
             >
               <div className="p-6">
                 {loading ? (
                   <CraftList
                     items={[]}
-                    loading={true}
-                    scrollRootRef={sidebarScrollRef}
+                    loading
+                    scrollRootRef={sidebarScrollRef as RefObject<HTMLElement>}
                   />
                 ) : items.length === 0 ? (
-                  // Empty state
                   <div className="flex items-center justify-center h-48">
                     <div className="text-center text-nakhsha-text/60">
                       <p className="text-sm">نتیجه‌ای پیدا نشد</p>
@@ -446,12 +430,10 @@ const Home = () => {
                   <CraftList
                     items={items}
                     loading={false}
-                    scrollRootRef={sidebarScrollRef}
+                    scrollRootRef={sidebarScrollRef as RefObject<HTMLElement>}
                   />
                 )}
               </div>
-
-              {/* Load More Button */}
               {hasMore && (
                 <div className="px-6 pb-6 flex justify-center">
                   <button
@@ -476,6 +458,7 @@ const Home = () => {
       <div className="md:hidden relative h-full w-full flex flex-col">
         <div className="absolute inset-0 z-0">
           <Map
+            ref={mapRef}
             center={safeUserPos}
             selectedPos={manualSelectedPos}
             items={items}
@@ -493,7 +476,8 @@ const Home = () => {
               موقعیت تقریبی (IP)
             </div>
           )}
-          {(providerBlocked || geoError?.includes("403")) && (
+          {(providerBlocked ||
+            (typeof geoError === "string" && geoError.includes("403"))) && (
             <div className="absolute top-3 left-3 right-3 z-20 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg shadow-md text-center font-medium">
               <div className="mb-1">موقعیت‌یابی قابل دسترس نیست</div>
               <button
@@ -536,39 +520,13 @@ const Home = () => {
                   <option value="popular">محبوب‌ترین</option>
                 </select>
               </div>
-
-              {/* Always-Visible Filters */}
               <div className="mt-4 pt-4 border-t border-nakhsha-border">
                 <FilterSidebar filters={filters} setFilters={setFilters} />
               </div>
-
-              <FilterChips
-                filters={filters}
-                onClear={(key) => {
-                  if (key === "__all__") {
-                    setFilters({
-                      city: "",
-                      craftType: "",
-                      priceRange: [0, 5000000],
-                      forSale: false,
-                    });
-                  } else {
-                    setFilters({
-                      ...filters,
-                      [key]:
-                        key === "forSale"
-                          ? false
-                          : key === "priceRange"
-                          ? [0, 5000000]
-                          : "",
-                    });
-                  }
-                }}
-              />
+              <FilterChips filters={filters} onClear={clearFilterKey} />
             </div>
           }
         >
-          {/* Mobile items grid */}
           <div className="px-4 py-6">
             {loading ? (
               <div className="grid grid-cols-2 gap-3">
@@ -626,8 +584,6 @@ const Home = () => {
               </div>
             )}
           </div>
-
-          {/* Load More Button */}
           {hasMore && (
             <div className="px-4 pb-6 flex justify-center">
               <button
@@ -643,8 +599,6 @@ const Home = () => {
               </button>
             </div>
           )}
-
-          {/* Error Messages */}
           {geoError && (
             <div className="mx-4 mb-4 bg-red-50 text-red-700 text-xs px-4 py-2 rounded-lg shadow text-center font-medium leading-5">
               {geoError}

@@ -1,7 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, type FC } from "react";
 import { useAuth } from "../hooks/useAuth";
 
-const ProfileHeader = ({
+interface ProfileUser {
+  name: string;
+  handle?: string;
+  avatar: string;
+  bio?: string;
+  location: { neighborhood?: string; city?: string };
+  isVerified?: boolean;
+  role?: string;
+  creatorType?: string;
+}
+
+interface ProfileHeaderProps {
+  user: ProfileUser;
+  isOwnProfile: boolean;
+  isSaved?: boolean;
+  onSaveToggle?: (shouldSave: boolean) => Promise<void>;
+  onContact?: () => void;
+  onEditProfile?: () => void;
+}
+
+const ProfileHeader: FC<ProfileHeaderProps> = ({
   user,
   isOwnProfile,
   isSaved = false,
@@ -13,11 +33,7 @@ const ProfileHeader = ({
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSaveClick = async () => {
-    if (!currentUser) {
-      // Show login modal or prompt
-      return;
-    }
-
+    if (!currentUser) return;
     setIsLoading(true);
     try {
       await onSaveToggle?.(!isSaved);
@@ -27,36 +43,31 @@ const ProfileHeader = ({
   };
 
   const getBadgeInfo = () => {
-    const badges = [];
-
-    if (user.isVerified) {
+    const badges: { text: string; icon: string; className: string }[] = [];
+    if (user.isVerified)
       badges.push({
         text: "تأیید شده",
         icon: "✓",
         className: "bg-green-100 text-green-700 border-green-200",
       });
-    }
-
-    if (user.role === "admin") {
+    if (user.role === "admin")
       badges.push({
         text: "مدیر",
         icon: "👑",
         className: "bg-purple-100 text-purple-700 border-purple-200",
       });
-    } else if (user.creatorType === "artisan") {
+    else if (user.creatorType === "artisan")
       badges.push({
         text: "هنرمند",
         icon: "🎨",
         className: "bg-accent-100 text-accent-700 border-accent-200",
       });
-    } else if (user.creatorType === "tour_leader") {
+    else if (user.creatorType === "tour_leader")
       badges.push({
         text: "راهنمای گردشگری",
         icon: "🗺️",
         className: "bg-blue-100 text-blue-700 border-blue-200",
       });
-    }
-
     return badges;
   };
 
@@ -68,7 +79,6 @@ const ProfileHeader = ({
   return (
     <div className="relative px-4 md:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
-        {/* Avatar positioned to overlap banner */}
         <div className="relative -mt-16 md:-mt-20 lg:-mt-24 mb-4">
           <div className="inline-block">
             <div className="w-24 h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 rounded-full border-4 border-white shadow-lg bg-white overflow-hidden">
@@ -82,9 +92,7 @@ const ProfileHeader = ({
           </div>
         </div>
 
-        {/* Profile Info */}
         <div className="space-y-4">
-          {/* Name and Badges */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-2">
               <div>
@@ -95,8 +103,6 @@ const ProfileHeader = ({
                   <p className="text-gray-600 text-lg mt-1">@{user.handle}</p>
                 )}
               </div>
-
-              {/* Badges */}
               {badges.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {badges.map((badge, index) => (
@@ -112,11 +118,9 @@ const ProfileHeader = ({
               )}
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-wrap gap-3">
               {!isOwnProfile && (
                 <>
-                  {/* Contact Button */}
                   <button
                     onClick={onContact}
                     className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 focus:ring-2 focus:ring-primary-500/30 transition-all duration-200"
@@ -138,7 +142,6 @@ const ProfileHeader = ({
                     تماس
                   </button>
 
-                  {/* Save/Follow Button */}
                   <button
                     onClick={handleSaveClick}
                     disabled={isLoading || !currentUser}
@@ -165,8 +168,8 @@ const ProfileHeader = ({
                     {isLoading
                       ? "در حال پردازش..."
                       : isSaved
-                      ? "ذخیره شده"
-                      : "ذخیره"}
+                        ? "ذخیره شده"
+                        : "ذخیره"}
                   </button>
                 </>
               )}
@@ -196,7 +199,6 @@ const ProfileHeader = ({
             </div>
           </div>
 
-          {/* Bio */}
           {user.bio && (
             <div className="max-w-3xl">
               <p className="text-gray-700 text-base md:text-lg leading-relaxed whitespace-pre-line">
@@ -205,7 +207,6 @@ const ProfileHeader = ({
             </div>
           )}
 
-          {/* Location */}
           {locationText && (
             <div className="flex items-center gap-2 text-gray-600">
               <svg

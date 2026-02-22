@@ -5,18 +5,12 @@ import AuthPanel from "../components/auth/AuthPanel";
 export default function Login() {
   const nav = useNavigate();
 
-  const handleSuccess = () => {
-    nav("/"); // Redirect to home on successful login
-  };
-
-  const handleClose = () => {
-    nav("/"); // Go back to home if user closes without logging in
-  };
+  const handleSuccess = () => nav("/");
+  const handleClose = () => nav("/");
 
   return (
     <div className="min-h-screen bg-nakhsha-bg flex items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-lg">
-        {/* Header with home link - hidden on mobile when inside modal */}
         <div className="text-center mb-6 block">
           <Link
             to="/"
@@ -38,7 +32,6 @@ export default function Login() {
             بازگشت به خانه
           </Link>
         </div>
-
         <AuthPanel onClose={handleClose} onSuccess={handleSuccess} />
       </div>
     </div>

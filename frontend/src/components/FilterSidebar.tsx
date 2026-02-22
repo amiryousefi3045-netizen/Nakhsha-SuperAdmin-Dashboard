@@ -1,7 +1,20 @@
-import { useState } from "react";
+import { useState, type FC } from "react";
 import PriceRange from "./PriceRange";
 
-const FilterSidebar = ({ filters, setFilters }) => {
+interface FilterValues {
+  city: string;
+  craftType: string;
+  priceRange: [number, number];
+  forSale: boolean;
+  [key: string]: unknown;
+}
+
+interface FilterSidebarProps {
+  filters: FilterValues;
+  setFilters: (f: FilterValues) => void;
+}
+
+const FilterSidebar: FC<FilterSidebarProps> = ({ filters, setFilters }) => {
   const [showMaterialsPopover, setShowMaterialsPopover] = useState(false);
 
   const craftTypes = [
@@ -36,7 +49,7 @@ const FilterSidebar = ({ filters, setFilters }) => {
     "شیشه",
   ];
 
-  const handleCategoryToggle = (categoryDisplayName) => {
+  const handleCategoryToggle = (categoryDisplayName: string) => {
     if (filters.craftType === categoryDisplayName) {
       setFilters({ ...filters, craftType: "" });
     } else {
@@ -48,12 +61,10 @@ const FilterSidebar = ({ filters, setFilters }) => {
     <div className="bg-gradient-to-b from-white to-nakhsha-bg/50 h-full flex flex-col">
       {/* Sticky Filter Header with Category Chips */}
       <div className="sticky top-0 z-10 bg-white/90 backdrop-blur px-4 py-3 border-b border-nakhsha-border space-y-3 flex-shrink-0">
-        {/* Title */}
         <h2 className="text-lg font-bold text-nakhsha-text text-right">
           فیلترها
         </h2>
 
-        {/* Category Chips */}
         <div className="space-y-1.5">
           <label className="block text-xs font-medium text-nakhsha-text/60 text-right">
             صنایع دستی
@@ -86,7 +97,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
 
         {/* For Sale Toggle + More Options Row */}
         <div className="flex items-center justify-end gap-2 pt-1">
-          {/* For Sale Toggle Pill */}
           <button
             onClick={() =>
               setFilters({ ...filters, forSale: !filters.forSale })
@@ -103,7 +113,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
             {filters.forSale ? "✓ برای فروش" : "برای فروش"}
           </button>
 
-          {/* More Options Popover */}
           <div className="relative">
             <button
               onClick={() => setShowMaterialsPopover(!showMaterialsPopover)}
@@ -113,7 +122,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
               بیشتر
             </button>
 
-            {/* Materials Popover */}
             {showMaterialsPopover && (
               <div className="absolute right-0 top-full mt-2 bg-white border border-nakhsha-border rounded-lg shadow-lg p-3 z-20 min-w-max">
                 <p className="text-xs font-semibold text-nakhsha-text text-right mb-2">
@@ -124,7 +132,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
                     <button
                       key={material}
                       onClick={() => {
-                        console.log("Selected material:", material);
                         setShowMaterialsPopover(false);
                       }}
                       className="px-2 py-1 rounded text-xs bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors duration-150 cursor-pointer"
@@ -139,7 +146,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
           </div>
         </div>
 
-        {/* Active Filters Summary */}
         {(filters.city ||
           filters.priceRange[0] !== 0 ||
           filters.priceRange[1] !== 5000000) && (
@@ -168,7 +174,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
 
       {/* Scrollable Detailed Filters */}
       <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-5">
-        {/* City Filter */}
         <div className="col-span-2">
           <label
             className="block text-xs font-semibold text-nakhsha-text mb-2 text-right"
@@ -187,7 +192,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
           />
         </div>
 
-        {/* Craft Type Filter */}
         <div>
           <label
             className="block text-xs font-semibold text-nakhsha-text mb-2 text-right"
@@ -213,7 +217,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
           </select>
         </div>
 
-        {/* Price Range Filter - Dual Slider */}
         <div className="col-span-2">
           <label className="block text-xs font-semibold text-nakhsha-text mb-3 text-right">
             محدوده قیمت
@@ -226,7 +229,6 @@ const FilterSidebar = ({ filters, setFilters }) => {
           />
         </div>
 
-        {/* For Sale Filter - Full Width Checkbox */}
         <div className="col-span-2">
           <label
             className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-primary-50 hover:bg-primary-100 border border-primary-200 hover:border-primary-300 cursor-pointer transition-all duration-200 group"
