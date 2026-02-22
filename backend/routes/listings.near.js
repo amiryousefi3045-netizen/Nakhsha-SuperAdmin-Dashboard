@@ -4,6 +4,7 @@ const router = express.Router();
 const Craft = require("../models/Craft");
 const { isValidCoordinates } = require("../utils/geospatial");
 const logger = require("../utils/logger");
+const { heavyLimiter } = require("../middleware/rateLimiter");
 
 // ============================================================================
 // PRODUCTION GEOSPATIAL CONSTRAINTS
@@ -32,7 +33,7 @@ const MAX_RESULTS_PER_PAGE = 100; // Prevent excessive data retrieval
  * Example:
  * GET /api/listings/near?lng=51.42&lat=35.69&radiusKm=5
  */
-router.get("/near", async (req, res) => {
+router.get("/near", heavyLimiter, async (req, res) => {
   try {
     const {
       lng,

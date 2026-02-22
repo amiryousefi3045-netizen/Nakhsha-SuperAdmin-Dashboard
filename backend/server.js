@@ -236,6 +236,10 @@ const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 const listingsNearRoutes = require("./routes/listings.near");
 const healthRoutes = require("./routes/health");
+// Heavy-endpoint rate limiter — also applied per-route inside the route files;
+// the app.use() here acts as a second layer for any future routes added under
+// /api/listings without explicit per-handler wiring.
+const { heavyLimiter } = require("./middleware/rateLimiter");
 
 // Serve static files for monitoring
 app.use(express.static(path.join(__dirname, "public")));
@@ -248,8 +252,10 @@ app.use("/api/crafts", craftRoutes);
 // Mount posts API
 app.use("/api/posts", postsRoutes);
 // (Removed compatibility alias to /api/recipes)
-// Mount the new near-search route
-app.use("/api/listings", listingsNearRoutes);
+// Mount the new near-search route.
+// heavyLimiter is also applied per-route inside listings.near.js; the
+// app.use() layer here covers any additional routes added to this prefix.
+app.use("/api/listings", heavyLimiter, listingsNearRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 

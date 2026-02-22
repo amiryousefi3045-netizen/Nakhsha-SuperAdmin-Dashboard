@@ -17,6 +17,7 @@ const {
 
 const { requireAuth } = require("../middleware/auth");
 const { createErrorResponse } = require("../utils/userDto");
+const { heavyLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
@@ -57,7 +58,9 @@ function ownerOrAdmin(req, res, next) {
 
 // GET /api/crafts
 // Query: bounds, filters (city, craftType, priceRange), page, limit, q, sort
-router.get("/", async (req, res) => {
+// Applies the heavy-endpoint rate limiter (30 req/min per IP) because this
+// route runs $text search and geospatial bounds queries.
+router.get("/", heavyLimiter, async (req, res) => {
   try {
     // Avoid stale caches during active development
     res.set("Cache-Control", "no-store");
@@ -299,125 +302,167 @@ router.get("/", async (req, res) => {
 
 // GET /api/crafts/near
 // Query: lng, lat, radiusKm, q, category, min, max
-router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
-  try {
-    const { lng, lat, radiusKm = 10, q, category, min, max } = req.query;
-    const start = Date.now();
-    console.log("[crafts:near] incoming params", {
-      lng,
-      lat,
-      radiusKm,
-      q: q ? (q.length > 100 ? q.slice(0, 100) + "..." : q) : q,
-      category,
-      min,
-      max,
-    });
+// Applies the heavy-endpoint rate limiter (30 req/min per IP)
+router.get(
+  "/near",
+  heavyLimiter,
+  validate(nearQuerySchema, "query"),
+  async (req, res) => {
+    try {
+      const { lng, lat, radiusKm = 10, q, category, min, max } = req.query;
+      const start = Date.now();
+      console.log("[crafts:near] incoming params", {
+        lng,
+        lat,
+        radiusKm,
+        q: q ? (q.length > 100 ? q.slice(0, 100) + "..." : q) : q,
+        category,
+        min,
+        max,
+      });
 
-    // Build base query (same semantics as main listing endpoint)
-    const query = { isPublished: true };
+      // Build base query (same semantics as main listing endpoint)
+      const query = { isPublished: true };
 
-    // Category -> craftType
-    if (category) query.craftType = category;
+      // Category -> craftType
+      if (category) query.craftType = category;
 
-    // Price range
-    if (min !== undefined || max !== undefined) {
-      query.price = {};
-      if (min !== undefined && String(min).trim() !== "")
-        query.price.$gte = parseFloat(min);
-      if (max !== undefined && String(max).trim() !== "")
-        query.price.$lte = parseFloat(max);
-    }
+      // Price range
+      if (min !== undefined || max !== undefined) {
+        query.price = {};
+        if (min !== undefined && String(min).trim() !== "")
+          query.price.$gte = parseFloat(min);
+        if (max !== undefined && String(max).trim() !== "")
+          query.price.$lte = parseFloat(max);
+      }
 
-    // Text search: prefer $text if a text index exists, otherwise fallback to regex
-    if (q) {
-      try {
-        const indexes = await Craft.collection.indexes();
-        const hasText = indexes.some((ix) =>
-          Object.values(ix.key || {}).some((v) => v === "text"),
-        );
-        console.log("[crafts:near] text index present:", !!hasText);
-        if (hasText) {
-          query.$text = { $search: q };
-        } else {
+      // Text search: prefer $text if a text index exists, otherwise fallback to regex
+      if (q) {
+        try {
+          const indexes = await Craft.collection.indexes();
+          const hasText = indexes.some((ix) =>
+            Object.values(ix.key || {}).some((v) => v === "text"),
+          );
+          console.log("[crafts:near] text index present:", !!hasText);
+          if (hasText) {
+            query.$text = { $search: q };
+          } else {
+            query.$or = [
+              { title: { $regex: q, $options: "i" } },
+              { description: { $regex: q, $options: "i" } },
+            ];
+          }
+        } catch (e) {
+          console.warn(
+            "[crafts:near] index check failed, falling back to regex",
+            e && e.message,
+          );
+          // If index check fails, fall back to safe regex behavior
           query.$or = [
             { title: { $regex: q, $options: "i" } },
             { description: { $regex: q, $options: "i" } },
           ];
         }
-      } catch (e) {
-        console.warn(
-          "[crafts:near] index check failed, falling back to regex",
-          e && e.message,
-        );
-        // If index check fails, fall back to safe regex behavior
-        query.$or = [
-          { title: { $regex: q, $options: "i" } },
-          { description: { $regex: q, $options: "i" } },
-        ];
       }
-    }
 
-    // Parse coordinates and radius
-    const longitude = parseFloat(lng);
-    const latitude = parseFloat(lat);
-    const radius = Math.min(Math.max(1, parseFloat(radiusKm) || 10), 100); // clamp between 1 and 100 km
+      // Parse coordinates and radius
+      const longitude = parseFloat(lng);
+      const latitude = parseFloat(lat);
+      const radius = Math.min(Math.max(1, parseFloat(radiusKm) || 10), 100); // clamp between 1 and 100 km
 
-    // If coordinates valid, run aggregation with $geoNear
-    if (
-      Number.isFinite(longitude) &&
-      Number.isFinite(latitude) &&
-      longitude >= -180 &&
-      longitude <= 180 &&
-      latitude >= -90 &&
-      latitude <= 90
-    ) {
-      console.log(
-        "[crafts:near] using geo search near=[%d,%d] radiusKm=%d",
-        longitude,
-        latitude,
-        radius,
-      );
-      const pipeline = [
-        {
-          $geoNear: {
-            near: { type: "Point", coordinates: [longitude, latitude] },
-            key: "location.geometry",
-            distanceField: "distanceMeters",
-            spherical: true,
-            maxDistance: radius * 1000,
-            query,
+      // If coordinates valid, run aggregation with $geoNear
+      if (
+        Number.isFinite(longitude) &&
+        Number.isFinite(latitude) &&
+        longitude >= -180 &&
+        longitude <= 180 &&
+        latitude >= -90 &&
+        latitude <= 90
+      ) {
+        console.log(
+          "[crafts:near] using geo search near=[%d,%d] radiusKm=%d",
+          longitude,
+          latitude,
+          radius,
+        );
+        const pipeline = [
+          {
+            $geoNear: {
+              near: { type: "Point", coordinates: [longitude, latitude] },
+              key: "location.geometry",
+              distanceField: "distanceMeters",
+              spherical: true,
+              maxDistance: radius * 1000,
+              query,
+            },
           },
-        },
-        // Ensure results are sorted by distance when using geo search
-        { $sort: { distanceMeters: 1 } },
-        // Cap results to 100 as requested
-        { $limit: 100 },
-        {
-          $project: {
-            _id: 1,
-            title: 1,
-            description: 1,
-            images: 1,
-            craftType: 1,
-            price: 1,
-            forSale: 1,
-            location: 1,
-            tags: 1,
-            distanceMeters: 1,
-            createdAt: 1,
+          // Ensure results are sorted by distance when using geo search
+          { $sort: { distanceMeters: 1 } },
+          // Cap results to 100 as requested
+          { $limit: 100 },
+          {
+            $project: {
+              _id: 1,
+              title: 1,
+              description: 1,
+              images: 1,
+              craftType: 1,
+              price: 1,
+              forSale: 1,
+              location: 1,
+              tags: 1,
+              distanceMeters: 1,
+              createdAt: 1,
+            },
           },
-        },
-      ];
+        ];
 
-      const agg = await Craft.aggregate(pipeline);
+        const agg = await Craft.aggregate(pipeline);
+        console.log(
+          "[crafts:near] geo aggregation returned",
+          agg.length,
+          "items in",
+          Date.now() - start,
+          "ms",
+        );
+        const results = agg.map((doc) => ({
+          id: doc._id,
+          title: doc.title,
+          description: doc.description,
+          images: doc.images || [],
+          craftType: doc.craftType,
+          price: doc.price,
+          forSale: doc.forSale,
+          location: doc.location,
+          tags: doc.tags || [],
+          distanceMeters:
+            typeof doc.distanceMeters === "number"
+              ? Math.round(doc.distanceMeters)
+              : undefined,
+          distanceKm:
+            typeof doc.distanceMeters === "number"
+              ? (doc.distanceMeters / 1000).toFixed(1)
+              : undefined,
+          createdAt: doc.createdAt,
+        }));
+
+        return res.json({ items: results });
+      }
+
+      // No valid coordinates: fallback to same filters used above and sort by createdAt
+      const docs = await Craft.find(query)
+        .select(
+          "title description images craftType price forSale location tags createdAt",
+        )
+        .limit(100)
+        .sort({ createdAt: -1 });
+
       console.log(
-        "[crafts:near] geo aggregation returned",
-        agg.length,
-        "items in",
+        "[crafts:near] fallback non-geo query, docsReturned=%d, elapsed=%dms",
+        docs.length,
         Date.now() - start,
-        "ms",
       );
-      const results = agg.map((doc) => ({
+      const formatted = docs.map((doc) => ({
         id: doc._id,
         title: doc.title,
         description: doc.description,
@@ -427,55 +472,19 @@ router.get("/near", validate(nearQuerySchema, "query"), async (req, res) => {
         forSale: doc.forSale,
         location: doc.location,
         tags: doc.tags || [],
-        distanceMeters:
-          typeof doc.distanceMeters === "number"
-            ? Math.round(doc.distanceMeters)
-            : undefined,
-        distanceKm:
-          typeof doc.distanceMeters === "number"
-            ? (doc.distanceMeters / 1000).toFixed(1)
-            : undefined,
         createdAt: doc.createdAt,
       }));
 
-      return res.json({ items: results });
+      res.json({ items: formatted });
+    } catch (err) {
+      console.error("GET /api/crafts/near error:", err);
+      res.status(500).json({
+        message: "خطا در جستجوی نزدیک‌ترین موارد",
+        error: err.message,
+      });
     }
-
-    // No valid coordinates: fallback to same filters used above and sort by createdAt
-    const docs = await Craft.find(query)
-      .select(
-        "title description images craftType price forSale location tags createdAt",
-      )
-      .limit(100)
-      .sort({ createdAt: -1 });
-
-    console.log(
-      "[crafts:near] fallback non-geo query, docsReturned=%d, elapsed=%dms",
-      docs.length,
-      Date.now() - start,
-    );
-    const formatted = docs.map((doc) => ({
-      id: doc._id,
-      title: doc.title,
-      description: doc.description,
-      images: doc.images || [],
-      craftType: doc.craftType,
-      price: doc.price,
-      forSale: doc.forSale,
-      location: doc.location,
-      tags: doc.tags || [],
-      createdAt: doc.createdAt,
-    }));
-
-    res.json({ items: formatted });
-  } catch (err) {
-    console.error("GET /api/crafts/near error:", err);
-    res.status(500).json({
-      message: "خطا در جستجوی نزدیک‌ترین موارد",
-      error: err.message,
-    });
-  }
-});
+  },
+);
 
 // Development seed endpoint (enhanced): supports `count` query param
 router.get("/seed/dev", async (req, res) => {
