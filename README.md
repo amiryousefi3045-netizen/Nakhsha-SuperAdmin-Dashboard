@@ -170,10 +170,44 @@ docker-compose -f docker-compose.production.yml up -d
 
 ---
 
+## � تنظیم متغیرهای محیطی (Environment Setup)
+
+**هرگز فایل `.env` را به مخزن git اضافه نکنید.**
+
+### Backend
+
+```bash
+cd backend
+cp .env.example .env   # ویندوز: copy .env.example .env
+```
+
+فایل `backend/.env` را باز کنید و مقادیر زیر را پر کنید:
+
+| متغیر             | توضیح                                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| `MONGODB_URI`     | آدرس اتصال به MongoDB                                                                                      |
+| `JWT_SECRET`      | رشته تصادفی طولانی — اجرا کنید: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
+| `OTP_SECRET`      | رشته تصادفی جداگانه برای OTP                                                                               |
+| `SMS_USERNAME`    | نام کاربری MeliPayamak                                                                                     |
+| `SMS_PASSWORD`    | رمز API سرویس SMS                                                                                          |
+| `SMS_MOCK`        | در محیط توسعه `true` قرار دهید تا SMS واقعی ارسال نشود                                                     |
+| `ALLOWED_ORIGINS` | Originهای مجاز CORS (جدا با ویرگول)                                                                        |
+
+### Docker Compose (ریشه پروژه)
+
+```bash
+cp .env.example .env   # ویندوز: copy .env.example .env
+```
+
+مقادیر `MONGO_USERNAME`، `MONGO_PASSWORD` و `JWT_SECRET` را با مقادیر امن جایگزین کنید.
+
+---
+
 ## 🔒 امنیت
 
 پروژه شامل قابلیت‌های امنیتی زیر است:
 
+- ✅ **Secret management**: فایل‌های `.env` در `.gitignore` — هرگز commit نمی‌شوند
 - ✅ **MongoDB Hardening**: Indexing بهینه، TTL برای OTP
 - ✅ **Input Validation**: Zod schemas در همه endpointها
 - ✅ **Rate Limiting**: محدودیت درخواست برای جلوگیری از spam

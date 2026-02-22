@@ -7,9 +7,12 @@ node_modules/
 logs/
 *.log
 
-# Environment
+# Environment — never commit real secrets
 .env
 .env.*
+*.env
+# Keep the example template in version control
+!.env.example
 
 # Runtime / build
 dist/

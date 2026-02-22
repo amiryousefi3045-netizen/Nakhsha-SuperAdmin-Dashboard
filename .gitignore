@@ -22,9 +22,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment variables
+# Environment variables — never commit real secrets
 .env
 .env.*
+*.env
+# Keep the example template in version control
+!.env.example
+!**/.env.example
 
 # IDEs
 .vscode/

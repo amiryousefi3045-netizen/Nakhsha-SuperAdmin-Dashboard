@@ -30,9 +30,12 @@ coverage/
 .cache/
 public/uploads/
 
-# Environment
+# Environment — never commit real secrets
 .env
 .env.*
+*.env
+# Keep the example template in version control
+!.env.example
 
 # Ignore system files
 Thumbs.db
