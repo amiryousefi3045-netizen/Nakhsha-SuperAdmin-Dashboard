@@ -1,30 +1,34 @@
 # Nakhsha Frontend - Dockerfile
+# ============================================================
+# Stage 1: Build the Vite/React production bundle
+# ============================================================
 FROM node:20-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies (respects .dockerignore – no test/docs)
 COPY package*.json ./
-RUN npm ci
+RUN npm ci && npm cache clean --force
 
-# Copy source code
+# Copy source and build
 COPY . .
-
-# Build production bundle
 RUN npm run build
 
-# Production image
-FROM nginx:alpine
+# ============================================================
+# Stage 2: Serve with unprivileged nginx (runs as uid 101,
+#          listens on port 8080 – no root required)
+# ============================================================
+FROM nginxinc/nginx-unprivileged:alpine AS runtime
 
-# Copy built files to nginx
+# Copy only the compiled static assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy custom nginx config
+# Override the default server block
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port
-EXPOSE 80
+EXPOSE 8080
 
-# Start nginx
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q --spider http://localhost:8080/ || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]

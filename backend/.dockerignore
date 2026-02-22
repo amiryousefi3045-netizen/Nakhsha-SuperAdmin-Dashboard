@@ -16,9 +16,15 @@ __tests__/
 *.spec.js
 jest.config.js
 
-# Logs
+# Runtime data (mounted as volumes at runtime)
 logs/
+uploads/
 *.log
+
+# Development / admin scripts
+scripts/
+eslint.config.mjs
+jest.setup.js
 
 # Development files
 .vscode/
