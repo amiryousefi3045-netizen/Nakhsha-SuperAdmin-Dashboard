@@ -45,7 +45,7 @@
 ```env
 # OTP Configuration
 OTP_TTL_SECONDS=120                    # OTP code expiry time
-OTP_RESEND_COOLDOWN_SECONDS=120        # Time between resend requests
+OTP_RESEND_SECONDS=120          # Time between resend requests
 OTP_MAX_ATTEMPTS=8                     # Max verification attempts
 
 # JWT Configuration

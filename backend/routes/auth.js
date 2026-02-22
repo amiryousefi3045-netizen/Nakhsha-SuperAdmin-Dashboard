@@ -19,10 +19,7 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const TOKEN_TTL = process.env.JWT_TTL || "7d";
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
-const OTP_RESEND_COOLDOWN_SECONDS = parseInt(
-  process.env.OTP_RESEND_COOLDOWN_SECONDS || "120",
-  10,
-);
+const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "8", 10);
 
 const iranPhoneRegex = /^09\d{9}$/;
@@ -213,9 +210,9 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
       const delta = Date.now() - new Date(existing.lastSentAt).getTime();
       const timeSinceLastSent = delta / 1000; // in seconds
 
-      if (timeSinceLastSent < OTP_RESEND_COOLDOWN_SECONDS) {
+      if (timeSinceLastSent < OTP_RESEND_SECONDS) {
         const retryAfterSeconds = Math.ceil(
-          OTP_RESEND_COOLDOWN_SECONDS - timeSinceLastSent,
+          OTP_RESEND_SECONDS - timeSinceLastSent,
         );
 
         logger.info("OTP resend blocked - cooldown active", {
@@ -324,7 +321,7 @@ router.post("/otp/start", otpRateLimit, async (req, res) => {
     // Respond immediately without awaiting SMS send
     const response = {
       ok: true,
-      cooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
+      cooldownSeconds: OTP_RESEND_SECONDS,
     };
 
     if (process.env.NODE_ENV !== "production") {

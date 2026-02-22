@@ -33,7 +33,7 @@ otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 **Limits:**
 
-- **Cooldown:** 120 seconds between resend requests (configurable via `OTP_RESEND_COOLDOWN_SECONDS`)
+- **Cooldown:** 120 seconds between resend requests (configurable via `OTP_RESEND_SECONDS`)
 - **Max resends:** 10 per hour per phone number
 - **Block duration:** 30 minutes after exceeding limit
 
@@ -268,7 +268,7 @@ otpMetrics.recordSuspiciousActivity(indicators, phone, ip, userAgent);
 OTP_TTL_SECONDS=120
 
 # Resend cooldown (seconds)
-OTP_RESEND_COOLDOWN_SECONDS=120
+OTP_RESEND_SECONDS=120
 
 # Max verification attempts
 OTP_MAX_ATTEMPTS=8

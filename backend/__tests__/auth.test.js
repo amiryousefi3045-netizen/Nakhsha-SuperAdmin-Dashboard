@@ -180,6 +180,70 @@ describe("Auth Routes - OTP", () => {
 
       expect(response.body.message).toContain("شماره موبایل");
     });
+
+    describe("resend cooldown (OTP_RESEND_SECONDS)", () => {
+      const testPhone = "09121111111";
+      const COOLDOWN = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
+
+      beforeEach(async () => {
+        await OtpCode.deleteMany({ phone: testPhone });
+        // Suppress rate-limiter side-effects by ensuring dbReady
+        app.locals.dbReady = true;
+      });
+
+      it("blocks a second request sent before the cooldown expires", async () => {
+        // First request — must succeed
+        const first = await request(app)
+          .post("/api/auth/otp/start")
+          .send({ phone: testPhone })
+          .expect(200);
+
+        expect(first.body.ok).toBe(true);
+        expect(first.body.cooldownSeconds).toBe(COOLDOWN);
+
+        // Immediate second request — must be blocked
+        const second = await request(app)
+          .post("/api/auth/otp/start")
+          .send({ phone: testPhone })
+          .expect(429);
+
+        expect(second.body.error).toBe("RATE_LIMITED");
+        expect(second.body.details).toMatchObject({ cooldown: true });
+        expect(second.body.details.retryAfterSeconds).toBeGreaterThan(0);
+        expect(second.body.details.retryAfterSeconds).toBeLessThanOrEqual(
+          COOLDOWN,
+        );
+      });
+
+      it("allows a request after the cooldown window has passed", async () => {
+        // Seed an OTP record whose lastSentAt is older than the cooldown
+        await OtpCode.create({
+          phone: testPhone,
+          codeHash: "irrelevant",
+          expiresAt: new Date(Date.now() + 120_000),
+          lastSentAt: new Date(Date.now() - (COOLDOWN + 5) * 1000),
+          resendCount: 1,
+        });
+
+        const response = await request(app)
+          .post("/api/auth/otp/start")
+          .send({ phone: testPhone })
+          .expect(200);
+
+        expect(response.body.ok).toBe(true);
+        expect(response.body.cooldownSeconds).toBe(COOLDOWN);
+      });
+
+      it("returns correct cooldownSeconds value in the success response", async () => {
+        const response = await request(app)
+          .post("/api/auth/otp/start")
+          .send({ phone: testPhone })
+          .expect(200);
+
+        expect(typeof response.body.cooldownSeconds).toBe("number");
+        expect(response.body.cooldownSeconds).toBe(COOLDOWN);
+      });
+    });
   });
 
   describe("POST /api/auth/otp/verify", () => {
@@ -225,7 +289,7 @@ describe("Auth Routes - OTP", () => {
       // Manually expire the OTP
       await OtpCode.updateOne(
         { phone: testPhone },
-        { expiresAt: new Date(Date.now() - 1000) }
+        { expiresAt: new Date(Date.now() - 1000) },
       );
 
       const response = await request(app)

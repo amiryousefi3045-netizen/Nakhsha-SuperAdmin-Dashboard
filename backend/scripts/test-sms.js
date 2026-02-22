@@ -19,24 +19,24 @@ async function testSmsConfig() {
   console.log("📋 Environment Variables:");
   console.log(
     "- MELIPAYAMAK_USERNAME:",
-    process.env.MELIPAYAMAK_USERNAME || "NOT SET"
+    process.env.MELIPAYAMAK_USERNAME || "NOT SET",
   );
   console.log(
     "- MELIPAYAMAK_PASSWORD:",
-    process.env.MELIPAYAMAK_PASSWORD ? "***HIDDEN***" : "NOT SET"
+    process.env.MELIPAYAMAK_PASSWORD ? "***HIDDEN***" : "NOT SET",
   );
   console.log("- MELIPAYAMAK_FROM:", process.env.MELIPAYAMAK_FROM || "NOT SET");
   console.log(
     "- MELIPAYAMAK_TO_FORMAT:",
-    process.env.MELIPAYAMAK_TO_FORMAT || "09 (default)"
+    process.env.MELIPAYAMAK_TO_FORMAT || "09 (default)",
   );
   console.log(
     "- OTP_TTL_SECONDS:",
-    process.env.OTP_TTL_SECONDS || "120 (default)"
+    process.env.OTP_TTL_SECONDS || "120 (default)",
   );
   console.log(
-    "- OTP_RESEND_COOLDOWN_SECONDS:",
-    process.env.OTP_RESEND_COOLDOWN_SECONDS || "120 (default)"
+    "- OTP_RESEND_SECONDS:",
+    process.env.OTP_RESEND_SECONDS || "60 (default)",
   );
   console.log("");
 
@@ -67,7 +67,7 @@ async function testSmsConfig() {
     console.log(
       `  ${phone} -> ${normalized} [${
         isValid ? "✅" : "❌"
-      }] -> 09:${formatted09} 98:${formatted98}`
+      }] -> 09:${formatted09} 98:${formatted98}`,
     );
   });
 
@@ -92,11 +92,11 @@ async function testSmsConfig() {
       console.log(
         `📤 Would send to: ${formatForProvider(
           normalized,
-          process.env.MELIPAYAMAK_TO_FORMAT || "09"
-        )}`
+          process.env.MELIPAYAMAK_TO_FORMAT || "09",
+        )}`,
       );
       console.log(
-        "⚠️  Note: This is a test script - no actual SMS will be sent"
+        "⚠️  Note: This is a test script - no actual SMS will be sent",
       );
     } else {
       console.log(`❌ Invalid phone format: ${normalized}`);
