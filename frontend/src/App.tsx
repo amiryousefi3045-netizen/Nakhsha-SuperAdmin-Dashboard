@@ -1,10 +1,13 @@
 import type { FC, ReactNode } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import CraftDetail from "./pages/CraftDetail";
-import CreateCraft from "./pages/CreateCraft";
-import CreatePostPage from "./pages/CreatePostPage";
 import EditCraft from "./pages/EditCraft";
 import Login from "./pages/Login";
 import Terms from "./pages/Terms";
@@ -16,6 +19,8 @@ import PublicProfilePage from "./pages/PublicProfilePage";
 import PostDetailPage from "./pages/PostDetailPage";
 import TourDetailPage from "./pages/TourDetailPage";
 import TutorialDetailPage from "./pages/TutorialDetailPage";
+import CreateListingTypePage from "./pages/CreateListingTypePage";
+import CreateListingWizardPage from "./pages/CreateListingWizardPage";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
@@ -84,29 +89,36 @@ function App() {
                 </RequireAuth>
               }
             />
+            {/* Step-0: listing type selector → /create */}
             <Route
-              path="create-craft"
+              path="create"
               element={
                 <RequireAuth roles={["admin", "user"]}>
-                  <CreateCraft />
+                  <CreateListingTypePage />
                 </RequireAuth>
               }
             />
+            {/* Step 1-7: listing wizard → /create/new?type=... */}
             <Route
-              path="create/post"
+              path="create/new"
               element={
                 <RequireAuth roles={["admin", "user"]}>
-                  <CreatePostPage />
+                  <CreateListingWizardPage />
                 </RequireAuth>
               }
+            />
+            {/* Legacy routes – redirect to new wizard flow */}
+            <Route
+              path="create/post"
+              element={<Navigate to="/create" replace />}
             />
             <Route
               path="createpostpage"
-              element={
-                <RequireAuth roles={["admin", "user"]}>
-                  <CreatePostPage />
-                </RequireAuth>
-              }
+              element={<Navigate to="/create" replace />}
+            />
+            <Route
+              path="create-craft"
+              element={<Navigate to="/create" replace />}
             />
             <Route path="login" element={<Login />} />
             <Route path="terms" element={<Terms />} />

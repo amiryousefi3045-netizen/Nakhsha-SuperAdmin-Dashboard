@@ -141,14 +141,7 @@ const Navbar: FC = () => {
             {user ? (
               <>
                 <Link
-                  to="/create-craft"
-                  className="hidden sm:inline-block bg-primary-600 text-white px-4 py-2 rounded-full hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium ml-2"
-                  aria-label="ثبت محصول جدید"
-                >
-                  ثبت محصول
-                </Link>
-                <Link
-                  to="/create/post"
+                  to="/create"
                   className="hidden sm:inline-block bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 transition-all duration-200 text-sm font-medium"
                   aria-label="ثبت آگهی جدید"
                 >
@@ -157,7 +150,7 @@ const Navbar: FC = () => {
 
                 {/* Mobile Create Button */}
                 <Link
-                  to="/create-craft"
+                  to="/create"
                   className="sm:hidden w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 flex items-center justify-center text-white focus-visible:ring-2 focus-visible:ring-primary-500 transition-all duration-200"
                   aria-label="ثبت محصول جدید"
                   title="ثبت محصول جدید"

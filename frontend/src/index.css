@@ -22,8 +22,17 @@ body {
   margin: 0;
   background: var(--color-bg); /* Marble White */
   color: var(--color-text); /* Deep Slate */
-  font-family: Vazirmatn, system-ui, -apple-system, Segoe UI, Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  font-family:
+    Vazirmatn,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    "Noto Sans",
+    "Apple Color Emoji",
+    "Segoe UI Emoji";
 }
 
 /* Map container fix for Leaflet inside flex layouts */
@@ -170,4 +179,92 @@ body {
 
 .animate-celebrate {
   animation: celebrate 0.6s ease-in-out;
+}
+
+/* ─── Persian date-picker (react-multi-date-picker) overrides ─────────────── */
+
+/* Container / popup panel */
+.rmdp-wrapper,
+.rmdp-calendar {
+  font-family: Vazirmatn, system-ui, sans-serif !important;
+  direction: rtl;
+  border-radius: 1rem !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid var(--color-border) !important;
+  background: #fff !important;
+  overflow: hidden;
+}
+
+/* Header (month / year nav) */
+.rmdp-header {
+  background: var(--color-primary) !important;
+  color: #fff !important;
+  border-radius: 0 !important;
+  padding: 10px 12px !important;
+}
+.rmdp-header-values span {
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 0.9rem !important;
+}
+.rmdp-arrow-container .rmdp-arrow {
+  border-color: #fff !important;
+}
+.rmdp-arrow-container:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  box-shadow: none !important;
+}
+
+/* Weekday labels */
+.rmdp-week-day {
+  color: var(--color-muted) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+}
+
+/* Day cells */
+.rmdp-day span {
+  font-size: 0.82rem !important;
+  border-radius: 0.5rem !important;
+  font-family: Vazirmatn, system-ui, sans-serif !important;
+}
+.rmdp-day:not(.rmdp-disabled):not(.rmdp-day-hidden) span:hover {
+  background: var(--color-primary) !important;
+  color: #fff !important;
+}
+.rmdp-day.rmdp-selected span:not(.highlight) {
+  background: var(--color-primary) !important;
+  box-shadow: none !important;
+}
+.rmdp-day.rmdp-today span {
+  background: rgba(26, 95, 122, 0.12) !important;
+  color: var(--color-primary) !important;
+  font-weight: 700 !important;
+}
+.rmdp-day.rmdp-disabled span {
+  color: var(--color-muted) !important;
+  opacity: 0.45 !important;
+}
+
+/* Time picker */
+.rmdp-time-picker {
+  direction: ltr !important;
+  padding: 8px 12px !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+.rmdp-time-picker input {
+  background: #f3f4f6 !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 0.5rem !important;
+  font-family: Vazirmatn, system-ui, sans-serif !important;
+  font-size: 0.9rem !important;
+  color: var(--color-text) !important;
+}
+.rmdp-time-picker .dvdr {
+  color: var(--color-muted) !important;
+}
+
+/* Input trigger that we render ourselves – just hide the built-in one */
+.rmdp-input {
+  display: none !important;
 }

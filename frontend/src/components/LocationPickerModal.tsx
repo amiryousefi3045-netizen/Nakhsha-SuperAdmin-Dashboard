@@ -1,252 +1,319 @@
-import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+﻿/**
+ * LocationPickerModal
+ *
+ * Opens a full-screen modal with a Leaflet map centred on Iran.
+ * Click anywhere on the map (or drag the marker) to:
+ *   1. Place a draggable marker
+ *   2. Trigger debounced reverse geocoding (Nominatim by default)
+ *   3. Preview the resolved address
+ *
+ * On "ØªØ£ÛŒÛŒØ¯ Ù…ÙˆÙ‚Ø¹ÛŒØª" the parent receives:
+ *   { geo: [lng, lat], city?, state?, address?, formattedAddress? }
+ *
+ * To swap the geocoding backend, call `setReverseGeocodeProvider` from
+ * utils/reverseGeocode.ts at app startup.
+ */
+import { type FC, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { Loader2, MapPin, X } from "lucide-react";
 
-const MapContainerAny = MapContainer as any;
+// Fix Leaflet default marker icons for Vite bundling
+import iconUrl from "leaflet/dist/images/marker-icon.png";
+import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 
-interface Coordinates {
-  lat: number;
-  lng: number;
+import {
+  reverseGeocode,
+  type ReverseGeocodeResult,
+} from "../utils/reverseGeocode";
+
+// Apply icon fix once (idempotent)
+L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
+
+// â”€â”€â”€ Public types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export interface LocationPickerResult extends ReverseGeocodeResult {
+  /** GeoJSON Point coordinates [lng, lat] */
+  geo: [number, number];
 }
 
-interface LocationConfirmData {
-  lat: number;
-  lng: number;
-  addressText?: string;
-  city?: string;
-  neighborhood?: string;
-}
-
-interface LocationPickerModalProps {
-  isOpen: boolean;
+export interface LocationPickerModalProps {
+  open: boolean;
   onClose: () => void;
-  initialCoordinates?: Coordinates | null;
-  onConfirm: (data: LocationConfirmData) => void;
+  onConfirm: (result: LocationPickerResult) => void;
+  /** Pre-existing coordinates [lng, lat] to show as marker on open */
+  initialGeo?: [number, number];
 }
 
-interface MapClickHandlerProps {
-  onMapClick: (latlng: any) => void;
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/** Geographic centre of Iran */
+const IRAN_CENTER: [number, number] = [32.4279, 53.688];
+const IRAN_ZOOM = 5;
+const SELECTED_ZOOM = 14;
+const DEBOUNCE_MS = 600;
+
+// â”€â”€â”€ Inner map (plain Leaflet, no react-leaflet â€“ avoids v5 TS issues) â”€â”€â”€â”€â”€â”€â”€
+
+interface MapCoreProps {
+  initialGeo?: [number, number];
+  onPick: (lat: number, lng: number) => void;
+  markerPos: [number, number] | null;
 }
 
-const MapClickHandler = ({ onMapClick }: MapClickHandlerProps) => {
-  useMapEvents({
-    click: (e: any) => {
-      onMapClick(e.latlng);
-    },
-  });
-  return null;
+const MapCore: FC<MapCoreProps> = ({ initialGeo, onPick, markerPos }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<ReturnType<typeof L.map> | null>(null);
+  const markerRef = useRef<ReturnType<typeof L.marker> | null>(null);
+
+  // Initialise map once on mount
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    // geo is [lng, lat] â†’ Leaflet wants [lat, lng]
+    const startCenter: [number, number] = initialGeo
+      ? [initialGeo[1], initialGeo[0]]
+      : IRAN_CENTER;
+    const startZoom = initialGeo ? SELECTED_ZOOM : IRAN_ZOOM;
+
+    const map = L.map(containerRef.current, {
+      center: startCenter,
+      zoom: startZoom,
+      zoomControl: true,
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        'Â© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    map.on("click", (e: { latlng: { lat: number; lng: number } }) => {
+      onPick(e.latlng.lat, e.latlng.lng);
+    });
+
+    if (initialGeo) {
+      const m = L.marker([initialGeo[1], initialGeo[0]], {
+        draggable: true,
+      }).addTo(map);
+      m.on("dragend", () => {
+        const p = m.getLatLng();
+        onPick(p.lat, p.lng);
+      });
+      markerRef.current = m;
+    }
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync marker
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!markerPos) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      return;
+    }
+
+    if (markerRef.current) {
+      markerRef.current.setLatLng(markerPos);
+    } else {
+      const m = L.marker(markerPos, { draggable: true }).addTo(map);
+      m.on("dragend", () => {
+        const p = m.getLatLng();
+        onPick(p.lat, p.lng);
+      });
+      markerRef.current = m;
+    }
+
+    map.flyTo(markerPos, Math.max(map.getZoom(), SELECTED_ZOOM), {
+      duration: 0.5,
+    });
+  }, [markerPos, onPick]);
+
+  return <div ref={containerRef} className="w-full h-full" />;
 };
 
-const LocationPickerModal = ({
-  isOpen,
+// â”€â”€â”€ Modal shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const LocationPickerModal: FC<LocationPickerModalProps> = ({
+  open,
   onClose,
-  initialCoordinates,
   onConfirm,
-}: LocationPickerModalProps) => {
-  const [selectedPosition, setSelectedPosition] = useState<Coordinates | null>(
-    initialCoordinates || null
+  initialGeo,
+}) => {
+  const [markerPos, setMarkerPos] = useState<[number, number] | null>(
+    initialGeo ? [initialGeo[1], initialGeo[0]] : null,
   );
-  const [addressText, setAddressText] = useState<string>("");
-  const [isLoadingAddress, setIsLoadingAddress] = useState<boolean>(false);
-  const [geocodeError, setGeocodeError] = useState<boolean>(false);
+  const [geocodeResult, setGeocodeResult] =
+    useState<ReverseGeocodeResult | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">(
+    "idle",
+  );
+  const pendingGeoRef = useRef<[number, number] | null>(initialGeo ?? null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Default to Tehran center
-  const defaultCenter = { lat: 35.6892, lng: 51.389 };
-  const mapCenter = initialCoordinates || defaultCenter;
-
+  // Reset state whenever the modal re-opens
   useEffect(() => {
-    if (selectedPosition) {
-      reverseGeocode(selectedPosition.lat, selectedPosition.lng);
+    if (open) {
+      const pos: [number, number] | null = initialGeo
+        ? [initialGeo[1], initialGeo[0]]
+        : null;
+      setMarkerPos(pos);
+      pendingGeoRef.current = initialGeo ?? null;
+      setGeocodeResult(null);
+      setStatus("idle");
     }
-  }, [selectedPosition]);
+  }, [open, initialGeo]);
 
-  const reverseGeocode = async (lat: number, lng: number): Promise<void> => {
-    setIsLoadingAddress(true);
-    setGeocodeError(false);
+  const handlePick = useCallback((lat: number, lng: number) => {
+    setMarkerPos([lat, lng]);
+    pendingGeoRef.current = [lng, lat]; // GeoJSON order: [lng, lat]
 
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=fa`
-      );
-
-      if (!response.ok) {
-        throw new Error("Geocoding failed");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setStatus("loading");
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const result = await reverseGeocode(lat, lng);
+        setGeocodeResult(result);
+        setStatus("ok");
+      } catch {
+        setGeocodeResult(null);
+        setStatus("error");
       }
+    }, DEBOUNCE_MS);
+  }, []);
 
-      const data = await response.json();
-
-      if (data.display_name) {
-        setAddressText(data.display_name);
-      } else {
-        setGeocodeError(true);
-        setAddressText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-      }
-    } catch (error) {
-      console.error("Reverse geocoding error:", error);
-      setGeocodeError(true);
-      setAddressText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-    } finally {
-      setIsLoadingAddress(false);
-    }
+  const handleConfirm = () => {
+    if (!pendingGeoRef.current) return;
+    onConfirm({ geo: pendingGeoRef.current, ...(geocodeResult ?? {}) });
   };
 
-  const handleMapClick = (latlng: any): void => {
-    setSelectedPosition({ lat: latlng.lat, lng: latlng.lng });
-  };
+  // Escape key closes modal
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
-  const handleConfirm = async (): Promise<void> => {
-    if (!selectedPosition) return;
+  if (!open) return null;
 
-    // Try to extract city and neighborhood from the geocoded data
-    let city = "";
-    let neighborhood = "";
+  const hasPin = markerPos !== null;
 
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${selectedPosition.lat}&lon=${selectedPosition.lng}&addressdetails=1&accept-language=fa`
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const address = data.address || {};
-
-        city = address.city || address.town || address.village || "";
-        neighborhood = address.suburb || address.neighbourhood || "";
-      }
-    } catch (error) {
-      console.error("Error getting detailed address:", error);
-    }
-
-    onConfirm({
-      lat: selectedPosition.lat,
-      lng: selectedPosition.lng,
-      addressText,
-      city,
-      neighborhood,
-    });
-  };
-
-  const handleCancel = (): void => {
-    setSelectedPosition(initialCoordinates || null);
-    setAddressText("");
-    setGeocodeError(false);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6"
       dir="rtl"
     >
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Dialog */}
+      <div className="relative z-10 w-full max-w-3xl h-[90dvh] max-h-[720px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">
-              انتخاب موقعیت روی نقشه
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] shrink-0">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-[var(--color-primary)]" />
+            <h2 className="text-base font-bold text-[var(--color-text)]">
+              Ø§Ù†ØªØ®Ø§Ø¨ Ù…ÙˆÙ‚Ø¹ÛŒØª Ø±ÙˆÛŒ Ù†Ù‚Ø´Ù‡
             </h2>
-            <button
-              onClick={handleCancel}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
           </div>
-          <p className="text-sm text-gray-600 mt-1">
-            روی نقشه کلیک کنید تا موقعیت مورد نظر را انتخاب کنید
-          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Ø¨Ø³ØªÙ†"
+          >
+            <X className="w-5 h-5 text-[var(--color-muted)]" />
+          </button>
         </div>
 
-        {/* Map */}
-        <div className="flex-1 p-4">
-          <div className="h-80 rounded-lg overflow-hidden border border-gray-300">
-            <MapContainerAny
-              center={[mapCenter.lat, mapCenter.lng]}
-              zoom={13}
-              style={{ height: "100%", width: "100%" }}
-            >
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              <MapClickHandler onMapClick={handleMapClick} />
-              {selectedPosition && (
-                <Marker
-                  position={[selectedPosition.lat, selectedPosition.lng]}
-                />
-              )}
-            </MapContainerAny>
-          </div>
+        {/* Hint */}
+        <div className="px-5 py-2.5 bg-sky-50 border-b border-sky-100 text-xs text-sky-700 shrink-0">
+          Ø±ÙˆÛŒ Ù†Ù‚Ø´Ù‡ Ú©Ù„ÛŒÚ© Ú©Ù†ÛŒØ¯ ØªØ§ Ù…ÙˆÙ‚Ø¹ÛŒØª Ø§Ù†ØªØ®Ø§Ø¨
+          Ø´ÙˆØ¯. Ù…Ø§Ø±Ú©Ø± Ù‚Ø§Ø¨Ù„ Ú©Ø´ÛŒØ¯Ù† Ø§Ø³Øª.
+        </div>
 
-          {/* Selected Location Info */}
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-            {selectedPosition ? (
-              <div className="space-y-2">
-                <div className="text-sm text-gray-600">
-                  <strong>مختصات انتخاب‌شده:</strong>{" "}
-                  {selectedPosition.lat.toFixed(6)},{" "}
-                  {selectedPosition.lng.toFixed(6)}
-                </div>
-                <div className="text-sm text-gray-600">
-                  <strong>آدرس:</strong>
-                  {isLoadingAddress ? (
-                    <span className="text-blue-600 mr-2">
-                      در حال دریافت آدرس...
-                    </span>
-                  ) : (
-                    <span
-                      className={`mr-2 ${
-                        geocodeError ? "text-orange-600" : "text-gray-800"
-                      }`}
-                    >
-                      {addressText || "آدرس در دسترس نیست"}
-                      {geocodeError && " (فقط مختصات)"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-500 text-center py-2">
-                روی نقشه کلیک کنید تا موقعیت انتخاب شود
-              </div>
-            )}
-          </div>
+        {/* Map area */}
+        <div className="flex-1 min-h-0">
+          <MapCore
+            initialGeo={initialGeo}
+            onPick={handlePick}
+            markerPos={markerPos}
+          />
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-          >
-            انصراف
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!selectedPosition || isLoadingAddress}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-              selectedPosition && !isLoadingAddress
-                ? "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
-                : "bg-gray-400 cursor-not-allowed"
-            }`}
-          >
-            تأیید موقعیت
-          </button>
+        <div className="px-5 py-4 border-t border-[var(--color-border)] bg-white shrink-0 space-y-3">
+          {/* Geocode status */}
+          {status === "loading" && (
+            <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Ø¯Ø± Ø­Ø§Ù„ Ø¯Ø±ÛŒØ§ÙØª Ø¢Ø¯Ø±Ø³â€¦
+            </div>
+          )}
+
+          {status === "ok" && geocodeResult?.formattedAddress && (
+            <div className="flex items-start gap-2 p-3 bg-green-50 rounded-xl border border-green-200 text-xs text-green-800 leading-relaxed">
+              <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-green-600" />
+              <span className="line-clamp-2">
+                {geocodeResult.formattedAddress}
+              </span>
+            </div>
+          )}
+
+          {status === "error" && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl">
+              Ø¢Ø¯Ø±Ø³ ÛŒØ§ÙØª Ù†Ø´Ø¯ØŒ Ø¯Ø³ØªÛŒ ÙˆØ§Ø±Ø¯ Ú©Ù†ÛŒØ¯.
+            </p>
+          )}
+
+          {hasPin && markerPos && (
+            <p className="text-[11px] font-mono text-[var(--color-muted)]">
+              {markerPos[0].toFixed(5)}, {markerPos[1].toFixed(5)}
+            </p>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-xl border border-[var(--color-border)] text-[var(--color-muted)] hover:bg-gray-50 transition-colors"
+            >
+              Ø§Ù†ØµØ±Ø§Ù
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={!hasPin}
+              className="px-5 py-2 text-sm font-semibold rounded-xl bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ØªØ£ÛŒÛŒØ¯ Ù…ÙˆÙ‚Ø¹ÛŒØª
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

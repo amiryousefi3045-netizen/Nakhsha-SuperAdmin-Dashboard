@@ -2,7 +2,9 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPost, uploadPostImages } from "../services/posts";
 import type { CreatePostRequest } from "../types/api";
-import LocationPickerModal from "../components/LocationPickerModal";
+import LocationPickerModal, {
+  type LocationPickerResult,
+} from "../components/LocationPickerModal";
 
 interface FormData {
   title: string;
@@ -97,26 +99,15 @@ const CreatePostPage = () => {
     setIsLocationModalOpen(true);
   };
 
-  const handleLocationConfirm = ({
-    lat,
-    lng,
-    addressText,
-    city,
-    neighborhood,
-  }: {
-    lat: number;
-    lng: number;
-    addressText?: string;
-    city?: string;
-    neighborhood?: string;
-  }) => {
+  const handleLocationConfirm = (result: LocationPickerResult) => {
+    const lat = result.geo[1];
+    const lng = result.geo[0];
     setFormData((prev) => ({
       ...prev,
       coordinates: { lat, lng },
-      addressText: addressText || "",
-      // Fill city and neighborhood if they're empty
-      city: prev.city || city || "",
-      neighborhood: prev.neighborhood || neighborhood || "",
+      addressText: result.formattedAddress ?? result.address ?? "",
+      city: prev.city || result.city || "",
+      neighborhood: prev.neighborhood || "",
     }));
     setIsLocationModalOpen(false);
   };
@@ -254,7 +245,7 @@ const CreatePostPage = () => {
       } else {
         // Handle other errors (network, server, etc.) or validation without specific field
         setErrorMessage(
-          error.message || "خطا در ارسال آگهی. لطفاً دوباره تلاش کنید."
+          error.message || "خطا در ارسال آگهی. لطفاً دوباره تلاش کنید.",
         );
       }
 
@@ -577,9 +568,13 @@ const CreatePostPage = () => {
 
       {/* Location Picker Modal */}
       <LocationPickerModal
-        isOpen={isLocationModalOpen}
+        open={isLocationModalOpen}
         onClose={() => setIsLocationModalOpen(false)}
-        initialCoordinates={formData.coordinates}
+        initialGeo={
+          formData.coordinates
+            ? [formData.coordinates.lng, formData.coordinates.lat]
+            : undefined
+        }
         onConfirm={handleLocationConfirm}
       />
     </div>
