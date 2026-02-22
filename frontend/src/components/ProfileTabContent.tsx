@@ -1,4 +1,4 @@
-import React, { type FC } from "react";
+import { type FC } from "react";
 import ContentCard from "./ContentCard";
 import useProfileContent from "../hooks/useProfileContent";
 
@@ -106,7 +106,7 @@ const PostsTabContent: FC<PostsProps> = ({ userHandle, isOwnProfile }) => {
             thumbnailUrl={post.thumbnail}
             type={post.type}
             city={post.city}
-            price={post.price}
+            price={post.price != null ? String(post.price) : null}
             createdAt={post.createdAt}
           />
         ))}
@@ -180,7 +180,7 @@ const ToursTabContent: FC<ToursProps> = ({
             thumbnailUrl={tour.thumbnail}
             type={tour.type}
             city={tour.city}
-            price={tour.price}
+            price={tour.price != null ? String(tour.price) : null}
             createdAt={tour.createdAt}
           />
         ))}

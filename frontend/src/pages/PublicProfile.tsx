@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, type FC } from "react";
+import { useEffect, useState, useCallback, type FC } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import {

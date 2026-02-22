@@ -1,4 +1,4 @@
-version: "3.8"
+name: nakhsha
 
 services:
   # MongoDB Database
@@ -45,6 +45,8 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: development
+      # Allow requests from both Docker frontend (port 3000) and local dev server
+      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:5173,http://localhost:4173,http://localhost:5000"
     volumes:
       - ./backend/logs:/app/logs
       - uploads-data:/app/uploads

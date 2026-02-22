@@ -1,4 +1,4 @@
-import React, { useState, type FC } from "react";
+import { useState, type FC } from "react";
 import { useAuth } from "../hooks/useAuth";
 
 interface ProfileUser {

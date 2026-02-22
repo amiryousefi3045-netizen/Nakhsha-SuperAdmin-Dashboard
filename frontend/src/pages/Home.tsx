@@ -1,4 +1,4 @@
-import React, {
+import {
   useEffect,
   useMemo,
   useState,
@@ -16,6 +16,7 @@ import FilterToolbar from "../components/FilterToolbar";
 import BreadcrumbBar from "../components/BreadcrumbBar";
 import FilterChips from "../components/FilterChips";
 import { fetchCrafts, seedDev } from "../services/crafts";
+import type { CraftFilters } from "../types/api";
 import { toFa } from "../utils/number";
 import useGeolocation from "../hooks/useGeolocation";
 
@@ -241,18 +242,25 @@ const Home: FC = () => {
     let ignore = false;
     const run = async () => {
       setLoading(true);
-      const res = await fetchCrafts(effectiveParams);
+      const res = await fetchCrafts(effectiveParams as CraftFilters);
       if (ignore) return;
-      setItems((prev) => (page === 1 ? res.items : [...prev, ...res.items]));
+      setItems((prev) =>
+        page === 1
+          ? (res.items as CraftItem[])
+          : [...prev, ...(res.items as CraftItem[])],
+      );
       setTotal(res.total);
       setHasMore((res.page || 1) * (res.limit || limit) < (res.total || 0));
       if (import.meta.env.DEV && !triedSeed && (res.total || 0) === 0) {
         try {
           await seedDev();
           setTriedSeed(true);
-          const seeded = await fetchCrafts({ ...effectiveParams, page: 1 });
+          const seeded = await fetchCrafts({
+            ...effectiveParams,
+            page: 1,
+          } as CraftFilters);
           if (ignore) return;
-          setItems(seeded.items);
+          setItems(seeded.items as CraftItem[]);
           setTotal(seeded.total);
           setHasMore(
             (seeded.page || 1) * (seeded.limit || limit) < (seeded.total || 0),
@@ -352,7 +360,12 @@ const Home: FC = () => {
           <aside className="h-full rounded-3xl bg-white/95 backdrop-blur shadow-lg border border-nakhsha-border overflow-hidden flex flex-col">
             <div className="space-y-4 p-6 border-b border-nakhsha-border">
               <BreadcrumbBar />
-              <FilterToolbar filters={filters} setFilters={setFilters} />
+              <FilterToolbar
+                filters={filters}
+                setFilters={(f) =>
+                  setFilters((prev) => ({ ...prev, ...f }) as Filters)
+                }
+              />
             </div>
             <div
               className={`sticky top-0 z-10 px-6 py-5 border-b border-nakhsha-border space-y-4 backdrop-blur bg-white/90 rounded-t-2xl transition-shadow duration-200 ${filterHeaderHasShadow ? "shadow-md" : ""}`}
@@ -521,7 +534,10 @@ const Home: FC = () => {
                 </select>
               </div>
               <div className="mt-4 pt-4 border-t border-nakhsha-border">
-                <FilterSidebar filters={filters} setFilters={setFilters} />
+                <FilterSidebar
+                  filters={filters}
+                  setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
+                />
               </div>
               <FilterChips filters={filters} onClear={clearFilterKey} />
             </div>

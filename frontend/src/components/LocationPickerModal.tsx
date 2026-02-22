@@ -72,7 +72,7 @@ const MapCore: FC<MapCoreProps> = ({ initialGeo, onPick, markerPos }) => {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    // geo is [lng, lat] â†’ Leaflet wants [lat, lng]
+    // geo is [lng, lat] → Leaflet wants [lat, lng]
     const startCenter: [number, number] = initialGeo
       ? [initialGeo[1], initialGeo[0]]
       : IRAN_CENTER;
@@ -86,7 +86,7 @@ const MapCore: FC<MapCoreProps> = ({ initialGeo, onPick, markerPos }) => {
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution:
-        'Â© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        '\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
     }).addTo(map);
 
@@ -233,14 +233,14 @@ const LocationPickerModal: FC<LocationPickerModalProps> = ({
           <div className="flex items-center gap-2">
             <MapPin className="w-5 h-5 text-[var(--color-primary)]" />
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              Ø§Ù†ØªØ®Ø§Ø¨ Ù…ÙˆÙ‚Ø¹ÛŒØª Ø±ÙˆÛŒ Ù†Ù‚Ø´Ù‡
+              انتخاب موقعیت روی نقشه
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-            aria-label="Ø¨Ø³ØªÙ†"
+            aria-label="بستن"
           >
             <X className="w-5 h-5 text-[var(--color-muted)]" />
           </button>
@@ -248,8 +248,7 @@ const LocationPickerModal: FC<LocationPickerModalProps> = ({
 
         {/* Hint */}
         <div className="px-5 py-2.5 bg-sky-50 border-b border-sky-100 text-xs text-sky-700 shrink-0">
-          Ø±ÙˆÛŒ Ù†Ù‚Ø´Ù‡ Ú©Ù„ÛŒÚ© Ú©Ù†ÛŒØ¯ ØªØ§ Ù…ÙˆÙ‚Ø¹ÛŒØª Ø§Ù†ØªØ®Ø§Ø¨
-          Ø´ÙˆØ¯. Ù…Ø§Ø±Ú©Ø± Ù‚Ø§Ø¨Ù„ Ú©Ø´ÛŒØ¯Ù† Ø§Ø³Øª.
+          روی نقشه کلیک کنید تا موقعیت انتخاب شود. مارکر قابل کشیدن است.
         </div>
 
         {/* Map area */}
@@ -267,7 +266,7 @@ const LocationPickerModal: FC<LocationPickerModalProps> = ({
           {status === "loading" && (
             <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Ø¯Ø± Ø­Ø§Ù„ Ø¯Ø±ÛŒØ§ÙØª Ø¢Ø¯Ø±Ø³â€¦
+              در حال دریافت آدرس…
             </div>
           )}
 
@@ -282,7 +281,7 @@ const LocationPickerModal: FC<LocationPickerModalProps> = ({
 
           {status === "error" && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl">
-              Ø¢Ø¯Ø±Ø³ ÛŒØ§ÙØª Ù†Ø´Ø¯ØŒ Ø¯Ø³ØªÛŒ ÙˆØ§Ø±Ø¯ Ú©Ù†ÛŒØ¯.
+              آدرس یافت نشد، دستی وارد کنید.
             </p>
           )}
 
@@ -299,7 +298,7 @@ const LocationPickerModal: FC<LocationPickerModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-sm rounded-xl border border-[var(--color-border)] text-[var(--color-muted)] hover:bg-gray-50 transition-colors"
             >
-              Ø§Ù†ØµØ±Ø§Ù
+              انصراف
             </button>
             <button
               type="button"
@@ -307,7 +306,7 @@ const LocationPickerModal: FC<LocationPickerModalProps> = ({
               disabled={!hasPin}
               className="px-5 py-2 text-sm font-semibold rounded-xl bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              ØªØ£ÛŒÛŒØ¯ Ù…ÙˆÙ‚Ø¹ÛŒØª
+              تأیید موقعیت
             </button>
           </div>
         </div>

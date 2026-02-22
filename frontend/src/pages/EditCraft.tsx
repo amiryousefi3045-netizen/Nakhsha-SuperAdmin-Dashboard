@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { fetchCraftById, updateCraft, uploadImage } from "../services/crafts";
+import type { CraftUpdateRequest } from "../types/api";
 import { reverseGeocode } from "../services/media";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -17,8 +18,8 @@ interface MapPickerProps {
 
 const MapPicker: FC<MapPickerProps> = ({ value, onChange }) => {
   const id = "map-picker-edit";
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const mapRef = useRef<ReturnType<typeof L.map> | null>(null);
+  const markerRef = useRef<ReturnType<typeof L.marker> | null>(null);
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
@@ -44,7 +45,7 @@ const MapPicker: FC<MapPickerProps> = ({ value, onChange }) => {
       if (fire) onChangeRef.current?.({ lat, lng });
     };
 
-    const onClick = (e: L.LeafletMouseEvent) =>
+    const onClick = (e: { latlng: { lat: number; lng: number } }) =>
       placeMarker(e.latlng.lat, e.latlng.lng);
     map.on("click", onClick);
     setTimeout(() => map.invalidateSize(), 0);
@@ -319,7 +320,7 @@ const EditCraft: FC = () => {
               : undefined,
         },
       };
-      await updateCraft(id!, payload);
+      await updateCraft(id!, payload as CraftUpdateRequest);
       navigate(`/craft/${id}?_=${Date.now()}`);
     } catch (err: unknown) {
       const e = err as {

@@ -1,4 +1,4 @@
-import React, { useState, type FC } from "react";
+import { useState, type FC } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import AuthModal from "./auth/AuthModal";

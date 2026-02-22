@@ -110,7 +110,11 @@ export default function MyCrafts(): React.ReactElement {
           </div>
         )}
         <div className="bg-white rounded-lg border">
-          <CraftList items={items} loading={loading} scrollRootRef={null} />
+          <CraftList
+            items={items}
+            loading={loading}
+            scrollRootRef={undefined}
+          />
         </div>
       </div>
     </div>

@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useRef,
-  useImperativeHandle,
-  forwardRef,
-  type RefObject,
-} from "react";
+import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -38,7 +32,7 @@ interface MapItem {
   lng?: number;
   title?: string;
   name?: string;
-  image?: string;
+  image?: string | null;
   images?: string[];
   description?: string;
   type?: string;
@@ -99,19 +93,19 @@ const Map = forwardRef<MapHandle, MapProps>(
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const mapRef = useRef<L.Map | null>(null);
+    const mapRef = useRef<ReturnType<typeof L.map> | null>(null);
     const handlerRef = useRef(onMoveEnd);
     const onMapClickRef = useRef(onMapClick);
     const selectingLocationRef = useRef(selectingLocation);
     const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-    const boundaryLayerRef = useRef<L.Polygon | null>(null);
-    const outsideMaskRef = useRef<L.Polygon | null>(null);
+    const boundaryLayerRef = useRef<ReturnType<typeof L.polygon> | null>(null);
+    const outsideMaskRef = useRef<ReturnType<typeof L.polygon> | null>(null);
     const markersLayerRef = useRef<ReturnType<
       typeof L.markerClusterGroup
     > | null>(null);
     const currentCityRef = useRef<string | null>(null);
-    const userMarkerRef = useRef<L.Marker | null>(null);
-    const selectedMarkerRef = useRef<L.Marker | null>(null);
+    const userMarkerRef = useRef<ReturnType<typeof L.marker> | null>(null);
+    const selectedMarkerRef = useRef<ReturnType<typeof L.marker> | null>(null);
     const lastCenterRef = useRef<MapCoords | null>(null);
     const initialCenterRef = useRef(center);
 
@@ -165,7 +159,7 @@ const Map = forwardRef<MapHandle, MapProps>(
       }).addTo(map);
 
       markersLayerRef.current = L.markerClusterGroup({
-        iconCreateFunction: (cluster) => {
+        iconCreateFunction: (cluster: any) => {
           const count = cluster.getChildCount();
           return L.divIcon({
             html: `<div style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 6px 10px; border-radius: 9999px; font-weight: 700; font-size: 13px; font-family: Vazirmatn, system-ui, -apple-system, 'Segoe UI', sans-serif; box-shadow: 0 6px 16px rgba(26, 95, 122, 0.25); border: 2px solid rgba(255,255,255,0.5);" title="کلیک کنید برای دیدن جزئیات">${count.toLocaleString("fa-IR")}</div>`,
@@ -191,7 +185,7 @@ const Map = forwardRef<MapHandle, MapProps>(
         });
       };
 
-      const handleMapClick = (e: L.LeafletMouseEvent) => {
+      const handleMapClick = (e: { latlng: { lat: number; lng: number } }) => {
         if (selectingLocationRef.current && onMapClickRef.current) {
           onMapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
         }

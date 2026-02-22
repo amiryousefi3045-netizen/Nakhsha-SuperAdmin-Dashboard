@@ -1,4 +1,3 @@
-import React from "react";
 import { useNavigate, Link } from "react-router-dom";
 import AuthPanel from "../components/auth/AuthPanel";
 
