@@ -83,24 +83,38 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS configuration with development flexibility
+// Pre-compiled set for O(1) allowlist lookups
+const allowedOriginSet = new Set(allowedOrigins);
+
+// CORS configuration
+// ‣ In production ONLY origins from ALLOWED_ORIGINS are accepted — no wildcard.
+// ‣ In non-production the localhost check uses URL parsing so that a crafted
+//   hostname like "localhost.evil.com" is never accidentally allowed.
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (same-origin requests from HTML pages)
+      // Requests with no origin header (server-to-server, curl, same-origin
+      // page fetches) are allowed unconditionally.
       if (!origin) {
         return callback(null, true);
       }
 
-      // In development, allow all localhost requests
+      // Development: allow exact localhost / 127.0.0.1 hostnames only.
+      // We parse the URL to avoid substring-match bypasses such as
+      // "http://localhost.evil.com".
       if (process.env.NODE_ENV !== "production") {
-        if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
-          return callback(null, true);
+        try {
+          const { hostname } = new URL(origin);
+          if (hostname === "localhost" || hostname === "127.0.0.1") {
+            return callback(null, true);
+          }
+        } catch {
+          // Malformed origin — fall through to allowlist check
         }
       }
 
-      // Check whitelist for production
-      if (allowedOrigins.includes(origin)) {
+      // Strict allowlist check (exact string match, case-sensitive)
+      if (allowedOriginSet.has(origin)) {
         callback(null, true);
       } else {
         logger.warn("CORS: Origin not allowed", { origin, allowedOrigins });
@@ -113,55 +127,82 @@ app.use(
   }),
 );
 
-// Enhanced security headers with Helmet
-app.use(
-  helmet({
-    // Required for uploaded images to be accessible
-    crossOriginResourcePolicy: { policy: "cross-origin" },
+// ─── Helmet security headers ────────────────────────────────────────────────
+//
+// CSP strategy:
+//  • /api-docs   — needs unsafe-inline for Swagger UI; served by a separate
+//                  app.use block below with a relaxed policy.
+//  • Everything else — strict policy; no unsafe-inline.
+//
+app.use((req, res, next) => {
+  // Swagger UI needs inline scripts/styles.  Apply a permissive CSP only for
+  // the /api-docs prefix and nowhere else.
+  if (req.path.startsWith("/api-docs")) {
+    return helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:"],
+          fontSrc: ["'self'", "data:"],
+          objectSrc: ["'none'"],
+          frameSrc: ["'none'"],
+        },
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+      frameguard: { action: "deny" },
+      noSniff: true,
+      referrerPolicy: { policy: "same-origin" },
+      hidePoweredBy: true,
+      permittedCrossDomainPolicies: { permittedPolicies: "none" },
+      dnsPrefetchControl: { allow: false },
+    })(req, res, next);
+  }
+
+  // Strict CSP for all API routes and static file serving
+  return helmet({
+    // Required for uploaded images served from the same origin
+    crossOriginResourcePolicy: { policy: "same-site" },
     crossOriginEmbedderPolicy: false,
 
-    // Content Security Policy
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"], // Needed for Swagger UI
-        styleSrc: ["'self'", "'unsafe-inline'"], // Needed for Swagger UI
-        imgSrc: ["'self'", "data:", "blob:", "https:"],
-        connectSrc: ["'self'", ...allowedOrigins],
+        scriptSrc: ["'self'"], // no unsafe-inline outside Swagger
+        styleSrc: ["'self'"],
+        // imgSrc: restrict to self + data URIs.  If the frontend loads images
+        // from an external CDN, add its hostname here explicitly instead of
+        // using the broad "https:" wildcard.
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
         fontSrc: ["'self'", "data:"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
+        formAction: ["'self'"],
+        baseUri: ["'self'"],
+        upgradeInsecureRequests: [],
       },
     },
 
-    // HTTP Strict Transport Security (HSTS)
     hsts: {
       maxAge: 31536000, // 1 year
       includeSubDomains: true,
       preload: true,
     },
 
-    // X-Frame-Options
-    frameguard: {
-      action: "deny", // محافظت در برابر clickjacking
-    },
-
-    // X-Content-Type-Options
-    noSniff: true, // جلوگیری از MIME-sniffing
-
-    // X-XSS-Protection
+    frameguard: { action: "deny" },
+    noSniff: true,
     xssFilter: true,
-
-    // Referrer Policy
-    referrerPolicy: {
-      policy: "same-origin",
-    },
-
-    // Hide X-Powered-By header
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
     hidePoweredBy: true,
-  }),
-);
+    permittedCrossDomainPolicies: { permittedPolicies: "none" },
+    dnsPrefetchControl: { allow: false },
+  })(req, res, next);
+});
 
 // Rate limiters
 const authLimiter = rateLimit({
@@ -203,33 +244,78 @@ const uploadsLimiter = rateLimit({
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/uploads", uploadsLimiter);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Explicit body-size caps — prevents large-payload DoS attacks.
+// Uploads use multipart/form-data and are handled by multer, so these limits
+// only apply to JSON / URL-encoded API requests.
+app.use(express.json({ limit: "64kb" }));
+app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 
-// Secure static file serving for uploads
+// ─── Secure static file serving for uploads ─────────────────────────────────
+//
+// Guard middleware runs BEFORE express.static so we can reject requests
+// outright — calling res.status() inside setHeaders is too late because
+// express.static has already started streaming the file by that point.
+//
+// Rules enforced:
+//  1. The /uploads/temp/ staging directory is never accessible.
+//  2. Only files with the .webp extension are served; everything else → 403.
+//  3. Path-traversal attempts ("../") are caught by path.resolve() check.
+//
+const uploadsRoot = path.resolve(__dirname, "uploads");
+
+app.use("/uploads", (req, res, next) => {
+  // Resolve the full path so path-traversal sequences are collapsed first
+  const requested = path.resolve(uploadsRoot, "." + req.path);
+
+  // Must stay inside the uploads root
+  if (
+    !requested.startsWith(uploadsRoot + path.sep) &&
+    requested !== uploadsRoot
+  ) {
+    return res
+      .status(403)
+      .json({
+        success: false,
+        error: { code: "FORBIDDEN", message: "دسترسی مجاز نیست" },
+      });
+  }
+
+  // Temp directory must never be publicly accessible
+  const tempDir = path.join(uploadsRoot, "temp");
+  if (requested.startsWith(tempDir)) {
+    return res
+      .status(403)
+      .json({
+        success: false,
+        error: { code: "FORBIDDEN", message: "دسترسی مجاز نیست" },
+      });
+  }
+
+  // Only .webp files are served
+  if (path.extname(requested).toLowerCase() !== ".webp") {
+    return res
+      .status(403)
+      .json({
+        success: false,
+        error: { code: "FORBIDDEN", message: "نوع فایل مجاز نیست" },
+      });
+  }
+
+  next();
+});
+
 app.use(
   "/uploads",
-  express.static(path.join(__dirname, "uploads"), {
-    // Security headers
-    setHeaders: (res, filePath) => {
-      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-
-      // Only serve WebP images (our processed format)
-      if (path.extname(filePath).toLowerCase() === ".webp") {
-        res.setHeader("Content-Type", "image/webp");
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else {
-        // Block non-WebP files
-        res.status(403).end();
-      }
-    },
-    // Prevent directory listing
-    index: false,
-    // Don't follow symlinks (security)
-    dotfiles: "deny",
-    // Disable etag for better caching control
+  express.static(uploadsRoot, {
+    index: false, // no directory listing
+    dotfiles: "deny", // hide dotfiles
     etag: true,
+    setHeaders: (res) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Type", "image/webp");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    },
   }),
 );
 

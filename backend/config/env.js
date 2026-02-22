@@ -47,8 +47,11 @@ const validateEnv = () => {
     }),
 
     // CORS
+    // In production this MUST be explicitly set to the real frontend domain(s).
+    // No default is provided so a missing value causes a fast startup failure
+    // rather than silently allowing all origins via the development fallback.
     ALLOWED_ORIGINS: str({
-      default: "http://localhost:5173,http://localhost:4173",
+      devDefault: "http://localhost:5173,http://localhost:4173",
       desc: "لیست originهای مجاز برای CORS (با کاما جدا شوند)",
     }),
 

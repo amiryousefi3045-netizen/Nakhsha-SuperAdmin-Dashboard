@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const sharp = require("sharp");
 const crypto = require("crypto");
+const logger = require("../utils/logger");
 
 const router = express.Router();
 
@@ -106,10 +107,15 @@ function sanitizePath(basePath, filename) {
 }
 
 // Configure Multer for temporary storage
+//
+// MAX_FILE_SIZE is validated by config/env.js (defaults to 5 MB).
+// Kept at 5 MB; reduce via env var in production if smaller uploads suffice.
+const MAX_FILE_BYTES = parseInt(process.env.MAX_FILE_SIZE || "5242880", 10);
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     const tempDir = path.join(uploadsDir, "temp");
-    fs.mkdirSync(tempDir, { recursive: true });
+    fs.mkdirSync(tempDir, { recursive: true, mode: 0o700 }); // not world-readable
     cb(null, tempDir);
   },
   filename: (_req, file, cb) => {
@@ -124,9 +130,11 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit for production
-    files: 1, // Only one file at a time
-    fieldSize: 1024 * 1024, // 1MB field size limit
+    fileSize: MAX_FILE_BYTES,
+    files: 1, // single file per request
+    fields: 1, // no extra non-file fields beyond the upload field
+    fieldSize: 256, // field name/value max 256 bytes
+    parts: 2, // 1 file part + 1 field
   },
   fileFilter: (_req, file, cb) => {
     // Validate MIME type
@@ -223,15 +231,34 @@ router.post("/", (req, res) => {
   upload.single("file")(req, res, async (err) => {
     if (err) {
       const msg = err.message || "خطا در آپلود فایل";
-      const tooLarge = /File too large/i.test(msg);
-      const badType = /Only JPEG\/PNG\/WebP/i.test(msg);
-      return res.status(tooLarge ? 413 : badType ? 415 : 400).json({
-        message: tooLarge ? "حجم فایل نباید از ۲ مگابایت بیشتر باشد" : msg,
+      const tooLarge =
+        err.code === "LIMIT_FILE_SIZE" || /File too large/i.test(msg);
+      const badType = /Only JPEG\/PNG\/WebP/i.test(msg) || /مجاز/.test(msg);
+      const tooManyParts =
+        err.code === "LIMIT_PART_COUNT" ||
+        err.code === "LIMIT_FILE_COUNT" ||
+        err.code === "LIMIT_FIELD_COUNT";
+      logger.warn("Upload rejected", { code: err.code, message: msg });
+      const status = tooLarge ? 413 : badType ? 415 : tooManyParts ? 400 : 400;
+      const persianMsg = tooLarge
+        ? `حجم فایل نباید از ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} مگابایت بیشتر باشد`
+        : msg;
+      return res.status(status).json({
+        success: false,
+        error: {
+          code: tooLarge ? "FILE_TOO_LARGE" : "UPLOAD_ERROR",
+          message: persianMsg,
+        },
+        reqId: req.id ?? null,
       });
     }
 
     if (!req.file) {
-      return res.status(400).json({ message: "هیچ فایلی آپلود نشده است" });
+      return res.status(400).json({
+        success: false,
+        error: { code: "NO_FILE", message: "هیچ فایلی آپلود نشده است" },
+        reqId: req.id ?? null,
+      });
     }
 
     try {
@@ -253,12 +280,17 @@ router.post("/", (req, res) => {
       // Return the URL for the processed image
       const url = `/uploads/${finalFilename}`;
       res.status(201).json({
-        url,
-        filename: finalFilename,
+        success: true,
+        data: { url, filename: finalFilename },
         message: "تصویر با موفقیت آپلود و پردازش شد",
+        reqId: req.id ?? null,
       });
     } catch (err) {
-      console.error("Image processing error:", err);
+      logger.error("Image processing error", {
+        reqId: req.id,
+        message: err.message,
+        stack: err.stack,
+      });
 
       // Provide specific error messages
       const isSigError = err.message.includes("signature");
@@ -266,7 +298,16 @@ router.post("/", (req, res) => {
         err.message.includes("مسیر") || err.message.includes("نام فایل");
 
       res.status(isSigError || isPathError ? 400 : 500).json({
-        message: err.message || "خطا در پردازش تصویر",
+        success: false,
+        error: {
+          code: isSigError
+            ? "INVALID_FILE"
+            : isPathError
+              ? "INVALID_PATH"
+              : "PROCESSING_ERROR",
+          message: err.message || "خطا در پردازش تصویر",
+        },
+        reqId: req.id ?? null,
       });
     }
   });

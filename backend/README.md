@@ -223,23 +223,72 @@ LOG_LEVEL=info
 
 ### Security Headers (Helmet)
 
-- ✅ Content Security Policy (CSP)
-- ✅ HTTP Strict Transport Security (HSTS)
+- ✅ Content Security Policy (CSP) — strict for API routes; relaxed for `/api-docs` only
+- ✅ HTTP Strict Transport Security (HSTS) — 1 year, includeSubDomains, preload
 - ✅ X-Frame-Options: DENY
 - ✅ X-Content-Type-Options: nosniff
-- ✅ Referrer-Policy: same-origin
+- ✅ Referrer-Policy: strict-origin-when-cross-origin
+- ✅ X-Permitted-Cross-Domain-Policies: none
+- ✅ X-DNS-Prefetch-Control: off
 
 ### Rate Limiting
 
 - ✅ Auth endpoints: 50 req/15min
 - ✅ Upload endpoints: 30 req/hour
-- ✅ CORS whitelist
+- ✅ CORS strict allowlist (exact string match, no wildcard)
 
 ### Input Validation
 
 - ✅ Zod schemas
 - ✅ Mongoose validation
 - ✅ Sanitization
+- ✅ JSON/URL-encoded body capped at 64 KB / 16 KB
+
+---
+
+## 🔐 Security Checklist (Pre-production)
+
+Use this before every production deploy to confirm the hardening is intact.
+
+#### CORS
+
+- [ ] `ALLOWED_ORIGINS` is explicitly set in the production environment (no dev fallback)
+- [ ] All listed origins use HTTPS and contain no trailing slash
+- [ ] No wildcard (`*`) appears anywhere in CORS config or `Access-Control-Allow-Origin` response headers
+
+#### HTTP Headers (verify with `curl -I https://api.nakhsha.ir/api/health`)
+
+- [ ] `Content-Security-Policy` is present and does **not** contain `unsafe-inline` outside `/api-docs`
+- [ ] `Strict-Transport-Security` header is present with `max-age=31536000`
+- [ ] `X-Frame-Options: DENY` is present
+- [ ] `X-Content-Type-Options: nosniff` is present
+- [ ] `X-Powered-By` header is **absent**
+- [ ] `Server` header does not expose nginx/node version (set `server_tokens off` in nginx)
+
+#### File Uploads
+
+- [ ] `MAX_FILE_SIZE` env var is set (default 5 MB — lower in production if acceptable)
+- [ ] `GET /uploads/temp/<any-file>` returns 403 (temp directory is blocked)
+- [ ] `GET /uploads/<file>.jpg` returns 403 (non-WebP extensions are blocked)
+- [ ] `GET /uploads/../../etc/passwd` returns 403 (path traversal is blocked)
+- [ ] Uploaded images are stored as `.webp` only — confirm with `ls -la backend/uploads/`
+
+#### Body Limits
+
+- [ ] `POST /api/auth/login` with a 1 MB JSON body returns 413
+- [ ] Multer `LIMIT_FILE_SIZE` error returns 413 (not 500) with a Persian message
+
+#### Environment / Secrets
+
+- [ ] `JWT_SECRET` is at least 64 random bytes (generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`)
+- [ ] `SENTRY_DSN` is set and points to the production Sentry project
+- [ ] `.env` is **not** present inside the Docker image (`docker run --rm nakhsha-backend ls .env` should return nothing)
+- [ ] MongoDB URI uses authentication (`mongodb://<user>:<pass>@...`) and is not the default dev URI
+
+#### Error Monitoring
+
+- [ ] Trigger a test 500 and confirm the event appears in Sentry with `reqId` tag
+- [ ] Confirm `password` and `Authorization` are shown as `[Filtered]` in Sentry request data
 
 ---
 
