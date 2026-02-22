@@ -85,6 +85,49 @@ Swagger UI در http://localhost:5000/api-docs در دسترس است.
 
 ---
 
+## 🔭 Error Monitoring (Sentry)
+
+Production errors are captured by [Sentry](https://sentry.io) with full request
+context attached to every event.
+
+### Features
+
+| Feature                      | Detail                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Unhandled exceptions         | Captured automatically at process level by `Sentry.init()`                                                                           |
+| Unhandled promise rejections | Same — no extra code required                                                                                                        |
+| 5xx Express errors           | Explicitly reported from `errorHandler.js` with reqId, route, userId                                                                 |
+| Secret scrubbing             | `Authorization`, `cookie` headers and body fields (`password`, `token`, `otp`, …) are replaced with `[Filtered]` before transmission |
+| Per-request tags             | `reqId` and `route` are Sentry tags; `userId` is set as the Sentry user (id only)                                                    |
+
+### Setup
+
+1. Create a **Node.js** project on [sentry.io](https://sentry.io).
+2. Copy the DSN and add it to `.env`:
+
+   ```env
+   SENTRY_DSN=https://<key>@<org>.ingest.sentry.io/<project>
+   SENTRY_ENVIRONMENT=production
+   SENTRY_TRACES_SAMPLE_RATE=0.1
+   ```
+
+3. Leave `SENTRY_DSN` empty (or unset) in local development — every monitoring
+   call becomes a no-op and the app behaves identically without network traffic.
+
+### Cross-referencing logs
+
+Every Sentry event carries `reqId` as a searchable tag. The same value
+appears in Winston access logs (`logs/all.log`) so you can jump from a Sentry
+alert directly to the full log trace for that request.
+
+### What is NOT reported
+
+- 4xx client errors (validation failures, auth errors, not-found) — these are
+  expected and are logged locally only.
+- Any event while `NODE_ENV=test` — test runs are excluded via `enabled: false`.
+
+---
+
 ## 🧪 Testing
 
 ```bash

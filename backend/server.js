@@ -17,6 +17,12 @@ const otpCleanupService = require("./services/otpCleanup");
 // Load environment variables
 dotenv.config();
 
+// Initialise error monitoring (Sentry) immediately after env vars are loaded
+// so that uncaughtException / unhandledRejection handlers are installed before
+// any application code runs.  This is a no-op when SENTRY_DSN is not set.
+const monitoring = require("./utils/monitoring");
+monitoring.init();
+
 // Validate environment variables
 const validateEnv = require("./config/env");
 const env = validateEnv();
@@ -40,6 +46,10 @@ app.use((req, res, next) => {
   req.id = crypto.randomUUID();
   next();
 });
+
+// Attach reqId to the active Sentry scope so every event for this request
+// carries the request identifier (no-op when SENTRY_DSN is not configured).
+app.use(monitoring.requestContextMiddleware);
 
 // Enrich inline error responses with success:false and reqId automatically
 app.use(responseEnricher);

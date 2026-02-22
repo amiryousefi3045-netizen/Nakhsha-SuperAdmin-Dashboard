@@ -1,6 +1,7 @@
 const logger = require("../utils/logger");
 const { AppError } = require("../utils/errors");
 const { createErrorResponse, codeFromStatus } = require("../utils/response");
+const monitoring = require("../utils/monitoring");
 
 /**
  * Global Error Handler Middleware
@@ -79,6 +80,9 @@ const errorHandler = (err, req, res, next) => {
       ip: req.ip,
       userId: req.user?.id,
     });
+    // Report to Sentry with reqId, matched route, and userId as searchable tags.
+    // captureError is a no-op when SENTRY_DSN is not configured.
+    monitoring.captureError(err, req);
   } else {
     logger.warn("Client error", {
       reqId,
