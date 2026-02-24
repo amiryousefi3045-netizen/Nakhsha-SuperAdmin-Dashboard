@@ -5,6 +5,7 @@ const path = require("path");
 const sharp = require("sharp");
 const crypto = require("crypto");
 const logger = require("../utils/logger");
+const { toAbsoluteUrl } = require("../utils/urls");
 
 const router = express.Router();
 
@@ -155,11 +156,13 @@ const upload = multer({
 });
 
 /**
- * Process and secure uploaded image
- * - Validates file signature
- * - Strips EXIF data (privacy/security)
- * - Resizes and optimizes
+ * Process and secure uploaded image.
+ * - Validates file signature (magic bytes)
+ * - Strips EXIF / metadata (privacy & security)
+ * - Resizes to max 1600×1600
  * - Converts to WebP format
+ *
+ * Returns an object with { outputPath, width, height, size, mime }
  */
 async function processImage(inputPath, filename) {
   try {
@@ -172,8 +175,8 @@ async function processImage(inputPath, filename) {
     const outputPath = sanitizePath(uploadsDir, filename);
 
     // Process image: strip EXIF, resize if needed, convert to WebP
-    await sharp(inputPath)
-      .rotate() // Auto-rotate based on EXIF orientation
+    const info = await sharp(inputPath)
+      .rotate() // Auto-rotate based on EXIF orientation (then strip orientation tag)
       .resize({
         width: 1600,
         height: 1600,
@@ -191,7 +194,21 @@ async function processImage(inputPath, filename) {
       if (err) console.error("Error deleting temp file:", err);
     });
 
-    return outputPath;
+    // Get actual file size on disk
+    let size = info.size;
+    try {
+      size = fs.statSync(outputPath).size;
+    } catch {
+      // fall back to sharp's reported size
+    }
+
+    return {
+      outputPath,
+      width: info.width,
+      height: info.height,
+      size,
+      mime: "image/webp",
+    };
   } catch (err) {
     // Clean up temp file on error
     fs.unlink(inputPath, () => {});
@@ -227,7 +244,17 @@ function cleanupTempFiles() {
 setInterval(cleanupTempFiles, 30 * 60 * 1000);
 
 // POST /api/uploads - single file field name: "file"
+//
+// If the request carries the header  X-Client: nakhsha-web
+// the response is wrapped in the canonical envelope:
+//   { success: true, data: { files: [{ url, path, width, height, size, mime }] }, reqId }
+//
+// Without that header the legacy shape is preserved for backward compatibility:
+//   { success: true, data: { url, filename }, message, reqId }
 router.post("/", (req, res) => {
+  const isNewClient =
+    (req.headers["x-client"] || "").toLowerCase() === "nakhsha-web";
+
   upload.single("file")(req, res, async (err) => {
     if (err) {
       const msg = err.message || "خطا در آپلود فایل";
@@ -275,13 +302,38 @@ router.post("/", (req, res) => {
       }
 
       // Process the uploaded image (includes signature validation)
-      await processImage(req.file.path, finalFilename);
+      // Returns { outputPath, width, height, size, mime }
+      const meta = await processImage(req.file.path, finalFilename);
 
-      // Return the URL for the processed image
-      const url = `/uploads/${finalFilename}`;
+      // Relative path stored / returned to clients
+      const relativePath = `/uploads/${finalFilename}`;
+      // Absolute URL (uses PUBLIC_BASE_URL or req-derived origin)
+      const absoluteUrl = toAbsoluteUrl(relativePath, req);
+
+      if (isNewClient) {
+        // ── Enriched envelope for nakhsha-web clients ───────────────────
+        return res.status(201).json({
+          success: true,
+          data: {
+            files: [
+              {
+                url: absoluteUrl,
+                path: relativePath,
+                width: meta.width,
+                height: meta.height,
+                size: meta.size,
+                mime: meta.mime,
+              },
+            ],
+          },
+          reqId: req.id ?? null,
+        });
+      }
+
+      // ── Legacy shape kept for backward compatibility ──────────────────
       res.status(201).json({
         success: true,
-        data: { url, filename: finalFilename },
+        data: { url: relativePath, filename: finalFilename },
         message: "تصویر با موفقیت آپلود و پردازش شد",
         reqId: req.id ?? null,
       });
