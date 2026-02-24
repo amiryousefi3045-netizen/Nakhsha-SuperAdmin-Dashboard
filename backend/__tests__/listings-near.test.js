@@ -1,395 +1,355 @@
+/**
+ * listings-near.test.js — Integration tests for GET /api/listings/near
+ *
+ * Tests the Listing model geospatial endpoint in routes/listings.near.js.
+ *
+ * Coverage:
+ *   • Distance ordering (closest first)
+ *   • Radius filtering (items outside radius not returned)
+ *   • type filter (post | tour | training | academy)
+ *   • radiusKm max cap (>50 km is silently capped)
+ *   • limit cap (>500 is silently capped)
+ *   • Validation errors (missing lat/lng, out-of-range, bad type)
+ *   • Response envelope shape  { success, data: { items, meta }, reqId }
+ *   • Each item has distanceMeters
+ */
+"use strict";
+
 const request = require("supertest");
 const mongoose = require("mongoose");
 const app = require("../server");
-const Craft = require("../models/Craft");
 const User = require("../models/User");
+const { PostListing, TourListing } = require("../models/Listing");
 
-/**
- * Integration Tests for /api/listings/near endpoint
- * Tests geospatial search functionality, validation, and error handling
- */
+// ── Coordinates ──────────────────────────────────────────────────────────────
+// Tehran city centre  [lng, lat]
+const TEHRAN_CENTER = [51.389, 35.6892];
+// ~2 km north of centre
+const TEHRAN_NORTH = [51.389, 35.7072];
+// Shiraz — ~900 km away
+const SHIRAZ = [52.5836, 29.5918];
 
-describe("GET /api/listings/near - Geospatial Search", () => {
+describe("GET /api/listings/near — Listing model geospatial search", () => {
   let testUser;
-  let craftsInTehran = [];
-  let craftsInShiraz = [];
+  let tehranClose; // PostListing at TEHRAN_CENTER
+  let tehranFar; // TourListing at TEHRAN_NORTH (~2 km away)
+  let shirazListing; // PostListing in Shiraz (~900 km away)
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  function makeLocation(coords) {
+    return { type: "Point", coordinates: coords };
+  }
+
+  // ── Setup ────────────────────────────────────────────────────────────────────
 
   beforeAll(async () => {
-    // Connect to test database
+    process.env.NODE_ENV = "test";
+    process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret-key";
+
+    const mongoUri =
+      process.env.MONGODB_TEST_URI || "mongodb://127.0.0.1:27017/nakhsha_test";
     if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(
-        process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/nakhsha_test",
-        {
-          serverSelectionTimeoutMS: 5000,
-        },
-      );
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
     }
 
-    // Create test user
+    app.locals.dbReady = true;
+
+    // A minimal owner (listings require an owner)
     testUser = await User.create({
-      name: "Test Artisan",
-      phone: "09123456789",
+      name: "هنرمند تست نزدیک",
+      phone: "09120000099",
       role: "user",
     });
 
-    // Create test crafts in Tehran (35.6892°N, 51.3890°E)
-    const tehranCoords = [51.389, 35.6892]; // [lng, lat]
+    // Seed three listings at different distances
+    tehranClose = await PostListing.create({
+      title: "سفال نزدیک مرکز تهران",
+      description: "سفال دست‌ساز در مرکز تهران برای آزمایش نزدیکی",
+      owner: testUser._id,
+      status: "published",
+      location: makeLocation(TEHRAN_CENTER),
+    });
 
-    craftsInTehran = await Craft.create([
-      {
-        title: "سفال تهرانی",
-        description: "سفال دست‌ساز زیبا",
-        kind: "artwork",
-        price: 500000,
-        author: testUser._id,
-        isPublished: true,
-        location: {
-          city: "تهران",
-          neighborhood: "ونک",
-          geometry: {
-            type: "Point",
-            coordinates: tehranCoords,
-          },
-        },
-      },
-      {
-        title: "کارگاه سفالگری",
-        description: "آموزش سفالگری در تهران",
-        kind: "class",
-        price: 1000000,
-        author: testUser._id,
-        isPublished: true,
-        location: {
-          city: "تهران",
-          neighborhood: "نیاوران",
-          geometry: {
-            type: "Point",
-            coordinates: [51.4, 35.7], // Slightly north of Tehran center
-          },
-        },
-      },
-    ]);
+    tehranFar = await TourListing.create({
+      title: "تور شمال تهران",
+      description: "تور گردشگری در شمال تهران برای آزمایش فاصله",
+      owner: testUser._id,
+      status: "published",
+      location: makeLocation(TEHRAN_NORTH),
+    });
 
-    // Create test crafts in Shiraz (29.5918°N, 52.5836°E) - far from Tehran
-    craftsInShiraz = await Craft.create([
-      {
-        title: "فرش شیرازی",
-        description: "فرش دست‌باف شیراز",
-        kind: "artwork",
-        price: 5000000,
-        author: testUser._id,
-        isPublished: true,
-        location: {
-          city: "شیراز",
-          neighborhood: "زند",
-          geometry: {
-            type: "Point",
-            coordinates: [52.5836, 29.5918],
-          },
-        },
-      },
-    ]);
+    shirazListing = await PostListing.create({
+      title: "قالی شیراز",
+      description: "قالی دست‌باف اصیل شیرازی در فاصله زیاد",
+      owner: testUser._id,
+      status: "published",
+      location: makeLocation(SHIRAZ),
+    });
 
-    // Ensure 2dsphere index exists
-    await Craft.collection.createIndex({ "location.geometry": "2dsphere" });
+    // Ensure the 2dsphere index exists (no-op if already present)
+    await mongoose.connection
+      .collection("user_listings")
+      .createIndex({ location: "2dsphere" }, { sparse: true });
   });
 
   afterAll(async () => {
-    // Cleanup
-    await Craft.deleteMany({ author: testUser._id });
-    await User.deleteMany({ phone: "09123456789" });
-    await mongoose.connection.close();
+    // Cleanup only the records we created
+    const ownerId = testUser?._id;
+    if (ownerId) {
+      await mongoose.connection
+        .collection("user_listings")
+        .deleteMany({ owner: ownerId });
+      await User.deleteMany({ phone: "09120000099" });
+    }
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+    }
   });
 
-  // ============================================================================
-  // SUCCESSFUL GEOSPATIAL QUERIES
-  // ============================================================================
+  // ── Successful geospatial queries ─────────────────────────────────────────
 
-  describe("Successful Queries", () => {
-    test("should find crafts near Tehran center", async () => {
-      const response = await request(app)
+  describe("Successful queries", () => {
+    it("returns listings within radius sorted by distance (closest first)", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 10,
-        })
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10 })
         .expect(200);
 
-      expect(response.body.items).toBeDefined();
-      expect(response.body.items.length).toBeGreaterThan(0);
-      expect(response.body.items[0].distanceKm).toBeDefined();
-      expect(response.body.search.method).toBe("geospatial");
-      expect(response.body.search.center).toEqual({
-        lng: 51.389,
-        lat: 35.6892,
-      });
+      expect(res.body.success).toBe(true);
+
+      const { items, meta } = res.body.data;
+      // Both Tehran listings should be within 10 km; Shiraz must not appear
+      expect(items.length).toBeGreaterThanOrEqual(2);
+      expect(
+        items.find((i) => String(i.id) === String(shirazListing._id)),
+      ).toBeUndefined();
+
+      // Sorted by distance ascending
+      for (let i = 1; i < items.length; i++) {
+        expect(items[i].distanceMeters).toBeGreaterThanOrEqual(
+          items[i - 1].distanceMeters,
+        );
+      }
+
+      // Meta fields present
+      expect(meta.radiusKm).toBe(10);
+      expect(meta.count).toBe(items.length);
+      expect(typeof meta.limit).toBe("number");
     });
 
-    test("should return crafts sorted by distance", async () => {
-      const response = await request(app)
+    it("closest listing (TEHRAN_CENTER) is first in the result", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 20,
-        })
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10 })
         .expect(200);
 
-      const distances = response.body.items.map((item) =>
-        parseFloat(item.distanceKm),
-      );
+      const { items } = res.body.data;
+      expect(items.length).toBeGreaterThanOrEqual(2);
+      // First item id must be tehranClose (distance ≈ 0 m)
+      expect(String(items[0].id)).toBe(String(tehranClose._id));
+      // Second item must be tehranFar (~2 km away)
+      expect(String(items[1].id)).toBe(String(tehranFar._id));
+    });
 
-      // Verify sorting (each distance should be >= previous)
-      for (let i = 1; i < distances.length; i++) {
-        expect(distances[i]).toBeGreaterThanOrEqual(distances[i - 1]);
+    it("Shiraz listing does NOT appear when searching near Tehran with 5 km radius", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 5 })
+        .expect(200);
+
+      const ids = res.body.data.items.map((i) => String(i.id));
+      expect(ids).not.toContain(String(shirazListing._id));
+    });
+
+    it("filters by type=post — only PostListings returned", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10, type: "post" })
+        .expect(200);
+
+      const { items } = res.body.data;
+      // tehranClose is a post; tehranFar is a tour → only tehranClose expected
+      expect(items.length).toBeGreaterThanOrEqual(1);
+      items.forEach((item) => expect(item.type).toBe("post"));
+      expect(
+        items.find((i) => String(i.id) === String(tehranFar._id)),
+      ).toBeUndefined();
+    });
+
+    it("filters by type=tour — only TourListings returned", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10, type: "tour" })
+        .expect(200);
+
+      const { items } = res.body.data;
+      expect(items.length).toBeGreaterThanOrEqual(1);
+      items.forEach((item) => expect(item.type).toBe("tour"));
+    });
+
+    it("returns empty items array when nothing is in range", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        // Centre of the ocean far from any seeded listings
+        .query({ lat: 0.0, lng: 0.0, radiusKm: 1 })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.items).toEqual([]);
+      expect(res.body.data.meta.count).toBe(0);
+    });
+
+    it("silently caps radiusKm > 50 to 50", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 999 })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.meta.radiusKm).toBe(50);
+    });
+
+    it("silently caps limit > 500 to 500", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10, limit: 9999 })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.meta.limit).toBe(500);
+    });
+
+    it("uses default radiusKm (5) and limit (100) when omitted", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389 })
+        .expect(200);
+
+      expect(res.body.data.meta.radiusKm).toBe(5);
+      expect(res.body.data.meta.limit).toBe(100);
+    });
+
+    it("each item has required fields: id, type, title, images, location, distanceMeters", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10 })
+        .expect(200);
+
+      for (const item of res.body.data.items) {
+        expect(item).toHaveProperty("id");
+        expect(item).toHaveProperty("type");
+        expect(item).toHaveProperty("title");
+        expect(Array.isArray(item.images)).toBe(true);
+        expect(Array.isArray(item.imagesAbs)).toBe(true);
+        expect(item).toHaveProperty("location");
+        expect(typeof item.distanceMeters).toBe("number");
       }
     });
+  });
 
-    test("should not find Shiraz crafts when searching in Tehran", async () => {
-      const response = await request(app)
+  // ── Validation errors ─────────────────────────────────────────────────────
+
+  describe("Validation errors", () => {
+    it("returns 400 when lat is missing", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 10,
-        })
-        .expect(200);
+        .query({ lng: 51.389 })
+        .expect(400);
 
-      const shirazCraft = response.body.items.find(
-        (item) => item.city === "شیراز",
-      );
-      expect(shirazCraft).toBeUndefined();
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
     });
 
-    test("should filter by kind parameter", async () => {
-      const response = await request(app)
+    it("returns 400 when lng is missing", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 20,
-          kind: "class",
-        })
-        .expect(200);
+        .query({ lat: 35.6892 })
+        .expect(400);
 
-      expect(response.body.items.length).toBeGreaterThan(0);
-      response.body.items.forEach((item) => {
-        expect(item.kind).toBe("class");
-      });
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
     });
 
-    test("should filter by price range", async () => {
-      const response = await request(app)
+    it("returns 400 when lat is out of range (> 90)", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 20,
-          minPrice: 900000,
-          maxPrice: 1500000,
-        })
-        .expect(200);
+        .query({ lat: 95, lng: 51.389 })
+        .expect(400);
 
-      response.body.items.forEach((item) => {
-        expect(item.price).toBeGreaterThanOrEqual(900000);
-        expect(item.price).toBeLessThanOrEqual(1500000);
-      });
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
     });
 
-    test("should cap radius to maximum (50km)", async () => {
-      const response = await request(app)
+    it("returns 400 when lng is out of range (< -180)", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 1000, // Request 1000km
-        })
-        .expect(200);
+        .query({ lat: 35.6892, lng: -200 })
+        .expect(400);
 
-      expect(response.body.search.radiusKm).toBe(50); // Capped to 50km
-      expect(response.body.search.requestedRadiusKm).toBe(1000);
-      expect(response.body.search.note).toContain("capped");
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
     });
 
-    test("should use default radius when not specified", async () => {
-      const response = await request(app)
+    it("returns 400 when type is not a valid enum value", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-        })
-        .expect(200);
+        .query({ lat: 35.6892, lng: 51.389, type: "artwork" })
+        .expect(400);
 
-      expect(response.body.search.radiusKm).toBe(10); // Default
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("returns 400 when radiusKm is below minimum (0.1)", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 0.05 })
+        .expect(400);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("returns 400 when limit is below minimum (1)", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: 35.6892, lng: 51.389, limit: 0 })
+        .expect(400);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("returns 400 when lat is not a number", async () => {
+      const res = await request(app)
+        .get("/api/listings/near")
+        .query({ lat: "abc", lng: 51.389 })
+        .expect(400);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
     });
   });
 
-  // ============================================================================
-  // VALIDATION & ERROR HANDLING
-  // ============================================================================
+  // ── Response envelope ─────────────────────────────────────────────────────
 
-  describe("Validation & Error Handling", () => {
-    test("should reject invalid longitude", async () => {
-      const response = await request(app)
+  describe("Response envelope", () => {
+    it("success response has shape { success:true, data, reqId }", async () => {
+      const res = await request(app)
         .get("/api/listings/near")
-        .query({
-          lng: 200, // Invalid: > 180
-          lat: 35.6892,
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("نامعتبر");
-      expect(response.body.error).toBeDefined();
-    });
-
-    test("should reject invalid latitude", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 100, // Invalid: > 90
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("نامعتبر");
-      expect(response.body.error).toBeDefined();
-    });
-
-    test("should detect reversed coordinates", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 35.6892, // This is actually a latitude value
-          lat: 151.389, // This is out of latitude range but valid for longitude
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("جابجا");
-      expect(response.body.hint).toContain("reverse");
-    });
-
-    test("should reject non-numeric longitude", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: "invalid",
-          lat: 35.6892,
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("lng");
-      expect(response.body.error).toContain("number");
-    });
-
-    test("should reject non-numeric latitude", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: "invalid",
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("lat");
-      expect(response.body.error).toContain("number");
-    });
-
-    test("should reject invalid kind filter", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          kind: "invalid_kind",
-        })
-        .expect(400);
-
-      expect(response.body.error).toContain("kind must be one of");
-    });
-
-    test("should reject negative radius", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: -10,
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("شعاع");
-      expect(response.body.error).toContain("positive");
-    });
-
-    test("should reject negative minPrice", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          minPrice: -100,
-        })
-        .expect(400);
-
-      expect(response.body.message).toContain("قیمت");
-      expect(response.body.error).toContain("non-negative");
-    });
-  });
-
-  // ============================================================================
-  // FALLBACK BEHAVIOR
-  // ============================================================================
-
-  describe("Fallback to Standard Search", () => {
-    test("should fall back to standard search when no coordinates provided", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          kind: "artwork",
-        })
+        .query({ lat: 35.6892, lng: 51.389, radiusKm: 10 })
         .expect(200);
 
-      expect(response.body.items).toBeDefined();
-      expect(response.body.search.method).toBe("standard");
-      expect(response.body.search.center).toBeUndefined();
-    });
-  });
-
-  // ============================================================================
-  // PAGINATION
-  // ============================================================================
-
-  describe("Pagination", () => {
-    test("should paginate results", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          radiusKm: 50,
-          limit: 1,
-          page: 1,
-        })
-        .expect(200);
-
-      expect(response.body.items.length).toBeLessThanOrEqual(1);
-      expect(response.body.page).toBe(1);
-      expect(response.body.limit).toBe(1);
-      expect(response.body.hasMore).toBeDefined();
-    });
-
-    test("should cap limit to maximum per page", async () => {
-      const response = await request(app)
-        .get("/api/listings/near")
-        .query({
-          lng: 51.389,
-          lat: 35.6892,
-          limit: 1000, // Request 1000 items
-        })
-        .expect(200);
-
-      expect(response.body.limit).toBe(100); // Capped to MAX_RESULTS_PER_PAGE
+      expect(res.body.success).toBe(true);
+      expect(res.body).toHaveProperty("data");
+      expect(res.body).toHaveProperty("reqId");
+      expect(res.body.data).toHaveProperty("items");
+      expect(res.body.data).toHaveProperty("meta");
+      const { meta } = res.body.data;
+      expect(meta).toHaveProperty("radiusKm");
+      expect(meta).toHaveProperty("limit");
+      expect(meta).toHaveProperty("count");
     });
   });
 });
