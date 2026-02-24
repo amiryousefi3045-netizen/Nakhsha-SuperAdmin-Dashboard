@@ -10,10 +10,12 @@ import {
   type FC,
   type ReactNode,
 } from "react";
+import type { ListingType as _ListingType } from "../types/listing";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ListingType = "post" | "tour" | "training";
+/** Re-exported from src/types/listing.ts for backwards-compatible imports. */
+export type ListingType = _ListingType;
 
 /** A single uploaded media item (image or video). */
 export interface MediaItem {
@@ -108,7 +110,8 @@ export function validateStep(step: number, data: WizardData): string | null {
         return "ظرفیت را وارد کنید.";
       return null;
     case 3:
-      if ((data.type === "tour" || data.type === "training") && !data.startDate)
+      // Schedule is required only for training; tour/post/academy may skip it.
+      if (data.type === "training" && !data.startDate)
         return "تاریخ شروع را انتخاب کنید.";
       if (
         data.startDate &&

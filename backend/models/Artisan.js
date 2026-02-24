@@ -37,21 +37,20 @@ const ArtisanSchema = new mongoose.Schema(
       type: [String],
       validate: {
         validator: function (v) {
-          return (
-            Array.isArray(v) &&
-            v.length > 0 &&
-            v.every((type) =>
-              [
-                "قالی و گلیم",
-                "سفال و سرامیک",
-                "منبت و خاتم",
-                "فلزکاری",
-                "پارچه‌بافی",
-                "مینیاتور و نقاشی",
-                "چرم‌دوزی",
-                "سایر",
-              ].includes(type),
-            )
+          // Allow empty array (field is optional).
+          // If values are provided, each must be a valid craft type.
+          if (!Array.isArray(v) || v.length === 0) return true;
+          return v.every((type) =>
+            [
+              "قالی و گلیم",
+              "سفال و سرامیک",
+              "منبت و خاتم",
+              "فلزکاری",
+              "پارچه‌بافی",
+              "مینیاتور و نقاشی",
+              "چرم‌دوزی",
+              "سایر",
+            ].includes(type),
           );
         },
         message: "حداقل یک نوع صنایع دستی معتبر باید انتخاب شود",

@@ -121,12 +121,25 @@ const TAG_SUGGESTIONS: Record<ListingType, string[]> = {
     "آموزش هنرهای سنتی",
     "دوره مقدماتی",
   ],
+  academy: [
+    "آموزشگاه",
+    "هنرستان",
+    "آموزش فرهنگ و هنر",
+    "مرکز خلاقیت",
+    "سفالگری",
+    "نقاشی",
+    "خوشنویسی",
+    "صنایع‌دستی",
+    "دوره حضوری",
+    "مجوزی هنر",
+  ],
 };
 
 const TYPE_LABELS: Record<ListingType, string> = {
   post: "پست",
   tour: "تور",
   training: "آموزش",
+  academy: "آموزشگاه",
 };
 
 const WIZARD_STEPS: StepItem[] = [
@@ -645,7 +658,9 @@ const StepPricing: FC = () => {
 
 const StepSchedule: FC = () => {
   const { data, updateData } = useWizard();
-  const isScheduled = data.type === "tour" || data.type === "training";
+  // Schedule dates and duration are required only for training;
+  // other types may optionally set a start date but it never blocks progress.
+  const isScheduled = data.type === "training";
 
   return (
     <div className="space-y-5">
@@ -1217,7 +1232,7 @@ export default function CreateListingWizardPage() {
   const [searchParams] = useSearchParams();
   const rawType = searchParams.get("type") ?? "post";
   const listingType: ListingType = (
-    ["post", "tour", "training"].includes(rawType) ? rawType : "post"
+    ["post", "tour", "training", "academy"].includes(rawType) ? rawType : "post"
   ) as ListingType;
 
   return (

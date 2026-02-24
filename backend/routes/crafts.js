@@ -766,7 +766,9 @@ router.post("/", requireAuth, validate(createCraftSchema), async (req, res) => {
     const doc = await Craft.create({
       title: b.title,
       description: b.description,
+      author: req.user.id,
       artisanId: artisan._id,
+      kind: b.kind || "artwork",
       images: b.images || [],
       craftType: b.craftType,
       price: b.price,

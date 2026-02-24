@@ -272,33 +272,27 @@ app.use("/uploads", (req, res, next) => {
     !requested.startsWith(uploadsRoot + path.sep) &&
     requested !== uploadsRoot
   ) {
-    return res
-      .status(403)
-      .json({
-        success: false,
-        error: { code: "FORBIDDEN", message: "دسترسی مجاز نیست" },
-      });
+    return res.status(403).json({
+      success: false,
+      error: { code: "FORBIDDEN", message: "دسترسی مجاز نیست" },
+    });
   }
 
   // Temp directory must never be publicly accessible
   const tempDir = path.join(uploadsRoot, "temp");
   if (requested.startsWith(tempDir)) {
-    return res
-      .status(403)
-      .json({
-        success: false,
-        error: { code: "FORBIDDEN", message: "دسترسی مجاز نیست" },
-      });
+    return res.status(403).json({
+      success: false,
+      error: { code: "FORBIDDEN", message: "دسترسی مجاز نیست" },
+    });
   }
 
   // Only .webp files are served
   if (path.extname(requested).toLowerCase() !== ".webp") {
-    return res
-      .status(403)
-      .json({
-        success: false,
-        error: { code: "FORBIDDEN", message: "نوع فایل مجاز نیست" },
-      });
+    return res.status(403).json({
+      success: false,
+      error: { code: "FORBIDDEN", message: "نوع فایل مجاز نیست" },
+    });
   }
 
   next();
@@ -331,6 +325,7 @@ const postsRoutes = require("./routes/posts");
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 const listingsNearRoutes = require("./routes/listings.near");
+const listingsRoutes = require("./routes/listings");
 const healthRoutes = require("./routes/health");
 // Heavy-endpoint rate limiter — also applied per-route inside the route files;
 // the app.use() here acts as a second layer for any future routes added under
@@ -352,6 +347,9 @@ app.use("/api/posts", postsRoutes);
 // heavyLimiter is also applied per-route inside listings.near.js; the
 // app.use() layer here covers any additional routes added to this prefix.
 app.use("/api/listings", heavyLimiter, listingsNearRoutes);
+// Mount canonical listings CRUD (POST /api/listings, GET /api/listings/:id).
+// Must come AFTER listingsNearRoutes so the /near path is matched first.
+app.use("/api/listings", listingsRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 
@@ -392,12 +390,14 @@ const connectDB = async () => {
         const OtpCode = require("./models/OtpCode");
         const Craft = require("./models/Craft");
         const Post = require("./models/Post");
+        const { Listing: ListingModel } = require("./models/Listing");
 
         const collections = [
           { name: "users", model: User },
           { name: "otpcodes", model: OtpCode },
           { name: "crafts (listings)", model: Craft },
           { name: "posts", model: Post },
+          { name: "listings", model: ListingModel },
         ];
 
         for (const { name, model } of collections) {

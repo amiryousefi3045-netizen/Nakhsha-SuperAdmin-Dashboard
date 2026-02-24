@@ -54,7 +54,10 @@ beforeEach(async () => {
     craftType: "قالی و گلیم",
     location: {
       city: "اصفهان",
-      coordinates: [51.6746, 32.6546], // [lng, lat]
+      geometry: {
+        type: "Point",
+        coordinates: [51.6746, 32.6546], // [lng, lat]
+      },
     },
     verified: true,
   });
@@ -137,7 +140,9 @@ describe("Craft Routes", () => {
         })
         .expect(400);
 
-      expect(response.body.message).toBeDefined();
+      // Route uses createErrorResponse → { error: { code, message } }
+      // or Mongoose ValidationError → { message, details }
+      expect(response.body.error?.code || response.body.message).toBeDefined();
     });
   });
 

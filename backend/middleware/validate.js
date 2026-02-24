@@ -72,6 +72,7 @@ const locationSchema = z
 const createCraftSchema = z.object({
   title: z.string().min(3, "عنوان باید حداقل ۳ کاراکتر باشد"),
   description: z.string().min(10, "توضیحات باید حداقل ۱۰ کاراکتر باشد"),
+  kind: z.enum(["artwork", "class", "service"]).optional(),
   craftType: z
     .enum(
       [

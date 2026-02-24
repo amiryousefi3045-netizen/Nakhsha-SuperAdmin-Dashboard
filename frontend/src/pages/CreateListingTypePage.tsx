@@ -4,10 +4,10 @@ import {
   ShoppingBag, // پست – محصول / صنایع‌دستی
   Compass, // تور – گردشگری
   GraduationCap, // آموزش – کارگاه / دوره
+  School, // آموزشگاه – مرکز ثابت
 } from "lucide-react";
 import ListingTypeCard from "../components/ListingTypeCard";
-
-type ListingType = "post" | "tour" | "training";
+import type { ListingType } from "../types/listing";
 
 interface CardConfig {
   type: ListingType;
@@ -49,6 +49,16 @@ const CARD_CONFIGS: CardConfig[] = [
     iconBg: "bg-amber-50",
     iconColor: "text-amber-600",
     accentBar: "bg-gradient-to-l from-amber-400 to-orange-500",
+  },
+  {
+    type: "academy",
+    icon: <School strokeWidth={1.8} />,
+    title: "آموزشگاه",
+    description:
+      "یک مرکز آموزش هنر، خلاقیت یا صنایع‌دستی را با اطلاعات تماس و ساعت کاری معرفی کنید.",
+    iconBg: "bg-violet-50",
+    iconColor: "text-violet-600",
+    accentBar: "bg-gradient-to-l from-violet-400 to-purple-600",
   },
 ];
 
@@ -101,7 +111,7 @@ export default function CreateListingTypePage() {
       </div>
 
       {/* ── Cards grid ── */}
-      <div className="w-full max-w-3xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {CARD_CONFIGS.map((card) => (
           <ListingTypeCard
             key={card.type}

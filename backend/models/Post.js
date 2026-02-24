@@ -45,7 +45,7 @@ const postSchema = new mongoose.Schema(
         type: {
           type: String,
           enum: ["Point"],
-          default: "Point",
+          // No default — prevents empty geometry when location is omitted
         },
         coordinates: {
           type: [Number], // [longitude, latitude]
@@ -80,8 +80,10 @@ const postSchema = new mongoose.Schema(
   },
 );
 
-// Geospatial index for location searches
-postSchema.index({ "location.geometry": "2dsphere" });
+// Geospatial index for location searches.
+// sparse:true skips documents that have no location, avoiding index errors
+// for posts created without coordinates.
+postSchema.index({ "location.geometry": "2dsphere" }, { sparse: true });
 
 // ============================================================================
 // PRODUCTION INDEXES

@@ -51,21 +51,22 @@ const craftSchema = new mongoose.Schema(
     location: {
       city: String,
       neighborhood: String,
-      // GeoJSON Point type for MongoDB geospatial queries
+      // GeoJSON Point type for MongoDB geospatial queries.
+      // Geometry is optional — crafts without coordinates are allowed
+      // (the 2dsphere index uses sparse:true to skip them).
       geometry: {
         type: {
           type: String,
           enum: ["Point"],
-          required: true,
-          default: "Point",
+          // No default — prevents empty geometry stub when no coordinates given
         },
         coordinates: {
           type: [Number], // [longitude, latitude]
-          required: true,
           validate: {
             validator: function (coords) {
+              // Empty array is valid (means no location provided)
+              if (!Array.isArray(coords) || coords.length === 0) return true;
               return (
-                Array.isArray(coords) &&
                 coords.length === 2 &&
                 coords[0] >= -180 &&
                 coords[0] <= 180 && // longitude
@@ -110,7 +111,8 @@ const craftSchema = new mongoose.Schema(
 // ============================================================================
 
 // Geospatial index for location-based searches (CRITICAL for nearby queries)
-craftSchema.index({ "location.geometry": "2dsphere" });
+// sparse:true skips crafts that don't have a geometry field
+craftSchema.index({ "location.geometry": "2dsphere" }, { sparse: true });
 
 // Compound index: author + createdAt for user's craft feed (descending for latest first)
 craftSchema.index({ author: 1, createdAt: -1 });
