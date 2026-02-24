@@ -39,6 +39,34 @@ export interface ReverseGeocodeResult {
   displayName: string;
 }
 
+/**
+ * Resolve a stored relative upload path (e.g. "/uploads/abc.webp") into a
+ * fully-qualified absolute URL suitable for use in <img src>.
+ *
+ * Resolution order:
+ *   1. If `pathOrUrl` already starts with http(s)://  → return as-is.
+ *   2. VITE_API_ORIGIN env var (explicit public origin).
+ *   3. SERVER_ORIGIN derived at module load time from VITE_API_BASE /
+ *      VITE_SERVER_ORIGIN / window.location.
+ *   4. Return the original value unchanged (best-effort).
+ *
+ * @param pathOrUrl  Relative path or absolute URL from an API response.
+ */
+export function toAbsoluteMediaUrl(pathOrUrl: string): string {
+  if (!pathOrUrl) return pathOrUrl;
+
+  // Already absolute
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+
+  const normalized = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+
+  const origin =
+    (import.meta.env.VITE_API_ORIGIN || "").replace(/\/+$/, "") ||
+    SERVER_ORIGIN.replace(/\/+$/, "");
+
+  return origin ? `${origin}${normalized}` : pathOrUrl;
+}
+
 export async function uploadImage(file: File | Blob): Promise<string> {
   const form = new FormData();
   form.append("file", file, file instanceof File ? file.name : "upload");
