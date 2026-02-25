@@ -6,6 +6,7 @@ import React, {
   type RefObject,
 } from "react";
 import { Link } from "react-router-dom";
+import { toAbsoluteMediaUrl } from "../services/media";
 
 const PLACEHOLDER =
   "data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22114%22 viewBox=%220 0 160 114%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2212%22 text-anchor=%22middle%22%3E%3Ctext x=%2280%22 y=%2258%22%3E%D8%A8%D8%AF%D9%88%D9%86 %D8%AA%D8%B5%D9%88%DB%8C%D8%B1%3C/text%3E%3C/g%3E%3C/svg%3E";
@@ -34,11 +35,13 @@ interface CraftCardProps {
 }
 
 const CraftCard: FC<CraftCardProps> = ({ craft }) => {
-  const [imgSrc, setImgSrc] = useState<string>(
-    craft.image ||
-      (Array.isArray(craft.images) && craft.images[0]) ||
-      PLACEHOLDER,
-  );
+  const rawSrc =
+    (craft.image ? toAbsoluteMediaUrl(craft.image) : "") ||
+    (Array.isArray(craft.images) && craft.images[0]
+      ? toAbsoluteMediaUrl(craft.images[0])
+      : "") ||
+    PLACEHOLDER;
+  const [imgSrc, setImgSrc] = useState<string>(rawSrc);
 
   const handleImgError = () => setImgSrc(PLACEHOLDER);
 

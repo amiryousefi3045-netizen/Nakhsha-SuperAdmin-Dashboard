@@ -1,5 +1,9 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { toAbsoluteMediaUrl } from "../services/media";
+
+const FALLBACK_THUMBNAIL =
+  "data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22320%22 height=%22180%22 viewBox=%220 0 320 180%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2214%22 text-anchor=%22middle%22%3E%3Ctext x=%22160%22 y=%2295%22%3E%D8%A8%D8%AF%D9%88%D9%86 %D8%AA%D8%B5%D9%88%DB%8C%D8%B1%3C/text%3E%3C/g%3E%3C/svg%3E";
 
 interface ContentCardProps {
   id: string; // Added id for navigation
@@ -92,10 +96,13 @@ const ContentCard: React.FC<ContentCardProps> = ({
       <div className="relative aspect-video bg-gray-100">
         {thumbnailUrl ? (
           <img
-            src={thumbnailUrl}
+            src={toAbsoluteMediaUrl(thumbnailUrl)}
             alt={title}
             className="w-full h-full object-cover"
             loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = FALLBACK_THUMBNAIL;
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

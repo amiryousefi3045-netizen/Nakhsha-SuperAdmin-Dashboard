@@ -6,6 +6,11 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet.markercluster";
 import CITY_POLYGONS from "../data/cityPolygons";
 import { simplifyDouglasPeucker, chaikinSmooth } from "../utils/geometry";
+import {
+  normalizeCoordinates,
+  type CoordSource,
+} from "../utils/normalizeCoordinates";
+import { toAbsoluteMediaUrl } from "../services/media";
 
 // Fix Leaflet default icon paths for Vite (dev and build)
 import iconUrl from "leaflet/dist/images/marker-icon.png";
@@ -26,17 +31,26 @@ interface MapCoords {
   lng: number;
 }
 
-interface MapItem {
+interface MapItem extends CoordSource {
   id?: string;
-  lat?: number;
-  lng?: number;
+  lat?: number | null;
+  lng?: number | null;
   title?: string;
   name?: string;
   image?: string | null;
   images?: string[];
   description?: string;
   type?: string;
-  location?: string | { city?: string; neighborhood?: string };
+  location?:
+    | string
+    | {
+        city?: string;
+        neighborhood?: string;
+        /** GeoJSON Point coordinates: [longitude, latitude] */
+        coordinates?: [number, number] | number[];
+        [key: string]: unknown;
+      }
+    | null;
   distanceMeters?: number;
 }
 
@@ -215,28 +229,34 @@ const Map = forwardRef<MapHandle, MapProps>(
       if (!map || !layer) return;
       layer.clearLayers();
 
-      (items || [])
-        .filter((i) => i && i.lat && i.lng)
-        .forEach((it) => {
-          const customIcon = L.divIcon({
-            html: `<div class="custom-marker-pill" style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 8px 16px; border-radius: 9999px; font-size: 13px; font-weight: 700; box-shadow: 0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1); border: 2px solid rgba(217,164,65,0.4); white-space: nowrap; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.3px;" onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 8px 20px rgba(26,95,122,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1)'">${String(it.title || it.name || "آثر").substring(0, 25)}</div>`,
-            className: "custom-marker-wrapper",
-            iconSize: [160, 40],
-            iconAnchor: [80, 20],
-            popupAnchor: [0, -20],
-          });
+      (items || []).forEach((it) => {
+        const coords = normalizeCoordinates(it);
+        if (!coords) return;
 
-          const marker = L.marker([it.lat!, it.lng!], { icon: customIcon });
+        const customIcon = L.divIcon({
+          html: `<div class="custom-marker-pill" style="background: linear-gradient(135deg, #1A5F7A 0%, #0d2e44 100%); color: white; padding: 8px 16px; border-radius: 9999px; font-size: 13px; font-weight: 700; box-shadow: 0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1); border: 2px solid rgba(217,164,65,0.4); white-space: nowrap; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.3px;" onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 8px 20px rgba(26,95,122,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 6px 16px rgba(26,95,122,0.25), inset 0 1px 0 rgba(255,255,255,0.1)'">${String(it.title || it.name || "آثر").substring(0, 25)}</div>`,
+          className: "custom-marker-wrapper",
+          iconSize: [160, 40],
+          iconAnchor: [80, 20],
+          popupAnchor: [0, -20],
+        });
 
-          const locationLabel =
-            typeof it.location === "string"
-              ? it.location
-              : it.location?.city || "موقعیت نامشخص";
+        const marker = L.marker([coords.lat, coords.lng], { icon: customIcon });
 
-          const popupHTML = `
+        const locationLabel =
+          typeof it.location === "string"
+            ? it.location
+            : it.location?.city || "موقعیت نامشخص";
+
+        const rawImgSrc =
+          it.image || (Array.isArray(it.images) && it.images[0]) || "";
+        const absImgSrc = rawImgSrc ? toAbsoluteMediaUrl(rawImgSrc) : "";
+        const fallbackImg =
+          "data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22260%22 height=%22150%22 viewBox=%220 0 260 150%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%229ca3af%22 font-family=%22Vazirmatn%2C sans-serif%22 font-size=%2213%22 text-anchor=%22middle%22%3E%3Ctext x=%22130%22 y=%2280%22%3E%D8%A8%D8%AF%D9%88%D9%86 %D8%AA%D8%B5%D9%88%DB%8C%D8%B1%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E";
+        const popupHTML = `
             <div style="max-width: 260px; overflow: hidden; border-radius: 18px; background: white; box-shadow: 0 12px 32px rgba(0,0,0,0.15); font-family: Vazirmatn, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
               <div style="width: 100%; height: 150px; overflow: hidden; background: #f3f4f6; position: relative;">
-                <img src="${String(it.image || (Array.isArray(it.images) && it.images[0]) || "").replace(/"/g, "&quot;")}" alt="${String(it.title || "").replace(/"/g, "&quot;")}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onerror="this.src='data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22260%22 height=%22150%22 viewBox=%220 0 260 150%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%229ca3af%22 font-family=%22Vazirmatn, sans-serif%22 font-size=%2213%22 text-anchor=%22middle%22%3E%3Ctext x=%22130%22 y=%2280%22%3Eبدون تصویر%3C/text%3E%3C/g%3E%3C/svg%3E'" />
+                <img src="${absImgSrc.replace(/"/g, "&quot;")}" alt="${String(it.title || "").replace(/"/g, "&quot;")}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onerror="this.src='${fallbackImg}'" />
               </div>
               <div style="padding: 14px 14px 12px 14px; text-align: right;">
                 <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #111827; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: Vazirmatn;">${String(it.title || it.name || "بدون عنوان").replace(/</g, "&lt;")}</h3>
@@ -247,23 +267,23 @@ const Map = forwardRef<MapHandle, MapProps>(
             </div>
           `;
 
-          marker.bindPopup(popupHTML, {
-            maxWidth: 260,
-            className: "craft-popup",
-          });
-
-          let tooltipText = it.title || it.name || "";
-          if (it.distanceMeters && typeof it.distanceMeters === "number") {
-            tooltipText += ` (${(it.distanceMeters / 1000).toFixed(1)} کم)`;
-          }
-          marker.bindTooltip(tooltipText, {
-            permanent: false,
-            direction: "top",
-            offset: [0, -10],
-          });
-
-          layer.addLayer(marker);
+        marker.bindPopup(popupHTML, {
+          maxWidth: 260,
+          className: "craft-popup",
         });
+
+        let tooltipText = it.title || it.name || "";
+        if (it.distanceMeters && typeof it.distanceMeters === "number") {
+          tooltipText += ` (${(it.distanceMeters / 1000).toFixed(1)} کم)`;
+        }
+        marker.bindTooltip(tooltipText, {
+          permanent: false,
+          direction: "top",
+          offset: [0, -10],
+        });
+
+        layer.addLayer(marker);
+      });
     }, [items]);
 
     // Recenter / animate if center prop changes + boundary highlight

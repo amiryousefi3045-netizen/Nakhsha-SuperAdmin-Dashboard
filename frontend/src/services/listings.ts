@@ -10,7 +10,60 @@ import type {
   NearListingsParams,
   NearListingsResponse,
   ListingWithDistance,
+  ListingItem,
 } from "../types/listings";
+
+// ── Normalization helpers ──────────────────────────────────────────────────
+
+/**
+ * Convert a raw backend ListingWithDistance into a frontend ListingItem.
+ *
+ * Coordinate resolution order:
+ *   1. Top-level `lat` / `lng` fields (including 0).
+ *   2. `location.coordinates` GeoJSON Point array → [lng, lat] → {lat, lng}.
+ */
+export function normalizeListingItem(raw: ListingWithDistance): ListingItem {
+  let lat: number | undefined;
+  let lng: number | undefined;
+
+  // Priority 1: flat lat/lng
+  if (typeof raw.lat === "number" && Number.isFinite(raw.lat)) lat = raw.lat;
+  if (typeof raw.lng === "number" && Number.isFinite(raw.lng)) lng = raw.lng;
+
+  // Priority 2: GeoJSON location.coordinates [lng, lat]
+  if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && raw.location) {
+    const loc =
+      typeof raw.location === "object" && raw.location !== null
+        ? raw.location
+        : null;
+    if (loc && Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
+      const rawLng = Number(loc.coordinates[0]);
+      const rawLat = Number(loc.coordinates[1]);
+      if (Number.isFinite(rawLat) && Number.isFinite(rawLng)) {
+        lat = rawLat;
+        lng = rawLng;
+      }
+    }
+  }
+
+  const images: string[] = Array.isArray(raw.images) ? raw.images : [];
+  const image = raw.image ?? images[0] ?? null;
+
+  return {
+    id: raw.id,
+    title: raw.title,
+    description: raw.description,
+    lat,
+    lng,
+    image,
+    images,
+    type: raw.listingType ?? raw.type,
+    location: raw.location ?? null,
+    distanceMeters: raw.distanceMeters,
+  };
+}
+
+export type { ListingItem };
 
 // ── API functions ──────────────────────────────────────────────────────────
 
@@ -73,4 +126,33 @@ export async function fetchListingsAuto(
     page: flat.page,
     limit: flat.limit,
   };
+}
+
+/**
+ * Fetch listings near a point and return normalised `ListingItem[]`.
+ *
+ * This is the preferred function for map markers — coordinates are always
+ * extracted (from flat lat/lng or GeoJSON coordinates) before being returned.
+ *
+ * @param params.lat      Latitude of search centre.
+ * @param params.lng      Longitude of search centre.
+ * @param params.radiusKm Search radius in kilometres (default 50).
+ * @param params.limit    Max results (default 100).
+ * @param params.type     Optional listing type filter (post/tour/training/academy).
+ */
+export async function fetchListingsNear(params: {
+  lat: number;
+  lng: number;
+  radiusKm?: number;
+  limit?: number;
+  type?: string;
+}): Promise<ListingItem[]> {
+  const response = await fetchNearListings({
+    lat: params.lat,
+    lng: params.lng,
+    radiusKm: params.radiusKm ?? 50,
+    limit: params.limit ?? 100,
+    ...(params.type ? { type: params.type } : {}),
+  });
+  return (response.items ?? []).map(normalizeListingItem);
 }

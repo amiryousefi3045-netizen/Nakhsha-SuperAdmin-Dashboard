@@ -458,4 +458,79 @@ describe("Craft Routes", () => {
       expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Image URL – absolute URL formatting
+  // ─────────────────────────────────────────────────────────────────────────
+  describe("Image URL absolute formatting", () => {
+    const BASE = "https://cdn.nakhsha.test";
+    let craftWithImage;
+
+    beforeEach(async () => {
+      craftWithImage = await Craft.create({
+        title: "سفال با تصویر",
+        description: "آزمایش URL تصویر",
+        kind: "artwork",
+        craftType: "pottery",
+        price: 1000000,
+        forSale: true,
+        author: testUser.id,
+        artisanId: testArtisan._id,
+        images: ["/uploads/test-craft.webp"],
+        location: {
+          city: "اصفهان",
+          geometry: { type: "Point", coordinates: [51.6746, 32.6546] },
+        },
+        isPublished: true,
+      });
+    });
+
+    it("returns absolute image URLs in GET /api/crafts list when PUBLIC_BASE_URL is set", async () => {
+      process.env.PUBLIC_BASE_URL = BASE;
+      try {
+        const response = await request(app).get("/api/crafts").expect(200);
+
+        const item = response.body.items.find(
+          (c) => String(c.id) === String(craftWithImage._id),
+        );
+        expect(item).toBeDefined();
+        expect(item.images).toHaveLength(1);
+        expect(item.images[0]).toBe(`${BASE}/uploads/test-craft.webp`);
+      } finally {
+        delete process.env.PUBLIC_BASE_URL;
+      }
+    });
+
+    it("returns absolute image URLs in GET /api/crafts/:id when PUBLIC_BASE_URL is set", async () => {
+      process.env.PUBLIC_BASE_URL = BASE;
+      try {
+        const response = await request(app)
+          .get(`/api/crafts/${craftWithImage._id}`)
+          .expect(200);
+
+        expect(response.body.images).toHaveLength(1);
+        expect(response.body.images[0]).toBe(`${BASE}/uploads/test-craft.webp`);
+      } finally {
+        delete process.env.PUBLIC_BASE_URL;
+      }
+    });
+
+    it("passes through already-absolute image URLs unchanged", async () => {
+      const absoluteUrl = "https://source.unsplash.com/800x600?sig=1";
+      await Craft.findByIdAndUpdate(craftWithImage._id, {
+        images: [absoluteUrl],
+      });
+
+      process.env.PUBLIC_BASE_URL = BASE;
+      try {
+        const response = await request(app)
+          .get(`/api/crafts/${craftWithImage._id}`)
+          .expect(200);
+
+        expect(response.body.images[0]).toBe(absoluteUrl);
+      } finally {
+        delete process.env.PUBLIC_BASE_URL;
+      }
+    });
+  });
 });

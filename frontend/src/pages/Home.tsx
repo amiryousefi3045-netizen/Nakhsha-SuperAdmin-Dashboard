@@ -16,6 +16,8 @@ import FilterToolbar from "../components/FilterToolbar";
 import BreadcrumbBar from "../components/BreadcrumbBar";
 import FilterChips from "../components/FilterChips";
 import { fetchCrafts, seedDev } from "../services/crafts";
+import { fetchListingsNear } from "../services/listings";
+import type { ListingItem } from "../types/listings";
 import type { CraftFilters } from "../types/api";
 import { toFa } from "../utils/number";
 import useGeolocation from "../hooks/useGeolocation";
@@ -73,6 +75,7 @@ const Home: FC = () => {
   const [page, setPage] = useState(1);
   const [limit] = useState(50);
   const [hasMore, setHasMore] = useState(false);
+  const [mapItems, setMapItems] = useState<ListingItem[]>([]);
   const [query, setQuery] = useState("");
   const [triedSeed, setTriedSeed] = useState(false);
   const [sort, setSort] = useState("newest");
@@ -212,6 +215,27 @@ const Home: FC = () => {
     setSearchParams(params, { replace: true });
   }, [filters, appliedBounds, mapDirty, query, sort, setSearchParams]);
 
+  // Fetch geospatial listings for map markers when user position is known
+  useEffect(() => {
+    if (!safeUserPos) return;
+    let ignore = false;
+    fetchListingsNear({
+      lat: safeUserPos.lat,
+      lng: safeUserPos.lng,
+      radiusKm: 50,
+      limit: 100,
+    })
+      .then((data) => {
+        if (!ignore) setMapItems(data);
+      })
+      .catch(() => {
+        /* silent: map will just show no markers */
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [safeUserPos]);
+
   // Reset page when filters change
   useEffect(() => {
     setItems([]);
@@ -324,7 +348,7 @@ const Home: FC = () => {
             ref={mapRef}
             center={manualSelectedPos || safeUserPos}
             selectedPos={manualSelectedPos}
-            items={items}
+            items={mapItems}
             showMyLocationButton
             onLocate={() => getPosition(true)}
             onMapClick={handleMapClick}
@@ -474,7 +498,7 @@ const Home: FC = () => {
             ref={mapRef}
             center={safeUserPos}
             selectedPos={manualSelectedPos}
-            items={items}
+            items={mapItems}
             showMyLocationButton
             onLocate={() => getPosition(true)}
             onMapClick={handleMapClick}

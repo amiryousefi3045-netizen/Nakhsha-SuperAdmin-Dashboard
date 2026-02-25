@@ -18,6 +18,13 @@ const {
 const { requireAuth } = require("../middleware/auth");
 const { createErrorResponse } = require("../utils/userDto");
 const { heavyLimiter } = require("../middleware/rateLimiter");
+const { toAbsoluteUrl } = require("../utils/urls");
+
+/** Convert every stored image path in an array to an absolute URL. */
+function mapImages(images, req) {
+  if (!Array.isArray(images)) return [];
+  return images.map((img) => toAbsoluteUrl(img, req));
+}
 
 const router = express.Router();
 
@@ -265,7 +272,7 @@ router.get("/", heavyLimiter, async (req, res) => {
         id: c._id,
         title: c.title,
         description: c.description,
-        images: c.images || [],
+        images: mapImages(c.images, req),
         craftType: c.craftType,
         price: c.price,
         forSale: c.forSale,
@@ -429,7 +436,7 @@ router.get(
           id: doc._id,
           title: doc.title,
           description: doc.description,
-          images: doc.images || [],
+          images: mapImages(doc.images, req),
           craftType: doc.craftType,
           price: doc.price,
           forSale: doc.forSale,
@@ -466,7 +473,7 @@ router.get(
         id: doc._id,
         title: doc.title,
         description: doc.description,
-        images: doc.images || [],
+        images: mapImages(doc.images, req),
         craftType: doc.craftType,
         price: doc.price,
         forSale: doc.forSale,
@@ -687,7 +694,7 @@ router.get("/:id", async (req, res) => {
       id: craft._id,
       title: craft.title,
       description: craft.description,
-      images: craft.images || [],
+      images: mapImages(craft.images, req),
       artisan: craft.artisanId
         ? { id: craft.artisanId._id, name: craft.artisanId.name }
         : undefined,

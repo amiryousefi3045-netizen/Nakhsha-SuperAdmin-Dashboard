@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchMyCrafts } from "../services/crafts";
+import { toAbsoluteMediaUrl } from "../services/media";
 // The CraftList component is a .jsx file; its import is implicitly `any` in TS.
 // We keep the import as-is to avoid refactoring other files.
 // @ts-ignore - allow importing the JS component without a declaration file
@@ -52,8 +53,10 @@ export default function MyCrafts(): React.ReactElement {
             id: (r._id as string) || r.id,
             title: r.title,
             image:
-              Array.isArray(r.images) && r.images[0] ? r.images[0] : undefined,
-            images: r.images,
+              Array.isArray(r.images) && r.images[0]
+                ? toAbsoluteMediaUrl(r.images[0])
+                : undefined,
+            images: r.images?.map(toAbsoluteMediaUrl),
             duration:
               r.duration ||
               (r.cookingTime?.total ? `${r.cookingTime.total} دقیقه` : ""),

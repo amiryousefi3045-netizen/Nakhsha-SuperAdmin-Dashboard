@@ -10,6 +10,7 @@ import {
   type CraftResponse,
   type CommentResponse,
 } from "../services/crafts";
+import { toAbsoluteMediaUrl } from "../services/media";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import CraftMeta from "../components/CraftMeta";
@@ -48,7 +49,7 @@ const MiniMap: React.FC<MiniMapProps> = ({ lat, lng, title }) => {
     }).setView([lat, lng], 12);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(
-      map
+      map,
     );
     L.marker([lat, lng])
       .addTo(map)
@@ -126,7 +127,9 @@ export const CraftDetail: React.FC = () => {
 
   const totalMinutes = data.craftingTime?.total;
   const timeFa = totalMinutes ? `${totalMinutes} دقیقه` : "";
-  const imgs = Array.isArray(data.images) ? data.images : [];
+  const imgs = (Array.isArray(data.images) ? data.images : []).map(
+    toAbsoluteMediaUrl,
+  );
   const realImage = imgs[0];
   const isFallback = !realImage;
 
@@ -169,7 +172,7 @@ export const CraftDetail: React.FC = () => {
               _liked: res.liked,
               _disliked: res.liked ? false : d._disliked,
             }
-          : d
+          : d,
       );
     } catch (err) {
       console.warn("Like failed:", err);
@@ -198,7 +201,7 @@ export const CraftDetail: React.FC = () => {
               _disliked: res.disliked,
               _liked: res.disliked ? false : d._liked,
             }
-          : d
+          : d,
       );
     } catch (err) {
       console.warn("Dislike failed:", err);
@@ -376,9 +379,13 @@ export const CraftDetail: React.FC = () => {
                 </div>
                 {st.image && (
                   <img
-                    src={st.image}
+                    src={toAbsoluteMediaUrl(st.image)}
                     alt={`مرحله ${st.step}`}
                     className="w-full rounded mt-2"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
+                    }}
                   />
                 )}
               </li>
