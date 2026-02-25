@@ -1,10 +1,14 @@
 /**
- * Unit tests for buildListingDraftPayload.
+ * Unit tests for buildListingDraftPayload and buildPayloadFromWizard.
  * Covers all four listing types, location conversion, and null behaviour.
  */
 import { describe, it, expect } from "vitest";
-import { buildListingDraftPayload } from "../listingDraft";
+import {
+  buildListingDraftPayload,
+  buildPayloadFromWizard,
+} from "../listingDraft";
 import type { WizardListingDraft } from "../../types/listing";
+import type { WizardData } from "../../context/WizardContext";
 
 // ── Shared base fields ────────────────────────────────────────────────────────
 
@@ -172,5 +176,187 @@ describe("buildListingDraftPayload", () => {
     };
 
     expect(buildListingDraftPayload(draft).location).toBeNull();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// buildPayloadFromWizard — all four types + location + images
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Minimal WizardData base — every field present so tests only override what they need. */
+const BASE_WIZARD: WizardData = {
+  type: "post",
+  title: "کوزه سفالین",
+  description: "یک کوزه دست‌ساز از یزد",
+  media: { items: [], coverId: undefined },
+  price: "",
+  currency: "تومان",
+  forSale: false,
+  capacity: "",
+  startDate: "",
+  endDate: "",
+  duration: "",
+  province: "",
+  city: "",
+  address: "",
+  geo: undefined,
+  category: "",
+  tags: ["سفالگری", "یزد"],
+};
+
+describe("buildPayloadFromWizard", () => {
+  // ── common assertions ──────────────────────────────────────────────────────
+
+  it("maps title, description, tags and images correctly", () => {
+    const payload = buildPayloadFromWizard(BASE_WIZARD, ["/uploads/a.webp"]);
+    expect(payload.title).toBe("کوزه سفالین");
+    expect(payload.description).toBe("یک کوزه دست‌ساز از یزد");
+    expect(payload.tags).toEqual(["سفالگری", "یزد"]);
+    expect(payload.images).toEqual(["/uploads/a.webp"]);
+  });
+
+  it("returns null location when geo is undefined", () => {
+    const payload = buildPayloadFromWizard(
+      { ...BASE_WIZARD, geo: undefined },
+      [],
+    );
+    expect(payload.location).toBeNull();
+  });
+
+  it("converts geo [lng, lat] to GeoJSON Point", () => {
+    const payload = buildPayloadFromWizard(
+      { ...BASE_WIZARD, geo: [51.3347, 35.7219] },
+      [],
+    );
+    expect(payload.location).toEqual({
+      type: "Point",
+      coordinates: [51.3347, 35.7219],
+    });
+  });
+
+  it("trims whitespace from title and description", () => {
+    const payload = buildPayloadFromWizard(
+      { ...BASE_WIZARD, title: "  عنوان  ", description: "  توضیح  " },
+      [],
+    );
+    expect(payload.title).toBe("عنوان");
+    expect(payload.description).toBe("توضیح");
+  });
+
+  // ── post ──────────────────────────────────────────────────────────────────
+
+  it("builds a post payload with price and forSale", () => {
+    const payload = buildPayloadFromWizard(
+      {
+        ...BASE_WIZARD,
+        type: "post",
+        forSale: true,
+        price: "250000",
+        currency: "تومان",
+        category: "سفالگری",
+      },
+      [],
+    );
+    expect(payload.type).toBe("post");
+    expect(payload.details.forSale).toBe(true);
+    expect(payload.details.price).toBe(250_000);
+    expect(payload.details.currency).toBe("تومان");
+    expect(payload.details.category).toBe("سفالگری");
+    // schedule-specific keys must be absent
+    expect("startDate" in payload.details).toBe(false);
+    expect("schedule" in payload.details).toBe(false);
+  });
+
+  it("omits price fields for a free post (forSale=false)", () => {
+    const payload = buildPayloadFromWizard(
+      { ...BASE_WIZARD, type: "post", forSale: false, price: "100000" },
+      [],
+    );
+    expect(payload.details.forSale).toBe(false);
+    expect("price" in payload.details).toBe(false);
+    expect("currency" in payload.details).toBe(false);
+  });
+
+  // ── tour ──────────────────────────────────────────────────────────────────
+
+  it("builds a tour payload with schedule dates and capacity", () => {
+    const payload = buildPayloadFromWizard(
+      {
+        ...BASE_WIZARD,
+        type: "tour",
+        startDate: "2026-05-10",
+        endDate: "2026-05-12",
+        duration: "۳ روز",
+        capacity: "15",
+      },
+      [],
+    );
+    expect(payload.type).toBe("tour");
+    expect(payload.details.startDate).toBe("2026-05-10");
+    expect(payload.details.endDate).toBe("2026-05-12");
+    expect(payload.details.duration).toBe("۳ روز");
+    expect(payload.details.capacity).toBe(15);
+    // post-specific keys must be absent
+    expect("price" in payload.details).toBe(false);
+    expect("forSale" in payload.details).toBe(false);
+  });
+
+  // ── training ──────────────────────────────────────────────────────────────
+
+  it("builds a training payload with start date and capacity", () => {
+    const payload = buildPayloadFromWizard(
+      {
+        ...BASE_WIZARD,
+        type: "training",
+        startDate: "2026-03-01",
+        endDate: "2026-06-01",
+        duration: "۳ ساعت",
+        capacity: "8",
+      },
+      [],
+    );
+    expect(payload.type).toBe("training");
+    expect(payload.details.startDate).toBe("2026-03-01");
+    expect(payload.details.endDate).toBe("2026-06-01");
+    expect(payload.details.duration).toBe("۳ ساعت");
+    expect(payload.details.capacity).toBe(8);
+    // tour-specific key must be absent
+    expect("itinerary" in payload.details).toBe(false);
+  });
+
+  // ── academy ───────────────────────────────────────────────────────────────
+
+  it("builds an academy payload with addressDetails from address field", () => {
+    const payload = buildPayloadFromWizard(
+      {
+        ...BASE_WIZARD,
+        type: "academy",
+        address: "پاساژ هنر، واحد ۱۲",
+        city: "تهران",
+        province: "تهران",
+      },
+      [],
+    );
+    expect(payload.type).toBe("academy");
+    expect(payload.details.addressDetails).toBe("پاساژ هنر، واحد ۱۲");
+    expect(payload.details.city).toBe("تهران");
+    expect(payload.details.province).toBe("تهران");
+    // schedule/price must be absent
+    expect("schedule" in payload.details).toBe(false);
+    expect("price" in payload.details).toBe(false);
+    expect("startDate" in payload.details).toBe(false);
+  });
+
+  // ── images passthrough ────────────────────────────────────────────────────
+
+  it("passes through multiple image paths in order", () => {
+    const paths = ["/uploads/a.webp", "/uploads/b.webp", "/uploads/c.webp"];
+    const payload = buildPayloadFromWizard(BASE_WIZARD, paths);
+    expect(payload.images).toEqual(paths);
+  });
+
+  it("returns empty images array when no paths are provided", () => {
+    const payload = buildPayloadFromWizard(BASE_WIZARD, []);
+    expect(payload.images).toEqual([]);
   });
 });

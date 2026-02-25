@@ -10,6 +10,7 @@ import type {
   ListingType,
   WizardListingDraft,
 } from "../types/listing";
+import type { WizardData } from "../context/WizardContext";
 
 // ── Output type ───────────────────────────────────────────────────────────────
 
@@ -18,8 +19,11 @@ export interface ListingDraftPayload {
   title: string;
   description: string;
   tags: string[];
-  /** Images are serialised separately (multipart); always empty at draft stage. */
-  images: [];
+  /**
+   * Relative paths of pre-uploaded images; empty array at draft stage,
+   * filled with server paths after `uploadImages()` is called.
+   */
+  images: string[];
   /** GeoJSON Point when both coordinates are valid finite numbers; null otherwise. */
   location: GeoPoint | null;
   /** Type-specific details — only fields relevant to the chosen listingType. */
@@ -107,4 +111,78 @@ export function buildListingDraftPayload(
   }
 
   return { ...base, details };
+}
+
+// ── Wizard-data → API payload converter ──────────────────────────────────────
+
+/**
+ * Build the POST /api/listings payload directly from the WizardData state.
+ *
+ * Unlike `buildListingDraftPayload` (which takes `WizardListingDraft`), this
+ * function works with the flat `WizardData` shape produced by WizardContext.
+ *
+ * @param data        Live wizard state (title, description, geo, tags, etc.).
+ * @param imagePaths  Relative server paths from `uploadImages()` — e.g.
+ *                    ["/uploads/craft.webp"]. Pass [] when no images were added.
+ */
+export function buildPayloadFromWizard(
+  data: WizardData,
+  imagePaths: string[],
+): ListingDraftPayload {
+  // data.geo is stored as [lng, lat] (GeoJSON convention from the map picker)
+  const location: GeoPoint | null = data.geo
+    ? { type: "Point", coordinates: data.geo }
+    : null;
+
+  const tags = data.tags.filter(Boolean);
+
+  const details: Record<string, unknown> = {};
+
+  // Location city/province are useful search/display metadata in the backend.
+  if (data.city.trim()) details.city = data.city.trim();
+  if (data.province) details.province = data.province;
+  if (data.address.trim()) details.address = data.address.trim();
+
+  switch (data.type) {
+    case "post": {
+      details.forSale = data.forSale;
+      if (data.forSale && data.price !== "") {
+        details.price = Number(data.price);
+        details.currency = data.currency;
+      }
+      if (data.category.trim()) details.category = data.category.trim();
+      break;
+    }
+    case "tour": {
+      if (data.startDate) details.startDate = data.startDate;
+      if (data.endDate) details.endDate = data.endDate;
+      if (data.duration.trim()) details.duration = data.duration.trim();
+      if (data.capacity !== "") details.capacity = Number(data.capacity);
+      break;
+    }
+    case "training": {
+      // Training uses date-range schedule (wizard collects startDate/endDate/duration)
+      if (data.startDate) details.startDate = data.startDate;
+      if (data.endDate) details.endDate = data.endDate;
+      if (data.duration.trim()) details.duration = data.duration.trim();
+      if (data.capacity !== "") details.capacity = Number(data.capacity);
+      break;
+    }
+    case "academy": {
+      // Address is the primary academy-specific detail available from the wizard.
+      // phone / workingHours / website can be added post-creation via profile edit.
+      if (data.address.trim()) details.addressDetails = data.address.trim();
+      break;
+    }
+  }
+
+  return {
+    type: data.type,
+    title: data.title.trim(),
+    description: data.description.trim(),
+    tags,
+    images: imagePaths,
+    location,
+    details,
+  };
 }

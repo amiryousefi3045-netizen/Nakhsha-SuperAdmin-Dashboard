@@ -43,6 +43,9 @@ import {
   type MediaItem,
   type WizardMedia,
 } from "../context/WizardContext";
+import { uploadImages } from "../services/uploads";
+import { buildPayloadFromWizard } from "../services/listingDraft";
+import { createListing, type Listing } from "../services/listings";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1070,8 +1073,25 @@ const STEP_COMPONENTS: FC[] = [
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 
-const SuccessScreen: FC<{ onReset: () => void }> = ({ onReset }) => {
+const SuccessScreen: FC<{
+  onReset: () => void;
+  listingId?: string;
+  listingType?: ListingType;
+}> = ({ onReset, listingId, listingType }) => {
   const navigate = useNavigate();
+
+  function getDetailRoute(type: ListingType, id: string): string {
+    switch (type) {
+      case "post":
+        return `/p/${id}`;
+      case "tour":
+        return `/tour/${id}`;
+      case "training":
+      case "academy":
+        return `/learn/${id}`;
+    }
+  }
+
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-5">
       <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center">
@@ -1084,6 +1104,15 @@ const SuccessScreen: FC<{ onReset: () => void }> = ({ onReset }) => {
         آگهی شما در صف بررسی قرار گرفت و به‌زودی منتشر خواهد شد.
       </p>
       <div className="flex gap-3">
+        {listingId && listingType && (
+          <button
+            type="button"
+            onClick={() => navigate(getDetailRoute(listingType, listingId))}
+            className="px-5 py-2.5 rounded-xl border border-[var(--color-primary)] text-[var(--color-primary)] text-sm font-semibold hover:bg-[var(--color-primary)]/5 transition"
+          >
+            مشاهده آگهی
+          </button>
+        )}
         <button
           type="button"
           onClick={() => navigate("/")}
@@ -1120,14 +1149,75 @@ const WizardContent: FC = () => {
 
   // published state
   const [published, setPublished] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [createdListing, setCreatedListing] = useState<Listing | null>(null);
 
   const isFirst = currentStep === 0;
   const isLast = currentStep === totalSteps - 1;
 
+  /**
+   * Called when the user clicks the publish button on the final step.
+   * 1. Upload image files from wizard media.
+   * 2. Build and POST the listing payload.
+   * 3. Show success screen or display a typed error message.
+   */
+  const handlePublish = async () => {
+    if (publishing) return;
+    setPublishError(null);
+    setPublishing(true);
+    try {
+      // ─ 1. Upload images (skip videos; backend listing images are images only) ─
+      const imageFiles = data.media.items
+        .filter((m) => m.type === "image")
+        .map((m) => m.file);
+
+      const uploadedFiles = await uploadImages(imageFiles);
+      const imagePaths = uploadedFiles.map((f) => f.path);
+
+      // ─ 2. Build payload ─
+      const payload = buildPayloadFromWizard(data, imagePaths);
+
+      // ─ 3. Create listing ─
+      const listing = await createListing(payload);
+
+      // ─ 4. Success ─
+      setCreatedListing(listing);
+      setPublished(true);
+    } catch (err: unknown) {
+      const apiErr = err as {
+        code?: string;
+        message?: string;
+        status?: number;
+      };
+      const code = apiErr?.code ?? "";
+      const status = apiErr?.status ?? 0;
+      if (code === "UNAUTHORIZED" || status === 401) {
+        setPublishError(
+          "برای انتشار آگهی باید ابتدا وارد حساب کاربری خود شوید.",
+        );
+      } else if (code === "FORBIDDEN" || status === 403) {
+        setPublishError("برای انتشار آگهی باید پروفایل صنعتگر داشته باشید.");
+      } else if (
+        code === "VALIDATION_ERROR" ||
+        status === 400 ||
+        code === "BAD_REQUEST"
+      ) {
+        setPublishError(
+          apiErr?.message ||
+            "اطلاعات وارد شده نامعتبر است. لطفاً ورودی‌ها را بررسی کنید.",
+        );
+      } else {
+        setPublishError("خطایی در انتشار آگهی رخ داد. لطفاً دوباره تلاش کنید.");
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const handleNext = () => {
     if (isLast) {
-      // TODO: call API here; for now simulate success
-      setPublished(true);
+      handlePublish();
     } else {
       tryGoNext();
     }
@@ -1140,8 +1230,11 @@ const WizardContent: FC = () => {
       <SuccessScreen
         onReset={() => {
           setPublished(false);
+          setCreatedListing(null);
           resetWizard(data.type);
         }}
+        listingId={createdListing?.id ?? createdListing?._id}
+        listingType={data.type}
       />
     );
   }
@@ -1178,15 +1271,24 @@ const WizardContent: FC = () => {
             {stepError}
           </div>
         )}
+
+        {/* Publish error */}
+        {publishError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
+            {publishError}
+          </div>
+        )}
       </div>
 
       {/* Navigation bar */}
       <div dir="rtl" className="flex items-center justify-between gap-3">
         <button
           type="button"
+          disabled={publishing}
           onClick={isFirst ? () => navigate("/create") : goBack}
           className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text)]
-            hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors duration-150"
+            hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors duration-150
+            disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-4 h-4" />
           {isFirst ? "انتخاب نوع" : "مرحله قبل"}
@@ -1198,7 +1300,8 @@ const WizardContent: FC = () => {
             <button
               key={i}
               type="button"
-              onClick={() => i < currentStep && goToStep(i)}
+              disabled={publishing}
+              onClick={() => !publishing && i < currentStep && goToStep(i)}
               className={[
                 "rounded-full transition-all duration-200",
                 i === currentStep
@@ -1213,13 +1316,43 @@ const WizardContent: FC = () => {
 
         <button
           type="button"
+          disabled={publishing}
           onClick={handleNext}
           className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold
-            hover:brightness-110 active:scale-95 transition-all duration-150"
+            hover:brightness-110 active:scale-95 transition-all duration-150
+            disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
         >
-          {isLast ? "انتشار آگهی" : "مرحله بعد"}
-          {!isLast && <ChevronLeft className="w-4 h-4" />}
-          {isLast && <CheckCircle2 className="w-4 h-4" />}
+          {isLast && publishing ? (
+            <>
+              <svg
+                className="animate-spin h-4 w-4 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
+              در حال انتشار…
+            </>
+          ) : (
+            <>
+              {isLast ? "انتشار آگهی" : "مرحله بعد"}
+              {!isLast && <ChevronLeft className="w-4 h-4" />}
+              {isLast && <CheckCircle2 className="w-4 h-4" />}
+            </>
+          )}
         </button>
       </div>
     </div>
