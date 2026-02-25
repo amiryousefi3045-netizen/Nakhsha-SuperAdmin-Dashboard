@@ -12,6 +12,40 @@ import type {
   ListingWithDistance,
   ListingItem,
 } from "../types/listings";
+import type { ListingDraftPayload } from "./listingDraft";
+import type { GeoPoint } from "../types/listing";
+import { toAbsoluteMediaUrl } from "./media";
+
+// ── Listing (API response item) ────────────────────────────────────────────
+
+/**
+ * Shape of a Listing item as returned by POST /api/listings or
+ * embedded inside GET /api/listings/:id responses.
+ */
+export interface Listing {
+  _id: string;
+  /** Normalised `id` alias (may equal `_id`). */
+  id?: string;
+  type: "post" | "tour" | "training" | "academy";
+  title: string;
+  description?: string;
+  tags?: string[];
+  /** Stored relative paths as returned by the backend (may need toAbsoluteMediaUrl). */
+  images?: string[];
+  /** Fully-resolved absolute image URLs, populated when X-Client header is sent. */
+  imagesAbs?: string[];
+  location?: GeoPoint | null;
+  details?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Backend success envelope for POST /api/listings. */
+interface CreateListingEnvelope {
+  success: true;
+  data: { item: Listing };
+  reqId: string | null;
+}
 
 // ── Normalization helpers ──────────────────────────────────────────────────
 
@@ -46,8 +80,12 @@ export function normalizeListingItem(raw: ListingWithDistance): ListingItem {
     }
   }
 
-  const images: string[] = Array.isArray(raw.images) ? raw.images : [];
-  const image = raw.image ?? images[0] ?? null;
+  // Prefer server-resolved absolute URLs; fall back to toAbsoluteMediaUrl on raw paths.
+  const images: string[] =
+    Array.isArray(raw.imagesAbs) && raw.imagesAbs.length > 0
+      ? raw.imagesAbs
+      : (Array.isArray(raw.images) ? raw.images : []).map(toAbsoluteMediaUrl);
+  const image = raw.image ? toAbsoluteMediaUrl(raw.image) : (images[0] ?? null);
 
   return {
     id: raw.id,
@@ -155,4 +193,25 @@ export async function fetchListingsNear(params: {
     ...(params.type ? { type: params.type } : {}),
   });
   return (response.items ?? []).map(normalizeListingItem);
+}
+
+/**
+ * Create a new listing.
+ *
+ * @param payload  Built via `buildListingDraftPayload`; images should be
+ *                 pre-uploaded paths returned by `uploadImages`.
+ * @returns        The created `Listing` item from the backend envelope.
+ * @throws         `ApiError` when the request fails.
+ */
+export async function createListing(
+  payload: ListingDraftPayload,
+): Promise<Listing> {
+  const result = await apiClient.post<CreateListingEnvelope>(
+    "/listings",
+    payload,
+  );
+  if (!result.success) throw result.error!;
+  const item = result.data?.data?.item;
+  if (!item) throw new Error("پاسخ سرور نامعتبر است: آیتم بازگردانده نشد");
+  return item;
 }

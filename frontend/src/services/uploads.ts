@@ -114,10 +114,12 @@ export async function uploadImages(
     /** If supplied, failures are collected here instead of throwing. */
     onError?: (index: number, message: string) => void;
   },
-): Promise<string[]> {
+): Promise<UploadedFile[]> {
   if (!files.length) return [];
 
-  const results: Array<string | null> = new Array(files.length).fill(null);
+  const results: Array<UploadedFile | null> = new Array(files.length).fill(
+    null,
+  );
 
   // Process in batches of MAX_CONCURRENCY
   for (let start = 0; start < files.length; start += MAX_CONCURRENCY) {
@@ -130,7 +132,7 @@ export async function uploadImages(
           const uploaded = await uploadSingleFile(file, (pct) =>
             options?.onFileProgress?.(globalIdx, pct),
           );
-          results[globalIdx] = uploaded.url;
+          results[globalIdx] = uploaded;
         } catch (err) {
           const message =
             err instanceof Error ? err.message : "خطا در آپلود تصویر";
@@ -145,7 +147,7 @@ export async function uploadImages(
   }
 
   // Filter out any nulls (from suppressed errors via onError)
-  return results.filter((u): u is string => u !== null);
+  return results.filter((u): u is UploadedFile => u !== null);
 }
 
 /**

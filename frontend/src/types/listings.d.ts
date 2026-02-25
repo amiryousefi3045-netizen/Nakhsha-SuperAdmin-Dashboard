@@ -39,6 +39,8 @@ export type ListingWithDistance = {
   type?: string;
   image?: string | null;
   images?: string[];
+  /** Fully-resolved absolute image URLs sent by the backend (X-Client enriched). */
+  imagesAbs?: string[];
 };
 
 /**
