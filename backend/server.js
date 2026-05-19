@@ -39,6 +39,12 @@ const allowedOrigins = (
 logger.info("Origins allowed for CORS:", { origins: allowedOrigins });
 
 const app = express();
+
+// Trust the first reverse proxy (nginx in Docker / production).
+// Required for express-rate-limit to read X-Forwarded-For correctly
+// and avoid the ERR_ERL_UNEXPECTED_X_FORWARDED_FOR validation error.
+app.set("trust proxy", 1);
+
 app.locals.dbReady = false;
 
 // Request ID middleware — must be first so req.id is available everywhere
@@ -318,6 +324,8 @@ app.use(
 require("./models/User");
 // Register Craft model (wrapper) so crafts routes have the model available
 const Craft = require("./models/Craft");
+// Register Draft model for autosave functionality
+const Draft = require("./models/Draft");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
 const postsRoutes = require("./routes/posts");
@@ -326,6 +334,7 @@ const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 const listingsNearRoutes = require("./routes/listings.near");
 const listingsRoutes = require("./routes/listings");
+const draftRoutes = require("./routes/drafts");
 const healthRoutes = require("./routes/health");
 // Heavy-endpoint rate limiter — also applied per-route inside the route files;
 // the app.use() here acts as a second layer for any future routes added under
@@ -343,12 +352,14 @@ app.use("/api/crafts", craftRoutes);
 // Mount posts API
 app.use("/api/posts", postsRoutes);
 // (Removed compatibility alias to /api/recipes)
+// Mount draft autosave routes FIRST so /draft and /draft/latest are matched before /:id
+app.use("/api/listings", draftRoutes);
 // Mount the new near-search route.
 // heavyLimiter is also applied per-route inside listings.near.js; the
 // app.use() layer here covers any additional routes added to this prefix.
 app.use("/api/listings", heavyLimiter, listingsNearRoutes);
 // Mount canonical listings CRUD (POST /api/listings, GET /api/listings/:id).
-// Must come AFTER listingsNearRoutes so the /near path is matched first.
+// Must come AFTER listingsNearRoutes and draftRoutes so those paths are matched first.
 app.use("/api/listings", listingsRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);

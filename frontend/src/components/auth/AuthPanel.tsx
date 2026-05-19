@@ -13,7 +13,7 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
   const [step, setStep] = useState<"PHONE" | "CODE">("PHONE");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(120);

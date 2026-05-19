@@ -74,6 +74,10 @@ const postDetailsSchema = z.object({
 const tourDetailsSchema = z.object({
   /** ISO date string, e.g. "2026-05-10" or "2026-05-10T09:00:00Z" */
   startDate: z.string().optional(),
+  /** ISO date string for when the tour ends. */
+  endDate: z.string().optional(),
+  /** Human-readable duration string from the wizard, e.g. "3 روز". */
+  duration: z.string().trim().optional(),
   durationDays: z
     .number()
     .int()
@@ -98,9 +102,16 @@ const scheduleItemSchema = z.object({
 });
 
 const trainingDetailsSchema = z.object({
+  /** Weekly recurring schedule slots — optional when using date-range form. */
   schedule: z
     .array(scheduleItemSchema)
-    .min(1, "حداقل یک زمان‌بندی در برنامه الزامی است"),
+    .min(1, "حداقل یک زمان‌بندی در برنامه الزامی است")
+    .optional(),
+  /** Date-range style scheduling collected by the wizard. */
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  duration: z.string().trim().optional(),
+  capacity: z.number().int().positive("ظرفیت باید عدد مثبت باشد").optional(),
   level: z.string().trim().optional(),
   instructor: z.string().trim().optional(),
 });

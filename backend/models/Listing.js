@@ -47,6 +47,15 @@ const listingSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "مالک الزامی است"],
     },
+    /**
+     * Link to draft that created this listing (for tracking draft→listing flow)
+     * Sparse index allows this field to be missing for legacy listings.
+     */
+    draftId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Draft",
+      sparse: true,
+    },
     status: {
       type: String,
       enum: ["draft", "published"],
@@ -118,6 +127,9 @@ listingSchema.index(
 /** Compound index for per-owner content sorted by recency. */
 listingSchema.index({ owner: 1, createdAt: -1 });
 
+/** Sparse index for draft linking (only indexes listings created from drafts). */
+listingSchema.index({ draftId: 1 }, { sparse: true });
+
 const Listing = mongoose.model("Listing", listingSchema);
 
 // ── PostListing discriminator ─────────────────────────────────────────────────
@@ -140,6 +152,10 @@ const TourListing = Listing.discriminator(
   new mongoose.Schema({
     /** ISO date string or Date object for when the tour starts. */
     startDate: { type: Date },
+    /** ISO date string or Date object for when the tour ends. */
+    endDate: { type: Date },
+    /** Human-readable duration string from the wizard, e.g. "3 روز". */
+    duration: { type: String, trim: true },
     durationDays: { type: Number, min: 1 },
     capacity: { type: Number, min: 1 },
     itinerary: { type: String, trim: true },
@@ -175,14 +191,16 @@ const scheduleItemSchema = new mongoose.Schema(
 const TrainingListing = Listing.discriminator(
   "training",
   new mongoose.Schema({
+    /** Weekly recurring schedule slots (optional when using date-range form). */
     schedule: {
       type: [scheduleItemSchema],
-      required: [true, "برنامه زمانی الزامی است"],
-      validate: {
-        validator: (arr) => Array.isArray(arr) && arr.length > 0,
-        message: "حداقل یک زمان‌بندی باید در برنامه وجود داشته باشد",
-      },
+      default: undefined,
     },
+    /** Date-range style scheduling collected by the wizard. */
+    startDate: { type: Date },
+    endDate: { type: Date },
+    duration: { type: String, trim: true },
+    capacity: { type: Number, min: 1 },
     level: { type: String, trim: true },
     instructor: { type: String, trim: true },
   }),

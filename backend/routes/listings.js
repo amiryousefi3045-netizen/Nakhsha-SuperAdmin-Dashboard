@@ -82,6 +82,8 @@ function formatListingItem(doc, req) {
       return {
         ...base,
         startDate: doc.startDate,
+        endDate: doc.endDate,
+        duration: doc.duration,
         durationDays: doc.durationDays,
         capacity: doc.capacity,
         itinerary: doc.itinerary,
@@ -90,6 +92,10 @@ function formatListingItem(doc, req) {
       return {
         ...base,
         schedule: doc.schedule,
+        startDate: doc.startDate,
+        endDate: doc.endDate,
+        duration: doc.duration,
+        capacity: doc.capacity,
         level: doc.level,
         instructor: doc.instructor,
       };

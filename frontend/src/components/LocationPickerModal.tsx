@@ -1,19 +1,4 @@
-﻿/**
- * LocationPickerModal
- *
- * Opens a full-screen modal with a Leaflet map centred on Iran.
- * Click anywhere on the map (or drag the marker) to:
- *   1. Place a draggable marker
- *   2. Trigger debounced reverse geocoding (Nominatim by default)
- *   3. Preview the resolved address
- *
- * On "ØªØ£ÛŒÛŒØ¯ Ù…ÙˆÙ‚Ø¹ÛŒØª" the parent receives:
- *   { geo: [lng, lat], city?, state?, address?, formattedAddress? }
- *
- * To swap the geocoding backend, call `setReverseGeocodeProvider` from
- * utils/reverseGeocode.ts at app startup.
- */
-import { type FC, useCallback, useEffect, useRef, useState } from "react";
+﻿import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -32,8 +17,6 @@ import {
 // Apply icon fix once (idempotent)
 L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
 
-// â”€â”€â”€ Public types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 export interface LocationPickerResult extends ReverseGeocodeResult {
   /** GeoJSON Point coordinates [lng, lat] */
   geo: [number, number];
@@ -46,8 +29,6 @@ export interface LocationPickerModalProps {
   /** Pre-existing coordinates [lng, lat] to show as marker on open */
   initialGeo?: [number, number];
 }
-
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Geographic centre of Iran */
 const IRAN_CENTER: [number, number] = [32.4279, 53.688];

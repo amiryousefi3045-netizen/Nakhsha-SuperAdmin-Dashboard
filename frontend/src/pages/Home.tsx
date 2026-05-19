@@ -215,15 +215,18 @@ const Home: FC = () => {
     setSearchParams(params, { replace: true });
   }, [filters, appliedBounds, mapDirty, query, sort, setSearchParams]);
 
-  // Fetch geospatial listings for map markers when user position is known
+  // Fetch geospatial listings for map markers.
+  // Use the user's resolved position when available; fall back to the map's
+  // default centre (approximate centre of Iran) so markers are visible even
+  // before geolocation resolves.
   useEffect(() => {
-    if (!safeUserPos) return;
+    const centre = safeUserPos ?? { lat: 32.4279, lng: 53.688 };
     let ignore = false;
     fetchListingsNear({
-      lat: safeUserPos.lat,
-      lng: safeUserPos.lng,
-      radiusKm: 50,
-      limit: 100,
+      lat: centre.lat,
+      lng: centre.lng,
+      radiusKm: 10,
+      limit: 200,
     })
       .then((data) => {
         if (!ignore) setMapItems(data);

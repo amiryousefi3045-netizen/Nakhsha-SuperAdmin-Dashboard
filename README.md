@@ -12,10 +12,18 @@
 
 ### 🚀 شروع سریع
 
-برای استقرار پروژه:
+**برای توسعه محلی (Local Development) — توصیه شده:**
 
-- **با aaPanel**: [`Document/AAPANEL_QUICK_START.md`](Document/AAPANEL_QUICK_START.md)
-- **با Docker**: [`Document/DOCKER_COMPLETE_GUIDE.md`](Document/DOCKER_COMPLETE_GUIDE.md)
+- 👉 **[`SETUP_LOCAL_DEVELOPMENT.md`](SETUP_LOCAL_DEVELOPMENT.md)** — راهنمای کامل برای شروع توسعه محلی با Node.js و MongoDB
+
+**برای استقرار بر روی سرور (VPS):**
+
+- 👉 **[`DEPLOYMENT_VPS_NODOCKER.md`](DEPLOYMENT_VPS_NODOCKER.md)** — راهنمای استقرار بر روی Ubuntu/Debian VPS (بدون Docker)
+
+**مستندات دیگر:**
+
+- **aaPanel**: [`Document/AAPANEL_QUICK_START.md`](Document/AAPANEL_QUICK_START.md)
+- **Docker** (Legacy): [`Document/DOCKER_COMPLETE_GUIDE.md`](Document/DOCKER_COMPLETE_GUIDE.md)
 
 ### 📖 فهرست کامل مستندات
 
@@ -38,56 +46,75 @@ Nakhsha/
 
 ---
 
-## 🚀 استقرار سریع
+## 🚀 شروع سریع
 
-### روش ۱: با Docker Compose (توصیه می‌شود)
+### توسعه محلی (Local Development) — روش تشویق‌شده
 
 ```bash
 # Clone پروژه
 git clone https://github.com/yourusername/Nakhsha.git
 cd Nakhsha
 
-# ساخت فایل .env برای backend
-cp backend/.env.example backend/.env
-# ویرایش و تنظیم مقادیر
+# نصب وابستگی‌ها
+npm install
+npm install --prefix backend
+npm install --prefix frontend
 
-# اجرا
-docker-compose up -d
+# تنظیم متغیرهای محیطی
+cp .env.example .env
+# ویرایش .env و تنظیم JWT_SECRET و MONGODB_URI
+
+cp backend/.env.example backend/.env
+# ویرایش backend/.env
+
+# اطمینان از اجرای MongoDB بر روی localhost:27017
+
+# اجرای Backend + Frontend به‌صورت هم‌زمان
+npm run dev
 ```
 
 پروژه در دسترس است:
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
-- MongoDB: localhost:27018
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:5000
+- **MongoDB**: localhost:27017
 
-### روش ۲: بدون Docker
+**برای راهنمای کامل**: 👉 [`SETUP_LOCAL_DEVELOPMENT.md`](SETUP_LOCAL_DEVELOPMENT.md)
 
-#### Backend
+### استقرار بر روی سرور (VPS)
 
-```bash
-cd backend
-npm install
-cp .env.example .env
-# ویرایش .env و تنظیم MONGODB_URI
-npm run dev
-```
-
-#### Frontend
+برای استقرار بر روی Ubuntu/Debian VPS:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# SSH به سرور
+ssh root@your-vps-ip
+
+# دنبال کردن راهنما
+# 👉 DEPLOYMENT_VPS_NODOCKER.md
 ```
+
+**برای راهنمای کامل**: 👉 [`DEPLOYMENT_VPS_NODOCKER.md`](DEPLOYMENT_VPS_NODOCKER.md)
 
 ---
 
 ## 🐳 استقرار Production
 
-### با aaPanel
+### بر روی VPS (Linux)
 
-از Docker Hub images استفاده کنید:
+**توصیه شده**: استقرار بر روی Ubuntu/Debian VPS با Nginx + systemd
+
+👉 **راهنمای کامل**: [`DEPLOYMENT_VPS_NODOCKER.md`](DEPLOYMENT_VPS_NODOCKER.md)
+
+**خلاصه:**
+
+- MongoDB بر روی localhost:27017
+- Backend Node.js در systemd service (localhost:5000)
+- Nginx reverse proxy (ports 80/443)
+- SSL از Let's Encrypt
+
+### با aaPanel (Legacy)
+
+اگر از aaPanel استفاده می‌کنید:
 
 ```bash
 # روی سرور
@@ -96,9 +123,9 @@ docker-compose -f docker-compose.aapanel.yml up -d
 
 **راهنمای کامل**: [Document/AAPANEL_DEPLOYMENT_GUIDE.md](Document/AAPANEL_DEPLOYMENT_GUIDE.md)
 
-### با Docker Images از Docker Hub
+### Docker (Legacy - توصیه نمی‌شود)
 
-ایمیج‌های آماده:
+ایمیج‌های آماده (برای ارجاع):
 
 - Backend: `omid3179/nakhsha-backend:latest`
 - Frontend: `omid3179/nakhsha-frontend:latest`

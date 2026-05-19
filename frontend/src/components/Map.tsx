@@ -39,6 +39,8 @@ interface MapItem extends CoordSource {
   name?: string;
   image?: string | null;
   images?: string[];
+  /** Fully-resolved absolute image URLs provided by the backend (preferred). */
+  imagesAbs?: string[];
   description?: string;
   type?: string;
   location?:
@@ -248,9 +250,16 @@ const Map = forwardRef<MapHandle, MapProps>(
             ? it.location
             : it.location?.city || "موقعیت نامشخص";
 
-        const rawImgSrc =
-          it.image || (Array.isArray(it.images) && it.images[0]) || "";
-        const absImgSrc = rawImgSrc ? toAbsoluteMediaUrl(rawImgSrc) : "";
+        // Prefer server-resolved absolute URLs (imagesAbs), then fall back to
+        // image/images with client-side resolution.
+        const absImgSrc =
+          (Array.isArray(it.imagesAbs) && it.imagesAbs.length > 0
+            ? it.imagesAbs[0]
+            : null) ??
+          (it.image ? toAbsoluteMediaUrl(it.image) : null) ??
+          (Array.isArray(it.images) && it.images[0]
+            ? toAbsoluteMediaUrl(it.images[0])
+            : "");
         const fallbackImg =
           "data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22260%22 height=%22150%22 viewBox=%220 0 260 150%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23e5e7eb%22/%3E%3Cg fill=%229ca3af%22 font-family=%22Vazirmatn%2C sans-serif%22 font-size=%2213%22 text-anchor=%22middle%22%3E%3Ctext x=%22130%22 y=%2280%22%3E%D8%A8%D8%AF%D9%88%D9%86 %D8%AA%D8%B5%D9%88%DB%8C%D8%B1%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E";
         const popupHTML = `
@@ -439,7 +448,11 @@ const Map = forwardRef<MapHandle, MapProps>(
         }
         selectedMarkerRef.current = null;
       }
-      if (selectedPos?.lat && selectedPos?.lng) {
+      if (
+        selectedPos != null &&
+        Number.isFinite(selectedPos.lat) &&
+        Number.isFinite(selectedPos.lng)
+      ) {
         const selIcon = L.divIcon({
           html: '<div style="width:18px;height:18px;background: linear-gradient(135deg, #111827 0%, #1f2937 100%);border-radius:50%;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>',
           className: "",
