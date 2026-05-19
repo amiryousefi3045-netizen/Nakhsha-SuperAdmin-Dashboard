@@ -26,8 +26,10 @@ const {
   DETAILS_SCHEMAS,
 } = require("../utils/listingValidation");
 const logger = require("../utils/logger");
+const ListingController = require("../controllers/ListingController");
 
 const router = express.Router();
+const listingController = new ListingController();
 
 // ── Discriminator model map ───────────────────────────────────────────────────
 
@@ -303,5 +305,62 @@ router.get("/:id", async (req, res) => {
       );
   }
 });
+
+// ── PATCH /api/listings/:id ────────────────────────────────────────────────────
+/**
+ * Update a listing with revision control and image diffing.
+ *
+ * Requires authentication. Only listing owner can update.
+ *
+ * Body:
+ * {
+ *   title?: string                      (optional, min 5 chars)
+ *   description?: string                (optional)
+ *   tags?: string[]                     (optional)
+ *   images?: string[]                   (optional, relative paths)
+ *   location?: { type:'Point', coordinates:[lng,lat] }  (optional)
+ *   revision: number                    (required for optimistic lock)
+ *   details?: { …type-specific fields… }  (optional)
+ *   reason?: string                     (optional: audit trail)
+ * }
+ */
+router.patch("/:id", requireAuth, (req, res) =>
+  listingController.patchListing(req, res),
+);
+
+// ── GET /api/listings/:id/edit ─────────────────────────────────────────────────
+/**
+ * Get listing data optimized for edit form population.
+ * Includes all necessary fields but excludes heavy audit data.
+ *
+ * Optional auth: restricted to owner if authenticated.
+ */
+router.get("/:id/edit", (req, res) =>
+  listingController.getListingForEdit(req, res),
+);
+
+// ── GET /api/listings/:id/history ─────────────────────────────────────────────
+/**
+ * Get edit history for a listing.
+ * Shows who edited what and when.
+ *
+ * Query params:
+ * - limit?: number (max 100, default 50)
+ */
+router.get("/:id/history", (req, res) =>
+  listingController.getListingHistory(req, res),
+);
+
+// ── GET /api/listings/:id/revisions/:revision ──────────────────────────────────
+/**
+ * Get specific revision diff.
+ * Shows what changed in a particular revision.
+ *
+ * URL params:
+ * - revision: number (revision to retrieve)
+ */
+router.get("/:id/revisions/:revision", (req, res) =>
+  listingController.getRevisionDiff(req, res),
+);
 
 module.exports = router;

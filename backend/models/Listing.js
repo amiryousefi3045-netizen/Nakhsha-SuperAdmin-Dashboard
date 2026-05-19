@@ -62,11 +62,21 @@ const listingSchema = new mongoose.Schema(
       default: "draft",
     },
     /**
-     * Optional GeoJSON Point for map-based queries.
-     * coordinates: [longitude, latitude]  (per GeoJSON spec)
+     * Enhanced location schema with address and GeoJSON Point.
      *
-     * Documents without a location simply omit this field; the sparse 2dsphere
-     * index skips them automatically.
+     * coordinates: [longitude, latitude]  (per GeoJSON spec)
+     * All address fields are optional; the sparse 2dsphere index on
+     * location.geometry skips documents without coordinates.
+     *
+     * Example:
+     * {
+     *   "type": "Point",
+     *   "coordinates": [51.389, 35.689],
+     *   "city": "تهران",
+     *   "province": "تهران",
+     *   "district": "بلوار فرردوسی",
+     *   "address": "خیابان ولیعصر، پلاک ۱۲۳"
+     * }
      */
     location: {
       type: {
@@ -84,9 +94,70 @@ const listingSchema = new mongoose.Schema(
             return lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
           },
           message:
-            "مختصات جغرافیایی نامعتبر — باید [ln, lat] در محدوده‌های مجاز باشد",
+            "مختصات جغرافیایی نامعتبر — باید [lng, lat] در محدوده‌های مجاز باشد",
         },
       },
+      /** City name (e.g., "تهران", "اصفهان"). Indexed for filtering. */
+      city: {
+        type: String,
+        trim: true,
+        maxlength: 100,
+        sparse: true,
+      },
+      /** Province/state name (e.g., "تهران", "اصفهان"). Indexed for filtering. */
+      province: {
+        type: String,
+        trim: true,
+        maxlength: 100,
+        sparse: true,
+      },
+      /** District/neighborhood (e.g., "بلوار فرردوسی"). Optional detail for precision. */
+      district: {
+        type: String,
+        trim: true,
+        maxlength: 150,
+        sparse: true,
+      },
+      /** Full address string. For display and detailed location info. */
+      address: {
+        type: String,
+        trim: true,
+        maxlength: 500,
+        sparse: true,
+      },
+    },
+    /**
+     * Revision number for optimistic concurrency control and conflict detection.
+     * Incremented on every successful update.
+     */
+    revision: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    /**
+     * Edit history tracking: array of edit records.
+     * Each record contains:
+     *   - timestamp: when the edit was made
+     *   - editor: user ID who made the edit
+     *   - changes: map of field names to their old values
+     *   - newRevision: revision number after this edit
+     */
+    editHistory: {
+      type: [
+        {
+          timestamp: { type: Date, required: true, default: Date.now },
+          editor: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          changes: { type: Map, of: mongoose.Schema.Types.Mixed },
+          newRevision: { type: Number, required: true },
+          reason: { type: String, trim: true }, // Optional: why was this edit made?
+        },
+      ],
+      default: [],
     },
   },
   {
@@ -104,11 +175,34 @@ const listingSchema = new mongoose.Schema(
 // ── Indexes ───────────────────────────────────────────────────────────────────
 
 /**
- * Sparse 2dsphere index.
- * sparse:true → documents without the location field are skipped, so the
- * index can coexist with records that have no location.
+ * Sparse 2dsphere index for geospatial queries.
+ * sparse:true → documents without the location.coordinates field are skipped,
+ * so the index can coexist with records that have no location.
+ *
+ * CRITICAL: Must be named so it can be explicitly checked/created.
  */
-listingSchema.index({ location: "2dsphere" }, { sparse: true });
+listingSchema.index(
+  { "location.coordinates": "2dsphere" },
+  { sparse: true, name: "location_geo_idx" }
+);
+
+/**
+ * Compound index for location-based filtering with city/province.
+ * Speeds up filters like: { "location.city": "تهران", "location.province": "تهران" }
+ */
+listingSchema.index(
+  { "location.city": 1, "location.province": 1, createdAt: -1 },
+  { sparse: true, name: "location_city_province_idx" }
+);
+
+/**
+ * Compound index for geospatial + category filtering (common query pattern).
+ * Speeds up: { "location.coordinates": "2dsphere", category: 1 }
+ */
+listingSchema.index(
+  { "location.coordinates": "2dsphere", category: 1 },
+  { sparse: true, name: "location_category_idx" }
+);
 
 /**
  * Full-text search across title, description, and tags.
@@ -129,6 +223,9 @@ listingSchema.index({ owner: 1, createdAt: -1 });
 
 /** Sparse index for draft linking (only indexes listings created from drafts). */
 listingSchema.index({ draftId: 1 }, { sparse: true });
+
+/** Index for optimistic concurrency control lookups. */
+listingSchema.index({ _id: 1, revision: 1 });
 
 const Listing = mongoose.model("Listing", listingSchema);
 

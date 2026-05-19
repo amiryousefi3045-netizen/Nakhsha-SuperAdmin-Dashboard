@@ -131,10 +131,91 @@ const DETAILS_SCHEMAS = {
   academy: academyDetailsSchema,
 };
 
+// ── Update/PATCH schemas (partial updates) ───────────────────────────────────
+
+/**
+ * Base schema for partial updates.
+ * All fields are optional (since it's a PATCH operation).
+ *
+ * Includes:
+ * - Common fields (title, description, tags, location, images)
+ * - Revision number for optimistic concurrency control
+ * - Reason for the edit (optional audit trail)
+ */
+const updateListingBaseSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(5, "عنوان باید حداقل ۵ کاراکتر باشد")
+    .max(200, "عنوان نباید بیش از ۲۰۰ کاراکتر باشد")
+    .optional(),
+  description: z
+    .string()
+    .trim()
+    .min(1, "توضیحات الزامی است")
+    .max(5000, "توضیحات نباید بیش از ۵۰۰۰ کاراکتر باشد")
+    .optional(),
+  tags: z.array(z.string()).optional(),
+  images: z.array(z.string()).optional(),
+  location: geoPointSchema.optional(),
+  /** Revision number for optimistic concurrency control (required for safety) */
+  revision: z.number().int().nonnegative("نسخه نباید منفی باشد").optional(),
+  /** Optional reason/description for why this edit was made */
+  reason: z.string().trim().max(500).optional(),
+  /** Optional custom details field for type-specific updates */
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * Per-type detail update schemas (partial).
+ */
+const postUpdateDetailsSchema = z.object({
+  price: z.number().nonnegative("قیمت نباید منفی باشد").optional(),
+  forSale: z.boolean().optional(),
+  category: z.string().trim().optional(),
+  attributes: z.record(z.string(), z.string()).optional(),
+});
+
+const tourUpdateDetailsSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  duration: z.string().trim().optional(),
+  durationDays: z.number().int().positive().optional(),
+  capacity: z.number().int().positive().optional(),
+  itinerary: z.string().trim().optional(),
+});
+
+const trainingUpdateDetailsSchema = z.object({
+  schedule: z.array(scheduleItemSchema).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  duration: z.string().trim().optional(),
+  capacity: z.number().int().positive().optional(),
+  level: z.string().trim().optional(),
+  instructor: z.string().trim().optional(),
+});
+
+const academyUpdateDetailsSchema = z.object({
+  addressDetails: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  workingHours: z.string().trim().optional(),
+  website: z.string().trim().optional(),
+});
+
+/** Map from listing type to its update details schema. */
+const UPDATE_DETAILS_SCHEMAS = {
+  post: postUpdateDetailsSchema,
+  tour: tourUpdateDetailsSchema,
+  training: trainingUpdateDetailsSchema,
+  academy: academyUpdateDetailsSchema,
+};
+
 // ── Exported helpers ──────────────────────────────────────────────────────────
 
 module.exports = {
   createListingBaseSchema,
   DETAILS_SCHEMAS,
   geoPointSchema,
+  updateListingBaseSchema,
+  UPDATE_DETAILS_SCHEMAS,
 };
