@@ -85,19 +85,23 @@ backend/
 #### Step 1: Initialize Draft (User opens form)
 
 **Frontend:**
+
 ```javascript
-const createDraftResponse = await fetch('/api/listings/draft', {
-  method: 'POST',
+const createDraftResponse = await fetch("/api/listings/draft", {
+  method: "POST",
   headers: { Authorization: `Bearer ${token}` },
-  body: JSON.stringify({ type: 'post', currentStep: 1 })
+  body: JSON.stringify({ type: "post", currentStep: 1 }),
 });
-const { data: { draft } } = await createDraftResponse.json();
+const {
+  data: { draft },
+} = await createDraftResponse.json();
 // draft._id = "65e8a1b2..."
 // draft._version = 0
 // draft.draftVersion = 0
 ```
 
 **Backend Flow:**
+
 ```
 DraftController.createDraft()
   └─ req.body = { type: 'post', currentStep: 1 }
@@ -110,6 +114,7 @@ DraftController.createDraft()
 ```
 
 **Database:**
+
 ```javascript
 // Inserted into db.drafts:
 {
@@ -131,20 +136,21 @@ DraftController.createDraft()
 #### Step 2: User Types Title & Description (Debounced Autosave)
 
 **Frontend:**
+
 ```javascript
 const autosave = debounce(async () => {
   const response = await fetch(`/api/listings/65e8a1b2c3d4e5f6g7h8i9j0/draft`, {
-    method: 'PATCH',
+    method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
-      _version: 0,  // Client's current version
+      _version: 0, // Client's current version
       currentStep: 1,
       data: {
-        title: 'Handmade Carpet',
-        description: 'Beautiful traditional carpet with natural dyes',
-        tags: ['carpet', 'traditional']
-      }
-    })
+        title: "Handmade Carpet",
+        description: "Beautiful traditional carpet with natural dyes",
+        tags: ["carpet", "traditional"],
+      },
+    }),
   });
   const { data } = await response.json();
   setCurrentVersion(data.draft._version); // Update to 1
@@ -154,6 +160,7 @@ const autosave = debounce(async () => {
 ```
 
 **Backend Flow:**
+
 ```
 DraftController.updateDraft()
   └─ req.body = { _version: 0, currentStep: 1, data: {...} }
@@ -163,7 +170,7 @@ DraftController.updateDraft()
       ├─ Detect changes: { title, description, tags }
       │  hasChanges = true, changedFields = ['title', 'description', 'tags']
       └─ DraftRepository.updateDraftPartial(
-          draftId, 
+          draftId,
           { title, description, tags },
           expectedVersion: 0,
           incrementVersion: true
@@ -179,6 +186,7 @@ DraftController.updateDraft()
 ```
 
 **Database Update:**
+
 ```javascript
 // db.drafts.findByIdAndUpdate(
 //   {_id: ObjectId("65e8a1b2...")},
@@ -197,6 +205,7 @@ DraftController.updateDraft()
 ```
 
 **Frontend Response:**
+
 ```json
 {
   "success": true,
@@ -221,10 +230,12 @@ DraftController.updateDraft()
 #### Step 3: Race Condition - Concurrent Edits
 
 **Two clients, same draft:**
+
 - **Client A** sends: `_version: 1, data: { price: 500000 }`
 - **Client B** sends: `_version: 1, data: { forSale: false }`
 
 **First to arrive (Client A):**
+
 ```
 ✓ version matches (db._version = 1)
 → update succeeds
@@ -234,6 +245,7 @@ DraftController.updateDraft()
 ```
 
 **Second to arrive (Client B):**
+
 ```
 ✗ version mismatch (db._version = 2, expected = 1)
 → update fails
@@ -243,6 +255,7 @@ DraftController.updateDraft()
 ```
 
 **409 Response (Conflict):**
+
 ```json
 {
   "success": false,
@@ -263,18 +276,21 @@ DraftController.updateDraft()
 ```
 
 **Frontend Recovery:**
+
 ```javascript
 if (response.status === 409) {
   // Option 1: Show conflict dialog
   showDialog("Draft updated elsewhere. Reload changes?");
-  
+
   // Option 2: Auto-reload latest
-  const latestDraft = await fetch('/api/listings/draft/latest');
-  const { data: { draft } } = await latestDraft.json();
+  const latestDraft = await fetch("/api/listings/draft/latest");
+  const {
+    data: { draft },
+  } = await latestDraft.json();
   setState({
     draft,
     currentVersion: draft._version,
-    hasConflict: true
+    hasConflict: true,
   });
 }
 ```
@@ -284,18 +300,23 @@ if (response.status === 409) {
 #### Step 4: Publish to Listing
 
 **Frontend:**
+
 ```javascript
-const publishResponse = await fetch(`/api/listings/65e8a1b2c3d4e5f6g7h8i9j0/publish`, {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${token}` },
-  body: JSON.stringify({
-    // Optional final overrides
-    category: 'traditional-carpets'
-  })
-});
+const publishResponse = await fetch(
+  `/api/listings/65e8a1b2c3d4e5f6g7h8i9j0/publish`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      // Optional final overrides
+      category: "traditional-carpets",
+    }),
+  },
+);
 ```
 
 **Backend Flow:**
+
 ```
 DraftController.publishDraft()
   └─ req.params.draftId = "65e8a1b2c3d4e5f6g7h8i9j0"
@@ -373,7 +394,7 @@ _version: 0          _version: 0          _version: 0
                     │
              Response 200   Response 409
              v: 1 ✓         (v: 1, not 0)
-             
+
 Client A: _v=1      Client B: conflict!
 Proceed             Reload & retry
 ```
@@ -383,7 +404,7 @@ Proceed             Reload & retry
 ```javascript
 async updateDraftPartial(draftId, changes, expectedVersion, incrementVersion) {
   const draft = await this.getDraftByIdForUpdate(draftId);
-  
+
   // Check: does DB version match client's expected version?
   if (draft._version !== expectedVersion) {
     return {
@@ -393,12 +414,12 @@ async updateDraftPartial(draftId, changes, expectedVersion, incrementVersion) {
       expectedVersion
     };
   }
-  
+
   // Version matches → safe to update
   Object.assign(draft, changes);
   draft._version += 1;  // Increment for next client
   await draft.save();
-  
+
   return { success: true, draft };
 }
 ```
@@ -414,22 +435,22 @@ async updateDraftPartial(draftId, changes, expectedVersion, incrementVersion) {
 ```javascript
 const detectChanges = (oldData, newData) => {
   const changedFields = [];
-  
+
   Object.keys(newData || {}).forEach((key) => {
     if (JSON.stringify(oldData?.[key]) !== JSON.stringify(newData[key])) {
       changedFields.push(key);
     }
   });
-  
+
   return {
     changedFields,
-    hasChanges: changedFields.length > 0
+    hasChanges: changedFields.length > 0,
   };
 };
 
 // Called in DraftService.autosaveDraft():
 const { hasChanges } = detectChanges(draft, autosavePayload.data);
-const incrementVersion = hasChanges;  // Only if actual changes
+const incrementVersion = hasChanges; // Only if actual changes
 ```
 
 **Result:**
@@ -465,7 +486,7 @@ incrementVersion: false
 // Schema definition:
 draftSchema.index(
   { createdAt: 1 },
-  { expireAfterSeconds: 90 * 24 * 60 * 60 }  // 7,776,000 seconds
+  { expireAfterSeconds: 90 * 24 * 60 * 60 }, // 7,776,000 seconds
 );
 
 // MongoDB background process scans every 60s:
@@ -473,6 +494,7 @@ draftSchema.index(
 ```
 
 **Implication:** Each PATCH updates `updatedAt` but NOT `createdAt`, so TTL timer is NOT reset.
+
 - Solution: If you want to extend TTL, manually update `createdAt` in special cases (admin recovery feature).
 
 ---
@@ -480,44 +502,48 @@ draftSchema.index(
 ## Type-Specific Discriminators
 
 ### Post Type
+
 ```javascript
-const post = await DraftService.initializeDraft(userId, 'post', {
-  title: 'Item',
+const post = await DraftService.initializeDraft(userId, "post", {
+  title: "Item",
   price: 100,
   forSale: true,
-  category: 'pottery'
+  category: "pottery",
 });
 // Fields: price, forSale, category, attributes (Map)
 ```
 
 ### Tour Type
+
 ```javascript
-const tour = await DraftService.initializeDraft(userId, 'tour', {
-  title: 'Tour',
-  startDate: '2025-06-01T09:00:00Z',
-  endDate: '2025-06-03T18:00:00Z',
-  capacity: 20
+const tour = await DraftService.initializeDraft(userId, "tour", {
+  title: "Tour",
+  startDate: "2025-06-01T09:00:00Z",
+  endDate: "2025-06-03T18:00:00Z",
+  capacity: 20,
 });
 // Fields: startDate, endDate, duration, durationDays, capacity, itinerary
 ```
 
 ### Training Type
+
 ```javascript
-const training = await DraftService.initializeDraft(userId, 'training', {
-  title: 'Course',
+const training = await DraftService.initializeDraft(userId, "training", {
+  title: "Course",
   capacity: 15,
-  level: 'beginner',
-  instructor: 'Name'
+  level: "beginner",
+  instructor: "Name",
 });
 // Fields: schedule, startDate, endDate, duration, capacity, level, instructor
 ```
 
 ### Academy Type
+
 ```javascript
-const academy = await DraftService.initializeDraft(userId, 'academy', {
-  title: 'Institute',
-  addressDetails: '123 Street',
-  phone: '+98-31-12345678'
+const academy = await DraftService.initializeDraft(userId, "academy", {
+  title: "Institute",
+  addressDetails: "123 Street",
+  phone: "+98-31-12345678",
 });
 // Fields: addressDetails, phone, workingHours, website
 ```
@@ -530,7 +556,7 @@ const academy = await DraftService.initializeDraft(userId, 'academy', {
 
 ```javascript
 // DraftContext.js
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback } from "react";
 
 const DraftContext = createContext();
 
@@ -542,13 +568,13 @@ export function DraftProvider({ children }) {
   const [lastSavedAt, setLastSavedAt] = useState(null);
 
   const createDraft = useCallback(async (type, initialData) => {
-    const response = await fetch('/api/listings/draft', {
-      method: 'POST',
+    const response = await fetch("/api/listings/draft", {
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ type, ...initialData })
+      body: JSON.stringify({ type, ...initialData }),
     });
     const result = await response.json();
     if (result.success) {
@@ -558,72 +584,80 @@ export function DraftProvider({ children }) {
     return result;
   }, []);
 
-  const autosaveDraft = useCallback(async (data, currentStep) => {
-    if (!draft) return { success: false };
-    
-    setIsSaving(true);
-    try {
-      const response = await fetch(`/api/listings/${draft._id}/draft`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          _version: currentVersion,
-          currentStep,
-          data
-        })
-      });
-      
-      const result = await response.json();
-      
-      if (response.status === 409) {
-        setLastError('Draft updated elsewhere. Reloading...');
-        // Reload latest draft
-        const latest = await fetch('/api/listings/draft/latest');
-        const latestResult = await latest.json();
-        setDraft(latestResult.data.draft);
-        setCurrentVersion(latestResult.data.draft._version);
-      } else if (result.success) {
-        setDraft(result.data.draft);
-        setCurrentVersion(result.data.draft._version);
-        setLastSavedAt(result.data.draft.lastAutosavedAt);
-        setLastError(null);
-      }
-      
-      return result;
-    } finally {
-      setIsSaving(false);
-    }
-  }, [draft, currentVersion]);
+  const autosaveDraft = useCallback(
+    async (data, currentStep) => {
+      if (!draft) return { success: false };
 
-  const publishDraft = useCallback(async (finalData = {}) => {
-    if (!draft) return { success: false };
-    
-    const response = await fetch(`/api/listings/${draft._id}/publish`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(finalData)
-    });
-    
-    return await response.json();
-  }, [draft]);
+      setIsSaving(true);
+      try {
+        const response = await fetch(`/api/listings/${draft._id}/draft`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            _version: currentVersion,
+            currentStep,
+            data,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (response.status === 409) {
+          setLastError("Draft updated elsewhere. Reloading...");
+          // Reload latest draft
+          const latest = await fetch("/api/listings/draft/latest");
+          const latestResult = await latest.json();
+          setDraft(latestResult.data.draft);
+          setCurrentVersion(latestResult.data.draft._version);
+        } else if (result.success) {
+          setDraft(result.data.draft);
+          setCurrentVersion(result.data.draft._version);
+          setLastSavedAt(result.data.draft.lastAutosavedAt);
+          setLastError(null);
+        }
+
+        return result;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [draft, currentVersion],
+  );
+
+  const publishDraft = useCallback(
+    async (finalData = {}) => {
+      if (!draft) return { success: false };
+
+      const response = await fetch(`/api/listings/${draft._id}/publish`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(finalData),
+      });
+
+      return await response.json();
+    },
+    [draft],
+  );
 
   return (
-    <DraftContext.Provider value={{
-      draft,
-      currentVersion,
-      isSaving,
-      lastError,
-      lastSavedAt,
-      createDraft,
-      autosaveDraft,
-      publishDraft
-    }}>
+    <DraftContext.Provider
+      value={{
+        draft,
+        currentVersion,
+        isSaving,
+        lastError,
+        lastSavedAt,
+        createDraft,
+        autosaveDraft,
+        publishDraft,
+      }}
+    >
       {children}
     </DraftContext.Provider>
   );
@@ -638,11 +672,12 @@ export function useDraft() {
 
 ```javascript
 // ListingWizard.jsx
-import { useDraft } from './DraftContext';
-import { useCallback, useEffect, useState } from 'react';
+import { useDraft } from "./DraftContext";
+import { useCallback, useEffect, useState } from "react";
 
 export function ListingWizard() {
-  const { draft, currentVersion, createDraft, autosaveDraft, publishDraft } = useDraft();
+  const { draft, currentVersion, createDraft, autosaveDraft, publishDraft } =
+    useDraft();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
   const [errors, setErrors] = useState({});
@@ -650,7 +685,7 @@ export function ListingWizard() {
   // Initialize draft on mount
   useEffect(() => {
     if (!draft) {
-      createDraft('post', { currentStep: 1 });
+      createDraft("post", { currentStep: 1 });
     }
   }, [draft]);
 
@@ -658,14 +693,16 @@ export function ListingWizard() {
   const debouncedAutosave = useCallback(
     debounce(async (data) => {
       const result = await autosaveDraft(data, currentStep);
-      if (!result.success && result.error?.code === 'INCOMPLETE_DRAFT') {
-        setErrors(result.error.missingFields.reduce((acc, field) => {
-          acc[field] = 'Required';
-          return acc;
-        }, {}));
+      if (!result.success && result.error?.code === "INCOMPLETE_DRAFT") {
+        setErrors(
+          result.error.missingFields.reduce((acc, field) => {
+            acc[field] = "Required";
+            return acc;
+          }, {}),
+        );
       }
     }, 5000),
-    [autosaveDraft, currentStep]
+    [autosaveDraft, currentStep],
   );
 
   const handleFieldChange = (field, value) => {
@@ -686,11 +723,13 @@ export function ListingWizard() {
     const result = await publishDraft();
     if (result.success) {
       navigate(`/listings/${result.data.listing._id}`);
-    } else if (result.error?.code === 'INCOMPLETE_DRAFT') {
-      setErrors(result.error.missingFields.reduce((acc, field) => {
-        acc[field] = 'Required for publication';
-        return acc;
-      }, {}));
+    } else if (result.error?.code === "INCOMPLETE_DRAFT") {
+      setErrors(
+        result.error.missingFields.reduce((acc, field) => {
+          acc[field] = "Required for publication";
+          return acc;
+        }, {}),
+      );
     }
   };
 
@@ -699,29 +738,31 @@ export function ListingWizard() {
       {currentStep === 1 && (
         <>
           <input
-            value={formData.title || ''}
-            onChange={(e) => handleFieldChange('title', e.target.value)}
+            value={formData.title || ""}
+            onChange={(e) => handleFieldChange("title", e.target.value)}
             placeholder="Title"
           />
           <textarea
-            value={formData.description || ''}
-            onChange={(e) => handleFieldChange('description', e.target.value)}
+            value={formData.description || ""}
+            onChange={(e) => handleFieldChange("description", e.target.value)}
             placeholder="Description"
           />
         </>
       )}
-      
+
       {currentStep === 2 && (
         <>
           <input
             type="number"
-            value={formData.price || ''}
-            onChange={(e) => handleFieldChange('price', parseFloat(e.target.value))}
+            value={formData.price || ""}
+            onChange={(e) =>
+              handleFieldChange("price", parseFloat(e.target.value))
+            }
             placeholder="Price"
           />
         </>
       )}
-      
+
       <button onClick={handleNext}>Next</button>
       <button onClick={handleSubmit}>Submit</button>
     </div>
@@ -747,12 +788,13 @@ function debounce(func, delay) {
 **Cause:** Frontend not updating `_version` after successful PATCH
 
 **Fix:**
+
 ```javascript
 // ✗ Wrong
 const autosave = async (data) => {
   const res = await fetch(`/api/listings/${draftId}/draft`, {
-    method: 'PATCH',
-    body: JSON.stringify({ _version: 0, data })  // Always 0!
+    method: "PATCH",
+    body: JSON.stringify({ _version: 0, data }), // Always 0!
   });
 };
 
@@ -761,11 +803,11 @@ const [currentVersion, setCurrentVersion] = useState(draft._version);
 
 const autosave = async (data) => {
   const res = await fetch(`/api/listings/${draftId}/draft`, {
-    method: 'PATCH',
-    body: JSON.stringify({ _version: currentVersion, data })
+    method: "PATCH",
+    body: JSON.stringify({ _version: currentVersion, data }),
   });
   const result = await res.json();
-  setCurrentVersion(result.data.draft._version);  // Update!
+  setCurrentVersion(result.data.draft._version); // Update!
 };
 ```
 
@@ -774,23 +816,27 @@ const autosave = async (data) => {
 **Cause:** Frontend lost `draftId` (stored only in React state, not localStorage)
 
 **Fix:**
+
 ```javascript
 // On mount, retrieve latest draft
 useEffect(() => {
-  const savedDraftId = localStorage.getItem('draftId');
+  const savedDraftId = localStorage.getItem("draftId");
   if (savedDraftId) {
     // Verify it still exists
     fetch(`/api/listings/draft/${savedDraftId}`)
-      .then(r => r.json())
-      .then(result => setDraft(result.data.draft));
+      .then((r) => r.json())
+      .then((result) => setDraft(result.data.draft));
   }
 }, []);
 
 // On create, persist ID
 const createDraft = async (type) => {
-  const result = await fetch('/api/listings/draft', { method: 'POST', body: JSON.stringify({ type }) });
+  const result = await fetch("/api/listings/draft", {
+    method: "POST",
+    body: JSON.stringify({ type }),
+  });
   const draft = result.data.draft;
-  localStorage.setItem('draftId', draft._id);
+  localStorage.setItem("draftId", draft._id);
   setDraft(draft);
 };
 ```
@@ -842,17 +888,16 @@ const createDraft = async (type) => {
 
 ```javascript
 // Draft created
-logger.info('Draft created', { draftId, type, ownerId });
+logger.info("Draft created", { draftId, type, ownerId });
 
 // Autosave conflict
-logger.warn('Autosave failed', { draftId, error: 'VERSION_CONFLICT', ownerId });
+logger.warn("Autosave failed", { draftId, error: "VERSION_CONFLICT", ownerId });
 
 // Publish successful
-logger.info('Draft published to listing', { draftId, listingId, ownerId });
+logger.info("Draft published to listing", { draftId, listingId, ownerId });
 
 // Errors
-logger.error('Error autosaving draft', { error: error.message, userId });
+logger.error("Error autosaving draft", { error: error.message, userId });
 ```
 
 **Sentry Integration:** Global errorHandler captures all 5xx errors; draft service errors are logged with context.
-

@@ -1,4 +1,4 @@
-const Draft = require('../models/Draft');
+const Draft = require("../models/Draft");
 
 /**
  * DraftRepository - Data access layer for draft persistence
@@ -52,7 +52,7 @@ class DraftRepository {
   async getDraftsByOwner(ownerId, limit = 10, skip = 0) {
     return Draft.find({
       owner: ownerId,
-      status: 'active',
+      status: "active",
     })
       .sort({ lastAutosavedAt: -1 })
       .limit(limit)
@@ -68,7 +68,7 @@ class DraftRepository {
   async getDraftCountByOwner(ownerId) {
     return Draft.countDocuments({
       owner: ownerId,
-      status: 'active',
+      status: "active",
     });
   }
 
@@ -82,7 +82,7 @@ class DraftRepository {
     return Draft.findOne({
       owner: ownerId,
       type,
-      status: 'active',
+      status: "active",
     })
       .sort({ lastAutosavedAt: -1 })
       .lean();
@@ -98,7 +98,12 @@ class DraftRepository {
    * @param {boolean} incrementVersion - Whether to increment _version and draftVersion
    * @returns {Promise<object>} Result: { success, draft, versionConflict, currentVersion }
    */
-  async updateDraftPartial(draftId, changes, expectedVersion, incrementVersion = true) {
+  async updateDraftPartial(
+    draftId,
+    changes,
+    expectedVersion,
+    incrementVersion = true,
+  ) {
     const draft = await this.getDraftByIdForUpdate(draftId);
 
     if (!draft) {
@@ -106,7 +111,7 @@ class DraftRepository {
         success: false,
         draft: null,
         versionConflict: false,
-        error: 'DRAFT_NOT_FOUND',
+        error: "DRAFT_NOT_FOUND",
       };
     }
 
@@ -118,7 +123,7 @@ class DraftRepository {
         versionConflict: true,
         currentVersion: draft._version,
         expectedVersion,
-        error: 'VERSION_CONFLICT',
+        error: "VERSION_CONFLICT",
       };
     }
 
@@ -159,7 +164,7 @@ class DraftRepository {
         ...changes,
         lastAutosavedAt: new Date(),
       },
-      { new: true }
+      { new: true },
     ).lean();
   }
 
@@ -172,10 +177,10 @@ class DraftRepository {
     return Draft.findByIdAndUpdate(
       draftId,
       {
-        status: 'discarded',
+        status: "discarded",
         lastAutosavedAt: new Date(),
       },
-      { new: true }
+      { new: true },
     ).lean();
   }
 
@@ -189,11 +194,11 @@ class DraftRepository {
     return Draft.findByIdAndUpdate(
       draftId,
       {
-        status: 'published',
+        status: "published",
         listingId,
         lastAutosavedAt: new Date(),
       },
-      { new: true }
+      { new: true },
     ).lean();
   }
 
@@ -209,7 +214,7 @@ class DraftRepository {
     cutoffDate.setDate(cutoffDate.getDate() - daysThreshold);
 
     return Draft.find({
-      status: 'active',
+      status: "active",
       lastAutosavedAt: { $lt: cutoffDate },
     })
       .sort({ lastAutosavedAt: 1 })
@@ -227,7 +232,7 @@ class DraftRepository {
     return Draft.find({
       owner: ownerId,
       type,
-      status: 'active',
+      status: "active",
     })
       .sort({ createdAt: -1 })
       .lean();
@@ -243,7 +248,7 @@ class DraftRepository {
     const count = await Draft.countDocuments({
       owner: ownerId,
       type,
-      status: 'active',
+      status: "active",
     });
     return count > 0;
   }
@@ -284,12 +289,12 @@ class DraftRepository {
       {
         $match: {
           owner: mongoose.Types.ObjectId(ownerId),
-          status: 'active',
+          status: "active",
         },
       },
       {
         $group: {
-          _id: '$type',
+          _id: "$type",
           count: { $sum: 1 },
         },
       },

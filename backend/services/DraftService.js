@@ -1,6 +1,9 @@
-const DraftRepository = require('../repository/DraftRepository');
-const { validateDraftForPublish, detectChanges } = require('../utils/draftValidation');
-const Listing = require('../models/Listing');
+const DraftRepository = require("../repository/DraftRepository");
+const {
+  validateDraftForPublish,
+  detectChanges,
+} = require("../utils/draftValidation");
+const Listing = require("../models/Listing");
 
 /**
  * DraftService - Business logic layer for draft persistence and autosave
@@ -56,30 +59,33 @@ class DraftService {
     if (!draft) {
       return {
         success: false,
-        error: 'DRAFT_NOT_FOUND',
-        message: 'Draft not found',
+        error: "DRAFT_NOT_FOUND",
+        message: "Draft not found",
       };
     }
 
     if (draft.owner.toString() !== ownerId.toString()) {
       return {
         success: false,
-        error: 'UNAUTHORIZED',
-        message: 'You do not own this draft',
+        error: "UNAUTHORIZED",
+        message: "You do not own this draft",
       };
     }
 
     // Check draft status (must be active)
-    if (draft.status !== 'active') {
+    if (draft.status !== "active") {
       return {
         success: false,
-        error: 'DRAFT_NOT_ACTIVE',
+        error: "DRAFT_NOT_ACTIVE",
         message: `Cannot autosave draft with status: ${draft.status}`,
       };
     }
 
     // Detect changes
-    const { changedFields, hasChanges } = detectChanges(draft, autosavePayload.data || {});
+    const { changedFields, hasChanges } = detectChanges(
+      draft,
+      autosavePayload.data || {},
+    );
 
     // Prepare update object
     const updateData = {
@@ -96,15 +102,15 @@ class DraftService {
       draftId,
       updateData,
       autosavePayload._version,
-      shouldIncrementVersion
+      shouldIncrementVersion,
     );
 
     if (!updateResult.success) {
       if (updateResult.versionConflict) {
         return {
           success: false,
-          error: 'VERSION_CONFLICT',
-          message: 'Draft was updated elsewhere. Please refresh.',
+          error: "VERSION_CONFLICT",
+          message: "Draft was updated elsewhere. Please refresh.",
           currentVersion: updateResult.currentVersion,
           expectedVersion: updateResult.expectedVersion,
           draft: updateResult.draft,
@@ -113,7 +119,7 @@ class DraftService {
       return {
         success: false,
         error: updateResult.error,
-        message: 'Failed to autosave draft',
+        message: "Failed to autosave draft",
       };
     }
 
@@ -202,23 +208,23 @@ class DraftService {
     if (!draft) {
       return {
         success: false,
-        error: 'DRAFT_NOT_FOUND',
-        message: 'Draft not found',
+        error: "DRAFT_NOT_FOUND",
+        message: "Draft not found",
       };
     }
 
     if (draft.owner.toString() !== ownerId.toString()) {
       return {
         success: false,
-        error: 'UNAUTHORIZED',
-        message: 'You do not own this draft',
+        error: "UNAUTHORIZED",
+        message: "You do not own this draft",
       };
     }
 
-    if (draft.status !== 'active') {
+    if (draft.status !== "active") {
       return {
         success: false,
-        error: 'DRAFT_NOT_ACTIVE',
+        error: "DRAFT_NOT_ACTIVE",
         message: `Draft is already ${draft.status}`,
       };
     }
@@ -231,8 +237,8 @@ class DraftService {
     if (!validation.valid) {
       return {
         success: false,
-        error: 'INCOMPLETE_DRAFT',
-        message: `Missing required fields: ${validation.missingFields.join(', ')}`,
+        error: "INCOMPLETE_DRAFT",
+        message: `Missing required fields: ${validation.missingFields.join(", ")}`,
         missingFields: validation.missingFields,
       };
     }
@@ -247,15 +253,15 @@ class DraftService {
         tags: listingData.tags || [],
         images: listingData.images || [],
         location: listingData.location,
-        status: 'published',
+        status: "published",
         // Type-specific fields
-        ...(listingData.type === 'post' && {
+        ...(listingData.type === "post" && {
           price: listingData.price,
           forSale: listingData.forSale,
           category: listingData.category,
           attributes: listingData.attributes,
         }),
-        ...(listingData.type === 'tour' && {
+        ...(listingData.type === "tour" && {
           startDate: listingData.startDate,
           endDate: listingData.endDate,
           duration: listingData.duration,
@@ -263,7 +269,7 @@ class DraftService {
           capacity: listingData.capacity,
           itinerary: listingData.itinerary,
         }),
-        ...(listingData.type === 'training' && {
+        ...(listingData.type === "training" && {
           schedule: listingData.schedule,
           startDate: listingData.startDate,
           endDate: listingData.endDate,
@@ -272,7 +278,7 @@ class DraftService {
           level: listingData.level,
           instructor: listingData.instructor,
         }),
-        ...(listingData.type === 'academy' && {
+        ...(listingData.type === "academy" && {
           addressDetails: listingData.addressDetails,
           phone: listingData.phone,
           workingHours: listingData.workingHours,
@@ -289,12 +295,12 @@ class DraftService {
         success: true,
         listing: listing.toObject(),
         draft: this._formatDraftResponse(draft),
-        message: 'Draft published successfully',
+        message: "Draft published successfully",
       };
     } catch (error) {
       return {
         success: false,
-        error: 'PUBLISH_FAILED',
+        error: "PUBLISH_FAILED",
         message: error.message,
       };
     }
@@ -312,16 +318,16 @@ class DraftService {
     if (!draft) {
       return {
         success: false,
-        error: 'DRAFT_NOT_FOUND',
-        message: 'Draft not found',
+        error: "DRAFT_NOT_FOUND",
+        message: "Draft not found",
       };
     }
 
     if (draft.owner.toString() !== ownerId.toString()) {
       return {
         success: false,
-        error: 'UNAUTHORIZED',
-        message: 'You do not own this draft',
+        error: "UNAUTHORIZED",
+        message: "You do not own this draft",
       };
     }
 
@@ -329,7 +335,7 @@ class DraftService {
 
     return {
       success: true,
-      message: 'Draft deleted successfully',
+      message: "Draft deleted successfully",
     };
   }
 
@@ -344,7 +350,7 @@ class DraftService {
   async resolveConflict(draftId) {
     const draft = await DraftRepository.getDraftById(draftId);
     if (!draft) {
-      throw new Error('Draft not found');
+      throw new Error("Draft not found");
     }
     return this._formatDraftResponse(draft);
   }
@@ -355,12 +361,13 @@ class DraftService {
    * @returns {Promise<object>} { activeCount, publishedCount, discardedCount, typeDistribution }
    */
   async getDraftStats(ownerId) {
-    const [activeCount, publishedCount, discardedCount, typeDistribution] = await Promise.all([
-      DraftRepository.countDraftsByStatus(ownerId, 'active'),
-      DraftRepository.countDraftsByStatus(ownerId, 'published'),
-      DraftRepository.countDraftsByStatus(ownerId, 'discarded'),
-      DraftRepository.getDraftDistributionByType(ownerId),
-    ]);
+    const [activeCount, publishedCount, discardedCount, typeDistribution] =
+      await Promise.all([
+        DraftRepository.countDraftsByStatus(ownerId, "active"),
+        DraftRepository.countDraftsByStatus(ownerId, "published"),
+        DraftRepository.countDraftsByStatus(ownerId, "discarded"),
+        DraftRepository.getDraftDistributionByType(ownerId),
+      ]);
 
     return {
       activeCount,
@@ -399,14 +406,14 @@ class DraftService {
       images: obj.images,
       location: obj.location,
       // Type-specific (post)
-      ...(obj.type === 'post' && {
+      ...(obj.type === "post" && {
         price: obj.price,
         forSale: obj.forSale,
         category: obj.category,
         attributes: obj.attributes,
       }),
       // Type-specific (tour)
-      ...(obj.type === 'tour' && {
+      ...(obj.type === "tour" && {
         startDate: obj.startDate,
         endDate: obj.endDate,
         duration: obj.duration,
@@ -415,7 +422,7 @@ class DraftService {
         itinerary: obj.itinerary,
       }),
       // Type-specific (training)
-      ...(obj.type === 'training' && {
+      ...(obj.type === "training" && {
         schedule: obj.schedule,
         startDate: obj.startDate,
         endDate: obj.endDate,
@@ -425,7 +432,7 @@ class DraftService {
         instructor: obj.instructor,
       }),
       // Type-specific (academy)
-      ...(obj.type === 'academy' && {
+      ...(obj.type === "academy" && {
         addressDetails: obj.addressDetails,
         phone: obj.phone,
         workingHours: obj.workingHours,

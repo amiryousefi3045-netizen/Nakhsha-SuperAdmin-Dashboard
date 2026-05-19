@@ -1,12 +1,12 @@
-const express = require('express');
-const DraftController = require('../controllers/DraftController');
-const { validate } = require('../middleware/validate');
-const { requireAuth } = require('../middleware/auth');
+const express = require("express");
+const DraftController = require("../controllers/DraftController");
+const { validate } = require("../middleware/validate");
+const { requireAuth } = require("../middleware/auth");
 const {
   createDraftSchema,
   autosaveDraftSchema,
   publishDraftSchema,
-} = require('../utils/draftValidation');
+} = require("../utils/draftValidation");
 
 const router = express.Router();
 
@@ -25,10 +25,10 @@ const router = express.Router();
  * Response: 201 { success: true, data: { draft } }
  */
 router.post(
-  '/draft',
+  "/draft",
   requireAuth,
-  validate(createDraftSchema, 'body'),
-  DraftController.createDraft
+  validate(createDraftSchema, "body"),
+  DraftController.createDraft,
 );
 
 /**
@@ -39,10 +39,10 @@ router.post(
  * Response: 409 { success: false, error: { code: 'VERSION_CONFLICT', ... } }
  */
 router.patch(
-  '/:id/draft',
+  "/:id/draft",
   requireAuth,
-  validate(autosaveDraftSchema, 'body'),
-  DraftController.updateDraft
+  validate(autosaveDraftSchema, "body"),
+  DraftController.updateDraft,
 );
 
 /**
@@ -52,7 +52,7 @@ router.patch(
  * Response: 200 { success: true, data: { draft } }
  * Response: 404 { success: false, error: { code: 'DRAFT_NOT_FOUND' } }
  */
-router.get('/draft/latest', requireAuth, DraftController.getLatestDraft);
+router.get("/draft/latest", requireAuth, DraftController.getLatestDraft);
 
 /**
  * GET /api/listings/draft/:id
@@ -60,7 +60,7 @@ router.get('/draft/latest', requireAuth, DraftController.getLatestDraft);
  * Response: 200 { success: true, data: { draft } }
  * Response: 404 { success: false, error: { code: 'DRAFT_NOT_FOUND' } }
  */
-router.get('/draft/:id', requireAuth, DraftController.getDraftById);
+router.get("/draft/:id", requireAuth, DraftController.getDraftById);
 
 /**
  * GET /api/listings/draft
@@ -68,7 +68,7 @@ router.get('/draft/:id', requireAuth, DraftController.getDraftById);
  * Query: ?limit=10&skip=0
  * Response: 200 { success: true, data: { drafts, total, hasMore } }
  */
-router.get('/draft', requireAuth, DraftController.listDrafts);
+router.get("/draft", requireAuth, DraftController.listDrafts);
 
 /**
  * DELETE /api/listings/draft/:id
@@ -76,7 +76,7 @@ router.get('/draft', requireAuth, DraftController.listDrafts);
  * Response: 200 { success: true, data: { message } }
  * Response: 404 { success: false, error: { code: 'DRAFT_NOT_FOUND' } }
  */
-router.delete('/draft/:id', requireAuth, DraftController.deleteDraft);
+router.delete("/draft/:id", requireAuth, DraftController.deleteDraft);
 
 // ========== DRAFT PUBLISHING ==========
 
@@ -87,11 +87,7 @@ router.delete('/draft/:id', requireAuth, DraftController.deleteDraft);
  * Response: 201 { success: true, data: { listing, draft } }
  * Response: 422 { success: false, error: { code: 'INCOMPLETE_DRAFT', missingFields } }
  */
-router.post(
-  '/:draftId/publish',
-  requireAuth,
-  DraftController.publishDraft
-);
+router.post("/:draftId/publish", requireAuth, DraftController.publishDraft);
 
 // ========== DRAFT STATISTICS ==========
 
@@ -100,6 +96,6 @@ router.post(
  * Get draft statistics (only own or admin)
  * Response: 200 { success: true, data: { stats: { activeCount, publishedCount, etc } } }
  */
-router.get('/draft/stats/:userId', requireAuth, DraftController.getDraftStats);
+router.get("/draft/stats/:userId", requireAuth, DraftController.getDraftStats);
 
 module.exports = router;

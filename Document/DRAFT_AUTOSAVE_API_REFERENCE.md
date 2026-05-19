@@ -5,6 +5,7 @@
 The Draft Autosave system enables production-grade multi-step form persistence with optimistic concurrency control, change detection, and automatic cleanup.
 
 **Key Features:**
+
 - Separate `drafts` collection for isolation from published listings
 - Optimistic locking via `_version` field to prevent race conditions
 - Change detection (only increments version on actual field changes)
@@ -19,11 +20,13 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ## API Endpoints
 
 ### 1. Create Draft
+
 **Endpoint:** `POST /api/listings/draft`
 
 **Authentication:** Required (Bearer token)
 
 **Request Body:**
+
 ```json
 {
   "type": "post",
@@ -40,6 +43,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "success": true,
@@ -70,6 +74,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ```
 
 **Error Response (400 - Invalid Type):**
+
 ```json
 {
   "success": false,
@@ -84,6 +89,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ---
 
 ### 2. Autosave Draft
+
 **Endpoint:** `PATCH /api/listings/:id/draft`
 
 **Authentication:** Required (Bearer token)
@@ -91,6 +97,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 **Key Concept:** Implements optimistic locking. Client must provide `_version` matching the current DB version.
 
 **Request Body (Step 2 - Add Price & Category):**
+
 ```json
 {
   "_version": 0,
@@ -103,6 +110,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -125,6 +133,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ```
 
 **Error Response (409 - Version Conflict):**
+
 ```json
 {
   "success": false,
@@ -146,6 +155,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ```
 
 **No-op Save (No Changes Detected):**
+
 ```json
 {
   "_version": 1,
@@ -155,6 +165,7 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ```
 
 **Response (200 OK - Version NOT incremented):**
+
 ```json
 {
   "success": true,
@@ -172,20 +183,24 @@ The Draft Autosave system enables production-grade multi-step form persistence w
 ---
 
 ### 3. Get Latest Draft
+
 **Endpoint:** `GET /api/listings/draft/latest`
 
 **Authentication:** Required (Bearer token)
 
 **Query Parameters:**
+
 - `type` (optional): Filter by type (post|tour|training|academy)
 
 **Request:**
+
 ```bash
 GET /api/listings/draft/latest?type=post
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -205,6 +220,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Error Response (404 - No Draft Found):**
+
 ```json
 {
   "success": false,
@@ -218,11 +234,13 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ---
 
 ### 4. Get Draft by ID
+
 **Endpoint:** `GET /api/listings/draft/:id`
 
 **Authentication:** Required (Bearer token)
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -248,20 +266,24 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ---
 
 ### 5. List All Drafts (Paginated)
+
 **Endpoint:** `GET /api/listings/draft`
 
 **Authentication:** Required (Bearer token)
 
 **Query Parameters:**
+
 - `limit` (default: 10, max: 100): Number of drafts per page
 - `skip` (default: 0): Pagination offset
 
 **Request:**
+
 ```bash
 GET /api/listings/draft?limit=10&skip=0
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -295,6 +317,7 @@ GET /api/listings/draft?limit=10&skip=0
 ---
 
 ### 6. Delete Draft
+
 **Endpoint:** `DELETE /api/listings/draft/:id`
 
 **Authentication:** Required (Bearer token)
@@ -302,6 +325,7 @@ GET /api/listings/draft?limit=10&skip=0
 **Behavior:** Soft-deletes by marking status as "discarded"
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -314,11 +338,13 @@ GET /api/listings/draft?limit=10&skip=0
 ---
 
 ### 7. Publish Draft to Listing
+
 **Endpoint:** `POST /api/listings/:draftId/publish`
 
 **Authentication:** Required (Bearer token)
 
 **Request Body (Optional - Final Data Overrides):**
+
 ```json
 {
   "title": "Final Title Override"
@@ -326,6 +352,7 @@ GET /api/listings/draft?limit=10&skip=0
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "success": true,
@@ -354,6 +381,7 @@ GET /api/listings/draft?limit=10&skip=0
 ```
 
 **Error Response (422 - Incomplete Draft):**
+
 ```json
 {
   "success": false,
@@ -368,6 +396,7 @@ GET /api/listings/draft?limit=10&skip=0
 ---
 
 ### 8. Get Draft Statistics
+
 **Endpoint:** `GET /api/listings/draft/stats/:userId`
 
 **Authentication:** Required (Bearer token)
@@ -375,6 +404,7 @@ GET /api/listings/draft?limit=10&skip=0
 **Authorization:** Users can only view their own stats (or admins can view any user's)
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -402,12 +432,14 @@ GET /api/listings/draft?limit=10&skip=0
 
 ```javascript
 // 1. User starts form - Create draft
-const draftResponse = await fetch('/api/listings/draft', {
-  method: 'POST',
-  headers: { 'Authorization': `Bearer ${token}` },
-  body: JSON.stringify({ type: 'post', currentStep: 1 })
+const draftResponse = await fetch("/api/listings/draft", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` },
+  body: JSON.stringify({ type: "post", currentStep: 1 }),
 });
-const { data: { draft } } = await draftResponse.json();
+const {
+  data: { draft },
+} = await draftResponse.json();
 const draftId = draft._id;
 const currentVersion = draft._version;
 
@@ -417,33 +449,33 @@ setState({ draftId, currentVersion, currentStep: 1 });
 // 2. User fills Step 1 (Title, Description) - Debounced autosave
 const autosave = debounce(async (data) => {
   const response = await fetch(`/api/listings/${draftId}/draft`, {
-    method: 'PATCH',
-    headers: { 'Authorization': `Bearer ${token}` },
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       _version: currentVersion,
       currentStep: 1,
       data: {
         title: data.title,
         description: data.description,
-        tags: data.tags
-      }
-    })
+        tags: data.tags,
+      },
+    }),
   });
-  
+
   const result = await response.json();
-  
+
   if (response.status === 409) {
     // Version conflict - show conflict UI
     showConflictDialog(result.error.draft);
     // Reload draft or merge intelligently
-    const latestDraft = await fetch('/api/listings/draft/latest');
+    const latestDraft = await fetch("/api/listings/draft/latest");
     setState(await latestDraft.json());
   } else if (result.success) {
     // Update local version
-    setState({ 
+    setState({
       currentVersion: result.data.draft._version,
       hasUnsavedChanges: false,
-      lastAutosavedAt: result.data.draft.lastAutosavedAt
+      lastAutosavedAt: result.data.draft.lastAutosavedAt,
     });
   }
 }, 5000); // Autosave every 5 seconds after last keystroke
@@ -451,20 +483,22 @@ const autosave = debounce(async (data) => {
 // 3. User moves to Step 2 - Explicit save before step change
 async function handleStepChange(nextStep) {
   const response = await fetch(`/api/listings/${draftId}/draft`, {
-    method: 'PATCH',
-    headers: { 'Authorization': `Bearer ${token}` },
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       _version: currentVersion,
       currentStep: nextStep,
-      data: { /* step 2 specific fields */ }
-    })
+      data: {
+        /* step 2 specific fields */
+      },
+    }),
   });
-  
+
   if (response.ok) {
     const { data } = await response.json();
-    setState({ 
+    setState({
       currentVersion: data.draft._version,
-      currentStep: nextStep 
+      currentStep: nextStep,
     });
   }
 }
@@ -472,13 +506,15 @@ async function handleStepChange(nextStep) {
 // 4. User completes form - Publish to listing
 async function handleSubmit() {
   const response = await fetch(`/api/listings/${draftId}/publish`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ /* final overrides */ })
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      /* final overrides */
+    }),
   });
-  
+
   const result = await response.json();
-  
+
   if (result.success) {
     const listingId = result.data.listing._id;
     navigate(`/listings/${listingId}`);
@@ -522,6 +558,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ## Tour Discriminator Example
 
 ### Create Tour Draft
+
 ```json
 {
   "type": "tour",
@@ -532,6 +569,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ```
 
 ### Autosave Tour Details (Step 2)
+
 ```json
 {
   "_version": 0,
@@ -542,7 +580,11 @@ When `_version` mismatch (409 Conflict) occurs:
     "duration": "3 days",
     "durationDays": 3,
     "capacity": 15,
-    "itinerary": ["Day 1: Base camp setup", "Day 2: Summit hike", "Day 3: Descent"]
+    "itinerary": [
+      "Day 1: Base camp setup",
+      "Day 2: Summit hike",
+      "Day 3: Descent"
+    ]
   }
 }
 ```
@@ -552,6 +594,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ## Training Discriminator Example
 
 ### Create Training Draft
+
 ```json
 {
   "type": "training",
@@ -562,6 +605,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ```
 
 ### Autosave Schedule (Step 2)
+
 ```json
 {
   "_version": 0,
@@ -582,6 +626,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ## Academy Discriminator Example
 
 ### Create Academy Draft
+
 ```json
 {
   "type": "academy",
@@ -591,6 +636,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ```
 
 ### Autosave Details
+
 ```json
 {
   "_version": 0,
@@ -608,6 +654,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ## Version Control & Change Detection
 
 **Version Semantics:**
+
 - `_version`: Internal optimistic lock counter (incremented on each successful PATCH)
 - `draftVersion`: Public version counter (only incremented on actual field changes)
 - `lastAutosavedAt`: Timestamp of last autosave (updated on every PATCH, even no-op saves)
@@ -641,6 +688,7 @@ When `_version` mismatch (409 Conflict) occurs:
 ## TTL Cleanup (90 Days)
 
 MongoDB automatically deletes drafts based on `createdAt`:
+
 - **Active drafts** without recent updates are deleted after 90 days
 - **Published drafts** (status = "published") are also eligible for deletion
 - **Discarded drafts** (status = "discarded") follow the same 90-day TTL
@@ -651,15 +699,15 @@ MongoDB automatically deletes drafts based on `createdAt`:
 
 ## Error Codes Reference
 
-| Code | HTTP | Meaning | Recovery |
-|------|------|---------|----------|
-| VALIDATION_ERROR | 400 | Invalid input format | Fix input, retry |
-| VERSION_CONFLICT | 409 | Stale _version | Reload draft, retry |
-| DRAFT_NOT_FOUND | 404 | Draft ID doesn't exist | Create new draft |
-| DRAFT_NOT_ACTIVE | 400 | Draft already published/discarded | Cannot update |
-| INCOMPLETE_DRAFT | 422 | Required fields missing | Complete required fields |
-| UNAUTHORIZED | 403 | Not draft owner | Check ownership |
-| DRAFT_ALREADY_PUBLISHED | 400 | Draft already published | Cannot re-publish |
+| Code                    | HTTP | Meaning                           | Recovery                 |
+| ----------------------- | ---- | --------------------------------- | ------------------------ |
+| VALIDATION_ERROR        | 400  | Invalid input format              | Fix input, retry         |
+| VERSION_CONFLICT        | 409  | Stale \_version                   | Reload draft, retry      |
+| DRAFT_NOT_FOUND         | 404  | Draft ID doesn't exist            | Create new draft         |
+| DRAFT_NOT_ACTIVE        | 400  | Draft already published/discarded | Cannot update            |
+| INCOMPLETE_DRAFT        | 422  | Required fields missing           | Complete required fields |
+| UNAUTHORIZED            | 403  | Not draft owner                   | Check ownership          |
+| DRAFT_ALREADY_PUBLISHED | 400  | Draft already published           | Cannot re-publish        |
 
 ---
 
@@ -687,7 +735,7 @@ curl -X PATCH http://localhost:3000/api/listings/65e8a1b2c3d4e5f6g7h8i9j0/draft 
 curl -X PATCH http://localhost:3000/api/listings/65e8a1b2c3d4e5f6g7h8i9j0/draft \
   -H "Authorization: Bearer TOKEN" \
   -d '{"_version":0,"data":{"title":"Update B"}}'
-  
+
 # Terminal 2 receives 409 Conflict with current version 1
 ```
 
@@ -699,19 +747,19 @@ curl -X PATCH http://localhost:3000/api/listings/65e8a1b2c3d4e5f6g7h8i9j0/draft 
 // These indexes are automatically created by Mongoose:
 
 // 1. TTL Index on createdAt (90 days)
-db.drafts.createIndex({ "createdAt": 1 }, { expireAfterSeconds: 7776000 })
+db.drafts.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 });
 
 // 2. Owner + Type + Status for quick lookups
-db.drafts.createIndex({ "owner": 1, "type": 1, "status": 1 })
+db.drafts.createIndex({ owner: 1, type: 1, status: 1 });
 
 // 3. Owner + Status for filtering
-db.drafts.createIndex({ "owner": 1, "status": 1 })
+db.drafts.createIndex({ owner: 1, status: 1 });
 
 // 4. LastAutosavedAt for "active" draft queries
-db.drafts.createIndex({ "lastAutosavedAt": 1 })
+db.drafts.createIndex({ lastAutosavedAt: 1 });
 
 // 5. Sparse draftId index on listings collection
-db.user_listings.createIndex({ "draftId": 1 }, { sparse: true })
+db.user_listings.createIndex({ draftId: 1 }, { sparse: true });
 ```
 
 ---
@@ -729,4 +777,3 @@ db.user_listings.createIndex({ "draftId": 1 }, { sparse: true })
 - ✅ Proper error envelope format (success, error, reqId)
 - ✅ Support for all 4 discriminator types (post, tour, training, academy)
 - ✅ Separate drafts collection (no collision with published listings)
-

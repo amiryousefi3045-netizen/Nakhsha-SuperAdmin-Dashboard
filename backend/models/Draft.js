@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 /**
  * Draft Schema - Mongoose discriminator base schema for multi-step listing creation
@@ -15,20 +15,20 @@ const draftSchema = new mongoose.Schema(
     // Ownership & status
     owner: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
       index: true,
     },
     type: {
       type: String,
-      enum: ['post', 'tour', 'training', 'academy'],
+      enum: ["post", "tour", "training", "academy"],
       required: true,
       index: true,
     },
     status: {
       type: String,
-      enum: ['active', 'published', 'discarded'],
-      default: 'active',
+      enum: ["active", "published", "discarded"],
+      default: "active",
       index: true,
     },
 
@@ -63,7 +63,7 @@ const draftSchema = new mongoose.Schema(
     // Link to published listing (set when draft is promoted)
     listingId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Listing',
+      ref: "Listing",
       sparse: true,
     },
 
@@ -88,7 +88,7 @@ const draftSchema = new mongoose.Schema(
     location: {
       type: {
         type: String,
-        enum: ['Point'],
+        enum: ["Point"],
       },
       coordinates: {
         type: [Number], // [lng, lat]
@@ -129,12 +129,12 @@ const draftSchema = new mongoose.Schema(
     },
   },
   {
-    discriminatorKey: 'type',
-    collection: 'drafts',
+    discriminatorKey: "type",
+    collection: "drafts",
     timestamps: true,
     // TTL: auto-delete after 90 days of inactivity
     // createdAt is the reference point; if not modified for 90 days, deleted
-  }
+  },
 );
 
 // Indexes
@@ -144,62 +144,70 @@ draftSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 }); 
 draftSchema.index({ lastAutosavedAt: 1 }); // For querying active drafts
 
 // Create base Draft model
-const Draft = mongoose.model(
-  'Draft',
-  draftSchema,
-  'drafts'
-);
+const Draft = mongoose.model("Draft", draftSchema, "drafts");
 
 // Create discriminator models for each type
-Draft.discriminator('post', new mongoose.Schema({
-  price: {
-    type: Number,
-    required: function () {
-      return this.type === 'post';
+Draft.discriminator(
+  "post",
+  new mongoose.Schema({
+    price: {
+      type: Number,
+      required: function () {
+        return this.type === "post";
+      },
     },
-  },
-  forSale: {
-    type: Boolean,
-    default: true,
-  },
-  category: String,
-  attributes: mongoose.Schema.Types.Mixed,
-}));
-
-Draft.discriminator('tour', new mongoose.Schema({
-  startDate: {
-    type: Date,
-    required: function () {
-      return this.type === 'tour';
+    forSale: {
+      type: Boolean,
+      default: true,
     },
-  },
-  endDate: {
-    type: Date,
-    required: function () {
-      return this.type === 'tour';
+    category: String,
+    attributes: mongoose.Schema.Types.Mixed,
+  }),
+);
+
+Draft.discriminator(
+  "tour",
+  new mongoose.Schema({
+    startDate: {
+      type: Date,
+      required: function () {
+        return this.type === "tour";
+      },
     },
-  },
-  duration: String,
-  durationDays: Number,
-  capacity: Number,
-  itinerary: [String],
-}));
+    endDate: {
+      type: Date,
+      required: function () {
+        return this.type === "tour";
+      },
+    },
+    duration: String,
+    durationDays: Number,
+    capacity: Number,
+    itinerary: [String],
+  }),
+);
 
-Draft.discriminator('training', new mongoose.Schema({
-  schedule: String,
-  startDate: Date,
-  endDate: Date,
-  duration: String,
-  capacity: Number,
-  level: String,
-  instructor: String,
-}));
+Draft.discriminator(
+  "training",
+  new mongoose.Schema({
+    schedule: String,
+    startDate: Date,
+    endDate: Date,
+    duration: String,
+    capacity: Number,
+    level: String,
+    instructor: String,
+  }),
+);
 
-Draft.discriminator('academy', new mongoose.Schema({
-  addressDetails: String,
-  phone: String,
-  workingHours: String,
-  website: String,
-}));
+Draft.discriminator(
+  "academy",
+  new mongoose.Schema({
+    addressDetails: String,
+    phone: String,
+    workingHours: String,
+    website: String,
+  }),
+);
 
 module.exports = Draft;

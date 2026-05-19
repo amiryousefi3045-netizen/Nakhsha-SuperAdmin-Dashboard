@@ -1,4 +1,4 @@
-const { z } = require('zod');
+const { z } = require("zod");
 
 /**
  * Draft Validation Schemas using Zod
@@ -8,7 +8,7 @@ const { z } = require('zod');
 
 // Base draft schema - fields common to all draft types
 const baseDraftSchema = z.object({
-  type: z.enum(['post', 'tour', 'training', 'academy']),
+  type: z.enum(["post", "tour", "training", "academy"]),
   currentStep: z.number().int().min(1).default(1).optional(),
   isCompleted: z.boolean().default(false).optional(),
   title: z.string().min(5).max(200).optional(),
@@ -17,7 +17,7 @@ const baseDraftSchema = z.object({
   images: z.array(z.string()).optional(),
   location: z
     .object({
-      type: z.literal('Point'),
+      type: z.literal("Point"),
       coordinates: z.tuple([z.number(), z.number()]),
     })
     .optional(),
@@ -27,7 +27,7 @@ const baseDraftSchema = z.object({
 // When creating a new draft, only type is required
 
 const createPostDraftSchema = baseDraftSchema.extend({
-  type: z.literal('post'),
+  type: z.literal("post"),
   price: z.number().positive().optional(),
   forSale: z.boolean().optional(),
   category: z.string().optional(),
@@ -35,7 +35,7 @@ const createPostDraftSchema = baseDraftSchema.extend({
 });
 
 const createTourDraftSchema = baseDraftSchema.extend({
-  type: z.literal('tour'),
+  type: z.literal("tour"),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   duration: z.string().optional(),
@@ -45,25 +45,25 @@ const createTourDraftSchema = baseDraftSchema.extend({
 });
 
 const createTrainingDraftSchema = baseDraftSchema.extend({
-  type: z.literal('training'),
+  type: z.literal("training"),
   schedule: z.string().optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   duration: z.string().optional(),
   capacity: z.number().positive().optional(),
-  level: z.enum(['beginner', 'intermediate', 'advanced']).optional(),
+  level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
   instructor: z.string().optional(),
 });
 
 const createAcademyDraftSchema = baseDraftSchema.extend({
-  type: z.literal('academy'),
+  type: z.literal("academy"),
   addressDetails: z.string().optional(),
   phone: z.string().optional(),
   workingHours: z.string().optional(),
   website: z.string().url().optional(),
 });
 
-const createDraftSchema = z.discriminatedUnion('type', [
+const createDraftSchema = z.discriminatedUnion("type", [
   createPostDraftSchema,
   createTourDraftSchema,
   createTrainingDraftSchema,
@@ -75,7 +75,7 @@ const createDraftSchema = z.discriminatedUnion('type', [
 
 const partialUpdatePostDraftSchema = baseDraftSchema
   .extend({
-    type: z.literal('post'),
+    type: z.literal("post"),
     price: z.number().positive().optional(),
     forSale: z.boolean().optional(),
     category: z.string().optional(),
@@ -85,7 +85,7 @@ const partialUpdatePostDraftSchema = baseDraftSchema
 
 const partialUpdateTourDraftSchema = baseDraftSchema
   .extend({
-    type: z.literal('tour'),
+    type: z.literal("tour"),
     startDate: z.string().datetime().optional(),
     endDate: z.string().datetime().optional(),
     duration: z.string().optional(),
@@ -97,20 +97,20 @@ const partialUpdateTourDraftSchema = baseDraftSchema
 
 const partialUpdateTrainingDraftSchema = baseDraftSchema
   .extend({
-    type: z.literal('training'),
+    type: z.literal("training"),
     schedule: z.string().optional(),
     startDate: z.string().datetime().optional(),
     endDate: z.string().datetime().optional(),
     duration: z.string().optional(),
     capacity: z.number().positive().optional(),
-    level: z.enum(['beginner', 'intermediate', 'advanced']).optional(),
+    level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
     instructor: z.string().optional(),
   })
   .partial();
 
 const partialUpdateAcademyDraftSchema = baseDraftSchema
   .extend({
-    type: z.literal('academy'),
+    type: z.literal("academy"),
     addressDetails: z.string().optional(),
     phone: z.string().optional(),
     workingHours: z.string().optional(),
@@ -119,7 +119,7 @@ const partialUpdateAcademyDraftSchema = baseDraftSchema
   .partial();
 
 const partialUpdateDraftSchema = z
-  .discriminatedUnion('type', [
+  .discriminatedUnion("type", [
     partialUpdatePostDraftSchema,
     partialUpdateTourDraftSchema,
     partialUpdateTrainingDraftSchema,
@@ -150,7 +150,7 @@ const autosaveDraftSchema = z.object({
 const publishDraftSchema = z.object({
   title: z.string().min(5).max(200),
   description: z.string().min(10).max(5000),
-  type: z.enum(['post', 'tour', 'training', 'academy']),
+  type: z.enum(["post", "tour", "training", "academy"]),
   // Type-specific required fields
   price: z.number().positive().optional(), // Required if type === 'post'
   startDate: z.string().datetime().optional(), // Required if type === 'tour'
@@ -169,21 +169,21 @@ const validateDraftForPublish = (draft, type) => {
   const missingFields = [];
 
   // Common required fields
-  if (!draft.title) missingFields.push('title');
-  if (!draft.description) missingFields.push('description');
+  if (!draft.title) missingFields.push("title");
+  if (!draft.description) missingFields.push("description");
 
   // Type-specific required fields
-  if (type === 'post' && !draft.price) missingFields.push('price');
-  if (type === 'tour') {
-    if (!draft.startDate) missingFields.push('startDate');
-    if (!draft.endDate) missingFields.push('endDate');
-    if (!draft.capacity) missingFields.push('capacity');
+  if (type === "post" && !draft.price) missingFields.push("price");
+  if (type === "tour") {
+    if (!draft.startDate) missingFields.push("startDate");
+    if (!draft.endDate) missingFields.push("endDate");
+    if (!draft.capacity) missingFields.push("capacity");
   }
-  if (type === 'training') {
-    if (!draft.capacity) missingFields.push('capacity');
+  if (type === "training") {
+    if (!draft.capacity) missingFields.push("capacity");
   }
-  if (type === 'academy') {
-    if (!draft.addressDetails) missingFields.push('addressDetails');
+  if (type === "academy") {
+    if (!draft.addressDetails) missingFields.push("addressDetails");
   }
 
   return {

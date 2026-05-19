@@ -1,6 +1,6 @@
-const DraftService = require('../services/DraftService');
-const { buildResponse } = require('../utils/response');
-const logger = require('winston');
+const DraftService = require("../services/DraftService");
+const { buildResponse } = require("../utils/response");
+const logger = require("winston");
 
 /**
  * DraftController - HTTP request handlers for draft endpoints
@@ -30,9 +30,13 @@ class DraftController {
         ...data,
       };
 
-      const draft = await DraftService.initializeDraft(ownerId, type, initialData);
+      const draft = await DraftService.initializeDraft(
+        ownerId,
+        type,
+        initialData,
+      );
 
-      logger.info('Draft created', {
+      logger.info("Draft created", {
         draftId: draft._id,
         type,
         ownerId,
@@ -45,10 +49,13 @@ class DraftController {
             draft,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error creating draft', { error: error.message, userId: req.user.id });
+      logger.error("Error creating draft", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -69,11 +76,11 @@ class DraftController {
           buildResponse({
             success: false,
             error: {
-              code: 'VALIDATION_ERROR',
-              message: '_version is required for optimistic locking',
+              code: "VALIDATION_ERROR",
+              message: "_version is required for optimistic locking",
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
@@ -83,12 +90,16 @@ class DraftController {
         data,
       };
 
-      const result = await DraftService.autosaveDraft(draftId, ownerId, autosavePayload);
+      const result = await DraftService.autosaveDraft(
+        draftId,
+        ownerId,
+        autosavePayload,
+      );
 
       if (!result.success) {
-        const statusCode = result.error === 'VERSION_CONFLICT' ? 409 : 400;
+        const statusCode = result.error === "VERSION_CONFLICT" ? 409 : 400;
 
-        logger.warn('Autosave failed', {
+        logger.warn("Autosave failed", {
           draftId,
           error: result.error,
           ownerId,
@@ -100,18 +111,18 @@ class DraftController {
             error: {
               code: result.error,
               message: result.message,
-              ...(result.error === 'VERSION_CONFLICT' && {
+              ...(result.error === "VERSION_CONFLICT" && {
                 currentVersion: result.currentVersion,
                 expectedVersion: result.expectedVersion,
                 draft: result.draft,
               }),
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
-      logger.debug('Draft autosaved', {
+      logger.debug("Draft autosaved", {
         draftId,
         changedFields: result.changedFields,
         newVersion: result.draft._version,
@@ -127,10 +138,13 @@ class DraftController {
             hasChanges: result.hasChanges,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error autosaving draft', { error: error.message, userId: req.user.id });
+      logger.error("Error autosaving draft", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -151,11 +165,11 @@ class DraftController {
           buildResponse({
             success: false,
             error: {
-              code: 'DRAFT_NOT_FOUND',
-              message: 'No active draft found',
+              code: "DRAFT_NOT_FOUND",
+              message: "No active draft found",
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
@@ -166,10 +180,13 @@ class DraftController {
             draft,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error fetching latest draft', { error: error.message, userId: req.user.id });
+      logger.error("Error fetching latest draft", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -190,11 +207,11 @@ class DraftController {
           buildResponse({
             success: false,
             error: {
-              code: 'DRAFT_NOT_FOUND',
-              message: 'Draft not found or you do not have access',
+              code: "DRAFT_NOT_FOUND",
+              message: "Draft not found or you do not have access",
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
@@ -205,10 +222,13 @@ class DraftController {
             draft,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error fetching draft', { error: error.message, userId: req.user.id });
+      logger.error("Error fetching draft", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -230,10 +250,13 @@ class DraftController {
           success: true,
           data: result,
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error listing drafts', { error: error.message, userId: req.user.id });
+      logger.error("Error listing drafts", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -250,7 +273,7 @@ class DraftController {
       const result = await DraftService.deleteDraft(draftId, ownerId);
 
       if (!result.success) {
-        const statusCode = result.error === 'UNAUTHORIZED' ? 403 : 404;
+        const statusCode = result.error === "UNAUTHORIZED" ? 403 : 404;
         return res.status(statusCode).json(
           buildResponse({
             success: false,
@@ -259,11 +282,11 @@ class DraftController {
               message: result.message,
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
-      logger.info('Draft deleted', { draftId, ownerId });
+      logger.info("Draft deleted", { draftId, ownerId });
 
       return res.status(200).json(
         buildResponse({
@@ -272,10 +295,13 @@ class DraftController {
             message: result.message,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error deleting draft', { error: error.message, userId: req.user.id });
+      logger.error("Error deleting draft", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -290,7 +316,11 @@ class DraftController {
       const ownerId = req.user.id;
       const finalData = req.body; // Optional overrides for final data
 
-      const result = await DraftService.promoteDraftToListing(draftId, ownerId, finalData);
+      const result = await DraftService.promoteDraftToListing(
+        draftId,
+        ownerId,
+        finalData,
+      );
 
       if (!result.success) {
         const statusCodeMap = {
@@ -303,7 +333,7 @@ class DraftController {
 
         const statusCode = statusCodeMap[result.error] || 400;
 
-        logger.warn('Draft publish failed', {
+        logger.warn("Draft publish failed", {
           draftId,
           error: result.error,
           ownerId,
@@ -320,11 +350,11 @@ class DraftController {
               }),
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
-      logger.info('Draft published to listing', {
+      logger.info("Draft published to listing", {
         draftId,
         listingId: result.listing._id,
         ownerId,
@@ -339,10 +369,13 @@ class DraftController {
             message: result.message,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error publishing draft', { error: error.message, userId: req.user.id });
+      logger.error("Error publishing draft", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
@@ -357,16 +390,16 @@ class DraftController {
       const ownerId = req.user.id;
 
       // Only allow users to view their own stats (unless admin)
-      if (userId !== ownerId && req.user.role !== 'admin') {
+      if (userId !== ownerId && req.user.role !== "admin") {
         return res.status(403).json(
           buildResponse({
             success: false,
             error: {
-              code: 'UNAUTHORIZED',
-              message: 'You cannot view other users\' draft statistics',
+              code: "UNAUTHORIZED",
+              message: "You cannot view other users' draft statistics",
             },
             reqId: req.id,
-          })
+          }),
         );
       }
 
@@ -379,10 +412,13 @@ class DraftController {
             stats,
           },
           reqId: req.id,
-        })
+        }),
       );
     } catch (error) {
-      logger.error('Error fetching draft stats', { error: error.message, userId: req.user.id });
+      logger.error("Error fetching draft stats", {
+        error: error.message,
+        userId: req.user.id,
+      });
       next(error);
     }
   }
