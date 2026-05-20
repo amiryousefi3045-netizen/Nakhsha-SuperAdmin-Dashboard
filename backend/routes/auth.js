@@ -14,6 +14,7 @@ const otpMetrics = require("../utils/otpMetrics");
 const { createUserDTO, createErrorResponse } = require("../utils/userDto");
 const { generateUniqueHandle } = require("../utils/handleGenerator");
 const { requireAuth } = require("../middleware/auth");
+const TokenService = require("../services/TokenService");
 const router = express.Router();
 
 /**
@@ -650,15 +651,34 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         );
     }
 
-    // Generate JWT token
-    const token = sign(freshUser);
+    // Generate JWT token (short-lived access token)
+    const accessToken = TokenService.generateAccessToken(
+      freshUser._id,
+      freshUser.role,
+    );
+
+    // Create refresh token (long-lived, stored in DB)
+    const { token: refreshToken, expiresAt: refreshExpiresAt } =
+      await TokenService.createRefreshToken(
+        freshUser._id,
+        null, // deviceId - can be set by client if needed
+        {
+          userAgent: req.get("User-Agent"),
+          ipAddress: req.ip,
+        },
+        req,
+      );
 
     logger.info("otp/verify: responded", { phone: normPhone });
 
     const userDTO = createUserDTO(freshUser, req);
     return res.json({
-      token,
+      accessToken,
+      refreshToken,
+      refreshExpiresAt,
       user: userDTO,
+      // Deprecated: keeping for backward compatibility
+      token: accessToken,
     });
   } catch (e) {
     const errorDuration = Date.now() - startTime;
@@ -688,6 +708,302 @@ router.get("/otp/metrics", async (req, res) => {
     logger.error("GET /auth/otp/metrics error", {
       error: e.message,
       stack: e.stack,
+    });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     summary: Refresh access token using refresh token
+ *     description: |
+ *       Exchange a refresh token for a new short-lived access token.
+ *       The old refresh token is automatically revoked (rotation).
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: The refresh token from login
+ *     responses:
+ *       200:
+ *         description: New access token issued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken: { type: string }
+ *                 refreshToken: { type: string }
+ *                 refreshExpiresAt: { type: string, format: date-time }
+ *       400:
+ *         description: Invalid or revoked refresh token
+ *       401:
+ *         description: Unauthorized (invalid token format)
+ */
+router.post("/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+
+    if (!refreshToken || typeof refreshToken !== "string") {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("VALIDATION_ERROR", "refresh token required", {
+            field: "refreshToken",
+          }),
+        );
+    }
+
+    // Extract user ID from refresh token header
+    // Format: refreshToken stored in DB, need user from it
+    // The user ID should be passed separately or extracted from context
+    // For now, we need to verify the token and extract userId
+
+    // Since we can't extract userId from the refresh token value directly,
+    // the client must provide it or we need a different approach
+    // Best practice: include userId in the response at login time
+    // For MVP, we'll look up the token in DB to get userId
+
+    const tokenHash = require("crypto")
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    const RefreshTokenModel = require("../models/RefreshToken");
+    const tokenDoc = await RefreshTokenModel.findOne({ tokenHash });
+
+    if (!tokenDoc) {
+      logger.warn("Refresh token not found", { ip: req.ip });
+      return res
+        .status(401)
+        .json(createErrorResponse("TOKEN_INVALID", "Invalid refresh token"));
+    }
+
+    const userId = tokenDoc.userId;
+
+    // Verify and rotate the token
+    try {
+      const { refreshToken: newRefreshToken, expiresAt: newExpiresAt } =
+        await TokenService.rotateRefreshToken(refreshToken, userId, req);
+
+      // Get user for role
+      const user = await User.findById(userId).select("role");
+      if (!user) {
+        return res
+          .status(404)
+          .json(createErrorResponse("USER_NOT_FOUND", "User not found"));
+      }
+
+      // Generate new access token
+      const accessToken = TokenService.generateAccessToken(userId, user.role);
+
+      logger.info("Token refreshed successfully", { userId });
+
+      res.json({
+        accessToken,
+        refreshToken: newRefreshToken,
+        refreshExpiresAt: newExpiresAt,
+      });
+    } catch (rotationError) {
+      logger.warn("Token rotation failed", {
+        userId,
+        error: rotationError.message,
+      });
+      return res
+        .status(401)
+        .json(createErrorResponse("TOKEN_INVALID", rotationError.message));
+    }
+  } catch (e) {
+    logger.error("POST /auth/refresh error", {
+      error: e.message,
+      stack: e.stack,
+    });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Logout (revoke current refresh token)
+ *     description: Revoke the refresh token for this session/device
+ *     tags: [Auth]
+ *     security:
+ *       - Bearer: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: The refresh token to revoke
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/logout", requireAuth, async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+
+    if (!refreshToken || typeof refreshToken !== "string") {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("VALIDATION_ERROR", "refresh token required", {
+            field: "refreshToken",
+          }),
+        );
+    }
+
+    const userId = req.user.id;
+
+    // Revoke the specific refresh token
+    const revoked = await TokenService.revokeToken(refreshToken, userId);
+
+    if (!revoked) {
+      logger.warn("Token revocation failed - not found", { userId });
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "TOKEN_NOT_FOUND",
+            "Token not found or already revoked",
+          ),
+        );
+    }
+
+    logger.info("User logged out", { userId });
+
+    res.json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (e) {
+    logger.error("POST /auth/logout error", {
+      error: e.message,
+      stack: e.stack,
+      userId: req.user?.id,
+    });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     summary: Logout from all devices
+ *     description: Revoke all refresh tokens for this user (all sessions/devices)
+ *     tags: [Auth]
+ *     security:
+ *       - Bearer: []
+ *     responses:
+ *       200:
+ *         description: All sessions revoked
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/logout-all", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Revoke all refresh tokens for this user
+    const revokedCount = await TokenService.revokeAllTokens(
+      userId,
+      "LOGOUT_ALL",
+    );
+
+    logger.info("User logged out from all devices", {
+      userId,
+      revokedCount,
+    });
+
+    res.json({
+      success: true,
+      message: "Logged out from all devices",
+      revokedCount,
+    });
+  } catch (e) {
+    logger.error("POST /auth/logout-all error", {
+      error: e.message,
+      stack: e.stack,
+      userId: req.user?.id,
+    });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/sessions:
+ *   get:
+ *     summary: Get active sessions
+ *     description: List all active sessions/devices for the current user
+ *     tags: [Auth]
+ *     security:
+ *       - Bearer: []
+ *     responses:
+ *       200:
+ *         description: List of active sessions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id: { type: string }
+ *                       deviceId: { type: string }
+ *                       deviceInfo:
+ *                         type: object
+ *                         properties:
+ *                           userAgent: { type: string }
+ *                           ipAddress: { type: string }
+ *                           lastUsedAt: { type: string, format: date-time }
+ *                       expiresAt: { type: string, format: date-time }
+ *                       createdAt: { type: string, format: date-time }
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/sessions", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get active sessions
+    const sessions = await TokenService.getActiveSessions(userId);
+
+    logger.debug("Active sessions retrieved", {
+      userId,
+      count: sessions.length,
+    });
+
+    res.json({
+      sessions,
+    });
+  } catch (e) {
+    logger.error("GET /auth/sessions error", {
+      error: e.message,
+      stack: e.stack,
+      userId: req.user?.id,
     });
     res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }

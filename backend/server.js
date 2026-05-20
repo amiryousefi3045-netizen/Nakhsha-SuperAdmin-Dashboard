@@ -390,7 +390,13 @@ const connectDB = async () => {
   try {
     const uri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/nakhsha";
     await mongoose.connect(uri, {
+      // Connection pool configuration for production scalability
+      maxPoolSize: 25, // Maximum connections (for 500+ concurrent users)
+      minPoolSize: 5, // Minimum connections to maintain
+      maxIdleTimeMS: 30000, // Close idle connections after 30 seconds
+      socketTimeoutMS: 30000, // Socket timeout
       serverSelectionTimeoutMS: 5000,
+      heartbeatFrequencyMS: 10000, // Monitor server every 10 seconds
     });
     app.locals.dbReady = true;
     logger.info("MongoDB connected successfully", {
