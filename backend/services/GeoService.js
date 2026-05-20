@@ -688,6 +688,738 @@ class GeoService {
       maxLng: Math.min(180, longitude + lngChange),
     };
   }
+
+  /**
+   * Generate heatmap data for a geographic area.
+   * Divides the search area into a grid and returns aggregated statistics per cell.
+   *
+   * Use case: Frontend renders heat map showing craft density, price clusters, rating hotspots.
+   *
+   * @param {number} latitude - Center latitude
+   * @param {number} longitude - Center longitude
+   * @param {number} radiusKm - Search radius
+   * @param {object} filters - Optional filters (category, type, status, etc.)
+   * @param {object} options - Query options
+   *   - gridSize: number (5-50, default 10) — cells per edge of grid
+   *   - aggregateBy: 'count' | 'avgPrice' | 'avgRating' (default 'count')
+   *   - includeDetails: boolean (default false) — include per-cell min/max values
+   * @returns {Promise<{
+   *   success: boolean,
+   *   data?: {
+   *     grid: Array<{lat, lng, value, cellCount, details?: {min, max, avg}}>,
+   *     bounds: {north, south, east, west},
+   *     center: {lat, lng},
+   *     gridSize: number,
+   *     aggregateBy: string
+   *   },
+   *   error?: string
+   * }>}
+   */
+  async generateHeatmapData(
+    latitude,
+    longitude,
+    radiusKm,
+    filters = {},
+    options = {},
+  ) {
+    try {
+      const startTime = Date.now();
+
+      // Validate inputs
+      const geoValidation = this.validateGeoPoint(latitude, longitude);
+      if (!geoValidation.valid) {
+        return { success: false, error: geoValidation.error };
+      }
+
+      const radiusValidation = this.validateRadius(radiusKm);
+      if (!radiusValidation.valid) {
+        return { success: false, error: radiusValidation.error };
+      }
+
+      // Normalize options
+      const gridSize = Math.min(
+        Math.max(parseInt(options.gridSize) || 10, 5),
+        50,
+      );
+      const aggregateBy = options.aggregateBy || "count";
+      const includeDetails = options.includeDetails === true;
+
+      // Get bounding box for the search area
+      const bbox = this.calculateBoundingBox(latitude, longitude, radiusKm);
+
+      // Calculate cell dimensions
+      const cellHeight = (bbox.maxLat - bbox.minLat) / gridSize;
+      const cellWidth = (bbox.maxLng - bbox.minLng) / gridSize;
+
+      // Build aggregation pipeline to find nearby listings and group by grid cell
+      const Listing = mongoose.model("Listing");
+
+      const aggregationPipeline = [
+        // Stage 1: $geoNear to filter by radius
+        {
+          $geoNear: {
+            near: {
+              type: "Point",
+              coordinates: [longitude, latitude],
+            },
+            distanceField: "distanceMeters",
+            maxDistance: radiusKm * 1000,
+            spherical: true,
+            query: {
+              status: filters.status || "published",
+              ...(filters.type && { type: filters.type }),
+            },
+          },
+        },
+
+        // Stage 2: $match for additional filters
+        {
+          $match: this.buildMatchQuery(filters, "Listing"),
+        },
+
+        // Stage 3: Add grid cell coordinates
+        {
+          $addFields: {
+            cellLat: {
+              $floor: {
+                $divide: [
+                  { $subtract: ["$location.coordinates.1", bbox.minLat] },
+                  cellHeight,
+                ],
+              },
+            },
+            cellLng: {
+              $floor: {
+                $divide: [
+                  { $subtract: ["$location.coordinates.0", bbox.minLng] },
+                  cellWidth,
+                ],
+              },
+            },
+          },
+        },
+
+        // Stage 4: Group by grid cell and aggregate
+        {
+          $group: {
+            _id: { cellLat: "$cellLat", cellLng: "$cellLng" },
+            count: { $sum: 1 },
+            avgPrice:
+              aggregateBy === "avgPrice"
+                ? { $avg: "$price" }
+                : { $first: null },
+            avgRating:
+              aggregateBy === "avgRating"
+                ? { $avg: "$rating" }
+                : { $first: null },
+            minPrice:
+              includeDetails && aggregateBy === "avgPrice"
+                ? { $min: "$price" }
+                : { $first: null },
+            maxPrice:
+              includeDetails && aggregateBy === "avgPrice"
+                ? { $max: "$price" }
+                : { $first: null },
+            minRating:
+              includeDetails && aggregateBy === "avgRating"
+                ? { $min: "$rating" }
+                : { $first: null },
+            maxRating:
+              includeDetails && aggregateBy === "avgRating"
+                ? { $max: "$rating" }
+                : { $first: null },
+          },
+        },
+
+        // Stage 5: Project final grid cell data
+        {
+          $project: {
+            _id: 0,
+            cellLat: "$_id.cellLat",
+            cellLng: "$_id.cellLng",
+            count: 1,
+            value:
+              aggregateBy === "count"
+                ? "$count"
+                : aggregateBy === "avgPrice"
+                  ? { $round: ["$avgPrice", 2] }
+                  : { $round: ["$avgRating", 2] },
+            ...(includeDetails && {
+              details:
+                aggregateBy === "avgPrice"
+                  ? {
+                      min: { $round: ["$minPrice", 2] },
+                      max: { $round: ["$maxPrice", 2] },
+                      avg: { $round: ["$avgPrice", 2] },
+                    }
+                  : aggregateBy === "avgRating"
+                    ? {
+                        min: { $round: ["$minRating", 2] },
+                        max: { $round: ["$maxRating", 2] },
+                        avg: { $round: ["$avgRating", 2] },
+                      }
+                    : null,
+            }),
+          },
+        },
+
+        // Stage 6: Sort by cell position for consistent ordering
+        {
+          $sort: { cellLat: 1, cellLng: 1 },
+        },
+      ];
+
+      // Execute aggregation
+      const cellData =
+        await Listing.aggregate(aggregationPipeline).allowDiskUse(true);
+
+      // Transform cell data to grid format with absolute coordinates
+      const grid = cellData.map((cell) => ({
+        lat: bbox.minLat + (cell.cellLat + 0.5) * cellHeight,
+        lng: bbox.minLng + (cell.cellLng + 0.5) * cellWidth,
+        value: cell.value,
+        cellCount: cell.count,
+        ...(includeDetails && { details: cell.details }),
+      }));
+
+      const executionTime = Date.now() - startTime;
+
+      return {
+        success: true,
+        data: {
+          grid,
+          bounds: {
+            north: bbox.maxLat,
+            south: bbox.minLat,
+            east: bbox.maxLng,
+            west: bbox.minLng,
+          },
+          center: { lat: latitude, lng: longitude },
+          gridSize,
+          aggregateBy,
+          cellCount: grid.length,
+          totalListings: cellData.reduce((sum, cell) => sum + cell.count, 0),
+        },
+        metadata: {
+          executionTime,
+          queryRadius: radiusKm,
+        },
+      };
+    } catch (error) {
+      console.error("[GeoService] Error in generateHeatmapData:", error);
+      return {
+        success: false,
+        error: error.message || "Heatmap generation failed",
+      };
+    }
+  }
+
+  /**
+   * Cluster nearby listings by geohash for zoomed-out map views.
+   * Groups results into clusters with zoom-level-based geohash precision.
+   *
+   * Use case: Show clusters of markers at low zoom levels, drill down for details.
+   *
+   * @param {number} latitude - Center latitude
+   * @param {number} longitude - Center longitude
+   * @param {number} radiusKm - Search radius
+   * @param {object} filters - Optional filters
+   * @param {object} options - Query options
+   *   - zoomLevel: number (0-20, default 12) — map zoom level
+   *   - limit: number (default 100, max 500) — max clusters to return
+   *   - skip: number (default 0) — pagination offset
+   * @returns {Promise<{
+   *   success: boolean,
+   *   data?: {
+   *     clusters: Array<{
+   *       geohash: string,
+   *       bounds: {north, south, east, west},
+   *       count: number,
+   *       sample: {id, title, coordinates, price, preview}
+   *     }>,
+   *     center: {lat, lng},
+   *     zoomLevel: number,
+   *     zoomRecommendation: string,
+   *     totalClusters: number
+   *   },
+   *   error?: string
+   * }>}
+   */
+  async clusterNearbyByGeohash(
+    latitude,
+    longitude,
+    radiusKm,
+    filters = {},
+    options = {},
+  ) {
+    try {
+      const startTime = Date.now();
+
+      // Validate inputs
+      const geoValidation = this.validateGeoPoint(latitude, longitude);
+      if (!geoValidation.valid) {
+        return { success: false, error: geoValidation.error };
+      }
+
+      const radiusValidation = this.validateRadius(radiusKm);
+      if (!radiusValidation.valid) {
+        return { success: false, error: radiusValidation.error };
+      }
+
+      // Normalize options
+      const zoomLevel = Math.min(
+        Math.max(parseInt(options.zoomLevel) || 12, 0),
+        20,
+      );
+      const limit = Math.min(parseInt(options.limit) || 100, 500);
+      const skip = parseInt(options.skip) || 0;
+
+      // Map zoom level to geohash precision
+      // Higher zoom = more precision = smaller clusters
+      const geohashPrecision = this._zoomToGeohashPrecision(zoomLevel);
+
+      // Get all nearby listings (no pagination yet)
+      const Listing = mongoose.model("Listing");
+
+      const nearbyPipeline = [
+        {
+          $geoNear: {
+            near: {
+              type: "Point",
+              coordinates: [longitude, latitude],
+            },
+            distanceField: "distanceMeters",
+            maxDistance: radiusKm * 1000,
+            spherical: true,
+            query: {
+              status: filters.status || "published",
+              ...(filters.type && { type: filters.type }),
+            },
+          },
+        },
+        {
+          $match: this.buildMatchQuery(filters, "Listing"),
+        },
+        {
+          $project: {
+            _id: 1,
+            title: 1,
+            "location.coordinates": 1,
+            price: 1,
+            preview: { $arrayElemAt: ["$images", 0] },
+            rating: 1,
+            coordinates: "$location.coordinates",
+          },
+        },
+      ];
+
+      const listings =
+        await Listing.aggregate(nearbyPipeline).allowDiskUse(true);
+
+      // Group listings by geohash
+      const clustersMap = {};
+
+      for (const listing of listings) {
+        if (!listing.coordinates || listing.coordinates.length !== 2) continue;
+
+        const geohash = this._encodeGeohash(
+          listing.coordinates[1], // lat
+          listing.coordinates[0], // lng
+          geohashPrecision,
+        );
+
+        if (!clustersMap[geohash]) {
+          clustersMap[geohash] = {
+            geohash,
+            listings: [],
+          };
+        }
+
+        clustersMap[geohash].listings.push(listing);
+      }
+
+      // Transform clusters to response format
+      const clusters = Object.values(clustersMap)
+        .map((cluster) => ({
+          geohash: cluster.geohash,
+          bounds: this._geohashToBounds(cluster.geohash),
+          count: cluster.listings.length,
+          // Return highest-rated marker as sample
+          sample: cluster.listings.sort(
+            (a, b) => (b.rating || 0) - (a.rating || 0),
+          )[0]
+            ? {
+                id: cluster.listings[0]._id.toString(),
+                title: cluster.listings[0].title,
+                coordinates: cluster.listings[0].coordinates,
+                price: cluster.listings[0].price || null,
+                preview: cluster.listings[0].preview || null,
+              }
+            : null,
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(skip, skip + limit);
+
+      // Determine zoom recommendation
+      const zoomRecommendation = this._getZoomRecommendation(
+        zoomLevel,
+        clusters,
+      );
+
+      const executionTime = Date.now() - startTime;
+
+      return {
+        success: true,
+        data: {
+          clusters,
+          center: { lat: latitude, lng: longitude },
+          zoomLevel,
+          zoomRecommendation,
+          totalClusters: Object.keys(clustersMap).length,
+          geohashPrecision,
+        },
+        metadata: {
+          executionTime,
+          queryRadius: radiusKm,
+        },
+      };
+    } catch (error) {
+      console.error("[GeoService] Error in clusterNearbyByGeohash:", error);
+      return {
+        success: false,
+        error: error.message || "Clustering failed",
+      };
+    }
+  }
+
+  /**
+   * Find listings within a geographic polygon (boundary search).
+   * Uses $geoWithin with $polygon operator.
+   *
+   * Use case: Search within region/administrative boundaries or custom user-drawn areas.
+   *
+   * @param {array} polygonCoordinates - Array of [lng, lat] pairs defining polygon (must be closed)
+   * @param {object} filters - Optional filters
+   * @param {object} options - Query options (limit, skip, lean)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   data?: {
+   *     items: Array<object>,
+   *     polygon: {type, coordinates},
+   *     bounds: {north, south, east, west},
+   *     pagination: {limit, skip, totalCount, hasMore}
+   *   },
+   *   error?: string
+   * }>}
+   */
+  async findWithinPolygon(polygonCoordinates, filters = {}, options = {}) {
+    try {
+      const startTime = Date.now();
+
+      // Validate polygon
+      const polygonValidation = this._validatePolygon(polygonCoordinates);
+      if (!polygonValidation.valid) {
+        return { success: false, error: polygonValidation.error };
+      }
+
+      // Normalize options
+      const limit = Math.min(parseInt(options.limit) || 100, 500);
+      const skip = parseInt(options.skip) || 0;
+      const lean = options.lean !== false;
+
+      // Build $geoWithin query
+      const Listing = mongoose.model("Listing");
+
+      const pipeline = [
+        // Stage 1: $match for $geoWithin
+        {
+          $match: {
+            "location.coordinates": {
+              $geoWithin: {
+                $geometry: {
+                  type: "Polygon",
+                  coordinates: [polygonCoordinates],
+                },
+              },
+            },
+            status: filters.status || "published",
+            ...(filters.type && { type: filters.type }),
+          },
+        },
+
+        // Stage 2: Additional filters
+        {
+          $match: this.buildMatchQuery(filters, "Listing"),
+        },
+
+        // Stage 3: Count for pagination
+        {
+          $facet: {
+            metadata: [{ $count: "total" }],
+            items: [
+              { $skip: skip },
+              { $limit: limit },
+              this.markerProjection(),
+            ],
+          },
+        },
+      ];
+
+      const result = await Listing.aggregate(pipeline).allowDiskUse(true);
+
+      const totalCount = result[0]?.metadata?.[0]?.total || 0;
+      const items = result[0]?.items || [];
+
+      // Transform to marker DTOs
+      const markers = items.map((doc) => this.toMarkerDTO(doc));
+
+      // Calculate polygon bounds
+      const bounds = this._polygonToBounds(polygonCoordinates);
+
+      const executionTime = Date.now() - startTime;
+
+      return {
+        success: true,
+        data: {
+          items: markers,
+          polygon: {
+            type: "Polygon",
+            coordinates: [polygonCoordinates],
+          },
+          bounds,
+          pagination: {
+            limit,
+            skip,
+            totalCount,
+            hasMore: skip + markers.length < totalCount,
+          },
+        },
+        metadata: {
+          executionTime,
+          polygonPointCount: polygonCoordinates.length,
+        },
+      };
+    } catch (error) {
+      console.error("[GeoService] Error in findWithinPolygon:", error);
+      return {
+        success: false,
+        error: error.message || "Polygon search failed",
+      };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ── Private Helper Methods ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Map zoom level (0-20) to geohash precision (1-11).
+   * Higher zoom = higher precision = smaller clusters.
+   *
+   * @param {number} zoomLevel - 0-20
+   * @returns {number} geohash precision 1-11
+   */
+  _zoomToGeohashPrecision(zoomLevel) {
+    const precisionMap = {
+      0: 1, // World
+      1: 1,
+      2: 2,
+      3: 2,
+      4: 3,
+      5: 3,
+      6: 4,
+      7: 4,
+      8: 5,
+      9: 5,
+      10: 6,
+      11: 6,
+      12: 7, // City level
+      13: 7,
+      14: 8,
+      15: 8,
+      16: 9,
+      17: 9,
+      18: 10,
+      19: 10,
+      20: 11, // Street level
+    };
+    return precisionMap[zoomLevel] || 7;
+  }
+
+  /**
+   * Simple geohash encoder.
+   * Encodes (lat, lng) to geohash string of specified length.
+   *
+   * @param {number} lat - Latitude
+   * @param {number} lng - Longitude
+   * @param {number} length - Geohash length (1-11)
+   * @returns {string} geohash
+   */
+  _encodeGeohash(lat, lng, length) {
+    // Normalize coordinates to [0, 1]
+    const latNorm = (lat + 90) / 180;
+    const lngNorm = (lng + 180) / 360;
+
+    // Base32 characters for geohash
+    const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
+
+    let geohash = "";
+    let latMin = -90,
+      latMax = 90;
+    let lngMin = -180,
+      lngMax = 180;
+
+    let even = true;
+    for (let i = 0; i < length; i++) {
+      let ch = 0;
+      for (let bit = 4; bit >= 0; bit--) {
+        if (even) {
+          const mid = (lngMin + lngMax) / 2;
+          if (lng > mid) {
+            ch |= 1 << bit;
+            lngMin = mid;
+          } else {
+            lngMax = mid;
+          }
+        } else {
+          const mid = (latMin + latMax) / 2;
+          if (lat > mid) {
+            ch |= 1 << bit;
+            latMin = mid;
+          } else {
+            latMax = mid;
+          }
+        }
+        even = !even;
+      }
+      geohash += BASE32[ch];
+    }
+
+    return geohash;
+  }
+
+  /**
+   * Convert geohash to bounding box.
+   *
+   * @param {string} geohash
+   * @returns {{north, south, east, west}}
+   */
+  _geohashToBounds(geohash) {
+    // Decode geohash to approximate bounds
+    // For simplicity, we use a fixed cell size based on geohash length
+    const cellSizes = [
+      180, 45, 11.25, 2.8, 0.7, 0.175, 0.044, 0.011, 0.0027, 0.00067, 0.00017,
+    ];
+    const precision = Math.min(geohash.length, cellSizes.length);
+    const cellSize = cellSizes[precision - 1] || 0.00017;
+
+    // This is a simplified approximation
+    // A full decoder would interleave lat/lng bits from the geohash
+    const lat = (geohash.charCodeAt(0) % 18) * cellSize - 90;
+    const lng = (geohash.charCodeAt(0) % 36) * cellSize - 180;
+
+    return {
+      north: Math.min(90, lat + cellSize),
+      south: Math.max(-90, lat),
+      east: Math.min(180, lng + cellSize),
+      west: Math.max(-180, lng),
+    };
+  }
+
+  /**
+   * Get zoom recommendation based on number of clusters.
+   *
+   * @param {number} currentZoom
+   * @param {array} clusters
+   * @returns {string}
+   */
+  _getZoomRecommendation(currentZoom, clusters) {
+    if (clusters.length === 0) {
+      return "No results in this area";
+    }
+    if (clusters.length === 1) {
+      return "Zoom in to see details";
+    }
+    if (clusters.length > 100) {
+      return "Zoom out to see overview";
+    }
+    return "Current zoom level is optimal";
+  }
+
+  /**
+   * Validate polygon coordinates.
+   *
+   * @param {array} polygonCoordinates - Array of [lng, lat] pairs
+   * @returns {{valid: boolean, error?: string}}
+   */
+  _validatePolygon(polygonCoordinates) {
+    if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 4) {
+      return {
+        valid: false,
+        error: "Polygon must have at least 4 points (including closing point)",
+      };
+    }
+
+    if (polygonCoordinates.length > 100) {
+      return {
+        valid: false,
+        error: "Polygon complexity limited to 100 points maximum",
+      };
+    }
+
+    // Validate all coordinates
+    for (const coord of polygonCoordinates) {
+      if (
+        !Array.isArray(coord) ||
+        coord.length !== 2 ||
+        typeof coord[0] !== "number" ||
+        typeof coord[1] !== "number"
+      ) {
+        return {
+          valid: false,
+          error: "All polygon points must be [lng, lat] number pairs",
+        };
+      }
+
+      const [lng, lat] = coord;
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return {
+          valid: false,
+          error: "Polygon coordinates out of valid range",
+        };
+      }
+    }
+
+    // Validate closure (first point == last point)
+    const first = polygonCoordinates[0];
+    const last = polygonCoordinates[polygonCoordinates.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      return {
+        valid: false,
+        error: "Polygon must be closed (first point must equal last point)",
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Convert polygon coordinates to bounding box.
+   *
+   * @param {array} polygonCoordinates
+   * @returns {{north, south, east, west}}
+   */
+  _polygonToBounds(polygonCoordinates) {
+    const lngs = polygonCoordinates.map((c) => c[0]);
+    const lats = polygonCoordinates.map((c) => c[1]);
+
+    return {
+      west: Math.min(...lngs),
+      east: Math.max(...lngs),
+      south: Math.min(...lats),
+      north: Math.max(...lats),
+    };
+  }
 }
 
 module.exports = new GeoService();

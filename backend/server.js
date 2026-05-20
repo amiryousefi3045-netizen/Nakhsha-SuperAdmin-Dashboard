@@ -332,7 +332,15 @@ const postsRoutes = require("./routes/posts");
 // NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
+// NEW: Consolidated listings module (replaces scatter of listings.*.js files)
+const listingsModule = require("./modules/listings");
+// NEW: Consolidated drafts module
+const draftsModule = require("./modules/drafts");
+// LEGACY: Old route files (deprecated, kept for backward compatibility during migration)
 const listingsNearRoutes = require("./routes/listings.near");
+const listingsHeatmapRoutes = require("./routes/listings.heatmap");
+const listingsClusterRoutes = require("./routes/listings.clusters");
+const listingsWithinBoundaryRoutes = require("./routes/listings.within-boundary");
 const listingsRoutes = require("./routes/listings");
 const draftRoutes = require("./routes/drafts");
 const healthRoutes = require("./routes/health");
@@ -352,15 +360,19 @@ app.use("/api/crafts", craftRoutes);
 // Mount posts API
 app.use("/api/posts", postsRoutes);
 // (Removed compatibility alias to /api/recipes)
-// Mount draft autosave routes FIRST so /draft and /draft/latest are matched before /:id
-app.use("/api/listings", draftRoutes);
-// Mount the new near-search route.
-// heavyLimiter is also applied per-route inside listings.near.js; the
-// app.use() layer here covers any additional routes added to this prefix.
-app.use("/api/listings", heavyLimiter, listingsNearRoutes);
-// Mount canonical listings CRUD (POST /api/listings, GET /api/listings/:id).
-// Must come AFTER listingsNearRoutes and draftRoutes so those paths are matched first.
-app.use("/api/listings", listingsRoutes);
+// NEW: Mount consolidated drafts module FIRST so /draft and /draft/latest are matched before /:id
+app.use("/api/listings", draftsModule);
+// NEW: Mount consolidated listings module with all CRUD + geo endpoints
+// This replaces the old scattered route files (listings.*.js)
+app.use("/api/listings", listingsModule);
+// LEGACY: Keep old route files for backward compatibility during migration
+// (Can be removed after verifying new modules work correctly)
+// app.use("/api/listings", draftRoutes);
+// app.use("/api/listings", heavyLimiter, listingsNearRoutes);
+// app.use("/api/listings", heavyLimiter, listingsHeatmapRoutes);
+// app.use("/api/listings", heavyLimiter, listingsClusterRoutes);
+// app.use("/api/listings", heavyLimiter, listingsWithinBoundaryRoutes);
+// app.use("/api/listings", listingsRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 
