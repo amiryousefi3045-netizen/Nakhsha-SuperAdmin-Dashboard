@@ -260,37 +260,76 @@ listingSchema.index({ _id: 1, revision: 1 });
 const Listing = mongoose.model("Listing", listingSchema);
 
 // ── PostListing discriminator ─────────────────────────────────────────────────
+// Check if discriminators already exist (can happen if model is required multiple times)
+let PostListing, TourListing, TrainingListing, AcademyListing;
 
-const PostListing = Listing.discriminator(
-  "post",
-  new mongoose.Schema({
-    price: { type: Number, min: 0 },
-    forSale: { type: Boolean, default: true },
-    category: { type: String, trim: true },
-    /** Free-form key/value product attributes (e.g. { material: "clay", size: "30cm" }). */
-    attributes: { type: Map, of: String },
-  }),
-);
+// Try to get existing discriminators from mongoose models
+const tryGetPostListing = () => {
+  try {
+    return mongoose.model("post");
+  } catch {
+    return null;
+  }
+};
+
+const tryGetTourListing = () => {
+  try {
+    return mongoose.model("tour");
+  } catch {
+    return null;
+  }
+};
+
+const tryGetTrainingListing = () => {
+  try {
+    return mongoose.model("training");
+  } catch {
+    return null;
+  }
+};
+
+const tryGetAcademyListing = () => {
+  try {
+    return mongoose.model("academy");
+  } catch {
+    return null;
+  }
+};
+
+PostListing = tryGetPostListing();
+if (!PostListing) {
+  PostListing = Listing.discriminator(
+    "post",
+    new mongoose.Schema({
+      price: { type: Number, min: 0 },
+      forSale: { type: Boolean, default: true },
+      category: { type: String, trim: true },
+      /** Free-form key/value product attributes (e.g. { material: "clay", size: "30cm" }). */
+      attributes: { type: Map, of: String },
+    }),
+  );
+}
 
 // ── TourListing discriminator ─────────────────────────────────────────────────
-
-const TourListing = Listing.discriminator(
-  "tour",
-  new mongoose.Schema({
-    /** ISO date string or Date object for when the tour starts. */
-    startDate: { type: Date },
-    /** ISO date string or Date object for when the tour ends. */
-    endDate: { type: Date },
-    /** Human-readable duration string from the wizard, e.g. "3 روز". */
-    duration: { type: String, trim: true },
-    durationDays: { type: Number, min: 1 },
-    capacity: { type: Number, min: 1 },
-    itinerary: { type: String, trim: true },
-  }),
-);
+TourListing = tryGetTourListing();
+if (!TourListing) {
+  TourListing = Listing.discriminator(
+    "tour",
+    new mongoose.Schema({
+      /** ISO date string or Date object for when the tour starts. */
+      startDate: { type: Date },
+      /** ISO date string or Date object for when the tour ends. */
+      endDate: { type: Date },
+      /** Human-readable duration string from the wizard, e.g. "3 روز". */
+      duration: { type: String, trim: true },
+      durationDays: { type: Number, min: 1 },
+      capacity: { type: Number, min: 1 },
+      itinerary: { type: String, trim: true },
+    }),
+  );
+}
 
 // ── TrainingListing discriminator ─────────────────────────────────────────────
-
 /** Sub-schema for one weekly-recurrence slot. */
 const scheduleItemSchema = new mongoose.Schema(
   {
@@ -315,35 +354,40 @@ const scheduleItemSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const TrainingListing = Listing.discriminator(
-  "training",
-  new mongoose.Schema({
-    /** Weekly recurring schedule slots (optional when using date-range form). */
-    schedule: {
-      type: [scheduleItemSchema],
-      default: undefined,
-    },
-    /** Date-range style scheduling collected by the wizard. */
-    startDate: { type: Date },
-    endDate: { type: Date },
-    duration: { type: String, trim: true },
-    capacity: { type: Number, min: 1 },
-    level: { type: String, trim: true },
-    instructor: { type: String, trim: true },
-  }),
-);
+TrainingListing = tryGetTrainingListing();
+if (!TrainingListing) {
+  TrainingListing = Listing.discriminator(
+    "training",
+    new mongoose.Schema({
+      /** Weekly recurring schedule slots (optional when using date-range form). */
+      schedule: {
+        type: [scheduleItemSchema],
+        default: undefined,
+      },
+      /** Date-range style scheduling collected by the wizard. */
+      startDate: { type: Date },
+      endDate: { type: Date },
+      duration: { type: String, trim: true },
+      capacity: { type: Number, min: 1 },
+      level: { type: String, trim: true },
+      instructor: { type: String, trim: true },
+    }),
+  );
+}
 
 // ── AcademyListing discriminator ─────────────────────────────────────────────
-
-const AcademyListing = Listing.discriminator(
-  "academy",
-  new mongoose.Schema({
-    addressDetails: { type: String, trim: true },
-    phone: { type: String, trim: true },
-    workingHours: { type: String, trim: true },
-    website: { type: String, trim: true },
-  }),
-);
+AcademyListing = tryGetAcademyListing();
+if (!AcademyListing) {
+  AcademyListing = Listing.discriminator(
+    "academy",
+    new mongoose.Schema({
+      addressDetails: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      workingHours: { type: String, trim: true },
+      website: { type: String, trim: true },
+    }),
+  );
+}
 
 module.exports = {
   Listing,

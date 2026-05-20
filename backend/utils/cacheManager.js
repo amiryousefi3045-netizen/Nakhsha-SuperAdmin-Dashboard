@@ -23,8 +23,17 @@
  *   await cache.invalidateRegion(lat, lng, 5); // Invalidate nearby regions
  */
 
-const redis = require("redis");
 const crypto = require("crypto");
+let redis;
+
+// Lazy-load redis only if REDIS_URL is set
+try {
+  if (process.env.REDIS_URL) {
+    redis = require("redis");
+  }
+} catch (e) {
+  console.warn("[CacheManager] Redis not installed — caching disabled");
+}
 
 class CacheManager {
   constructor() {
@@ -40,8 +49,10 @@ class CacheManager {
    * Gracefully handles missing Redis (cache disabled).
    */
   initializeRedis() {
-    if (!process.env.REDIS_URL) {
-      console.log("[CacheManager] REDIS_URL not set — caching disabled");
+    if (!process.env.REDIS_URL || !redis) {
+      console.log(
+        "[CacheManager] REDIS_URL not set or redis not installed — caching disabled",
+      );
       return;
     }
 

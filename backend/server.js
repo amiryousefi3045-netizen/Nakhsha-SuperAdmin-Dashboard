@@ -332,22 +332,37 @@ const postsRoutes = require("./routes/posts");
 // NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
-// NEW: Consolidated listings module (replaces scatter of listings.*.js files)
-const listingsModule = require("./modules/listings");
-// NEW: Consolidated drafts module
-const draftsModule = require("./modules/drafts");
-// LEGACY: Old route files (deprecated, kept for backward compatibility during migration)
-const listingsNearRoutes = require("./routes/listings.near");
-const listingsHeatmapRoutes = require("./routes/listings.heatmap");
-const listingsClusterRoutes = require("./routes/listings.clusters");
-const listingsWithinBoundaryRoutes = require("./routes/listings.within-boundary");
-const listingsRoutes = require("./routes/listings");
-const draftRoutes = require("./routes/drafts");
-const healthRoutes = require("./routes/health");
+
+// NOTE: Listing routes deferred until after MongoDB connection
+// This prevents Mongoose from hanging when trying to load the Listing model
+// before the database is ready.
+let listingsModule,
+  draftsModule,
+  listingsNearRoutes,
+  listingsHeatmapRoutes,
+  listingsClusterRoutes,
+  listingsWithinBoundaryRoutes,
+  listingsRoutes,
+  draftRoutes;
+
+const loadListingRoutes = () => {
+  // NEW: Consolidated drafts module (load FIRST since it depends on Listing)
+  draftsModule = require("./modules/drafts");
+  // NEW: Consolidated listings module (replaces scatter of listings.*.js files)
+  listingsModule = require("./modules/listings");
+  // LEGACY: Old route files (deprecated, kept for backward compatibility during migration)
+  listingsNearRoutes = require("./routes/listings.near");
+  listingsHeatmapRoutes = require("./routes/listings.heatmap");
+  listingsClusterRoutes = require("./routes/listings.clusters");
+  listingsWithinBoundaryRoutes = require("./routes/listings.within-boundary");
+  listingsRoutes = require("./routes/listings");
+  draftRoutes = require("./routes/drafts");
+};
 // Heavy-endpoint rate limiter — also applied per-route inside the route files;
 // the app.use() here acts as a second layer for any future routes added under
 // /api/listings without explicit per-handler wiring.
 const { heavyLimiter } = require("./middleware/rateLimiter");
+const healthRoutes = require("./routes/health");
 
 // Serve static files for monitoring
 app.use(express.static(path.join(__dirname, "public")));
@@ -360,19 +375,7 @@ app.use("/api/crafts", craftRoutes);
 // Mount posts API
 app.use("/api/posts", postsRoutes);
 // (Removed compatibility alias to /api/recipes)
-// NEW: Mount consolidated drafts module FIRST so /draft and /draft/latest are matched before /:id
-app.use("/api/listings", draftsModule);
-// NEW: Mount consolidated listings module with all CRUD + geo endpoints
-// This replaces the old scattered route files (listings.*.js)
-app.use("/api/listings", listingsModule);
-// LEGACY: Keep old route files for backward compatibility during migration
-// (Can be removed after verifying new modules work correctly)
-// app.use("/api/listings", draftRoutes);
-// app.use("/api/listings", heavyLimiter, listingsNearRoutes);
-// app.use("/api/listings", heavyLimiter, listingsHeatmapRoutes);
-// app.use("/api/listings", heavyLimiter, listingsClusterRoutes);
-// app.use("/api/listings", heavyLimiter, listingsWithinBoundaryRoutes);
-// app.use("/api/listings", listingsRoutes);
+// NOTE: Listing routes will be mounted after DB connection in the startup function
 app.use("/api/users", userRoutes);
 app.use("/api/uploads", uploadRoutes);
 
@@ -493,6 +496,14 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   await connectDB();
+
+  // Load listing routes after DB is ready
+  loadListingRoutes();
+
+  // Mount listing routes
+  app.use("/api/listings", draftsModule);
+  app.use("/api/listings", listingsModule);
+
   const server = app.listen(PORT, () => {
     logger.info(`Server is running on port ${PORT}`);
   });

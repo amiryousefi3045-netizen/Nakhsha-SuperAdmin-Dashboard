@@ -14,11 +14,11 @@
  * All queries return lean documents for performance.
  */
 
-const GeoService = require("../../services/GeoService");
+const geoService = require("../../services/GeoService");
 
 class ListingGeoService {
   constructor() {
-    this.geoService = new GeoService();
+    this.geoService = geoService; // GeoService exports a singleton instance
   }
 
   /**
