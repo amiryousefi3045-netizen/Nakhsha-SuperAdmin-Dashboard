@@ -6,6 +6,7 @@
  * - Image diffing and processing
  * - Revision conflict detection
  * - Generating optimized update queries
+ * - Cache invalidation for geospatial queries
  * - Preparing frontend responses
  */
 
@@ -16,6 +17,7 @@ const {
   validateImagePaths,
   getImageDeltaForResponse,
 } = require("../utils/imageDiffing");
+const CacheManager = require("../utils/cacheManager");
 const logger = require("../utils/logger");
 
 class ListingService {
@@ -168,6 +170,22 @@ class ListingService {
       }
 
       // ── 7. Return success with updated listing ───────────────────────────
+
+      // Invalidate geospatial cache for this region if location changed
+      if (sanitizedUpdate.location && existingListing.location?.coordinates) {
+        const coordinates = existingListing.location.coordinates;
+        await CacheManager.invalidateRegion(coordinates[1], coordinates[0], 10);
+      }
+
+      // Also invalidate cache for new location if it changed
+      if (sanitizedUpdate.location?.coordinates) {
+        const newCoordinates = sanitizedUpdate.location.coordinates;
+        await CacheManager.invalidateRegion(
+          newCoordinates[1],
+          newCoordinates[0],
+          10,
+        );
+      }
 
       return {
         success: true,

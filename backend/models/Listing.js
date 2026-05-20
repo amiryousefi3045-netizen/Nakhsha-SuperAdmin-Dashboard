@@ -183,7 +183,7 @@ const listingSchema = new mongoose.Schema(
  */
 listingSchema.index(
   { "location.coordinates": "2dsphere" },
-  { sparse: true, name: "location_geo_idx" }
+  { sparse: true, name: "location_geo_idx" },
 );
 
 /**
@@ -192,7 +192,7 @@ listingSchema.index(
  */
 listingSchema.index(
   { "location.city": 1, "location.province": 1, createdAt: -1 },
-  { sparse: true, name: "location_city_province_idx" }
+  { sparse: true, name: "location_city_province_idx" },
 );
 
 /**
@@ -201,7 +201,7 @@ listingSchema.index(
  */
 listingSchema.index(
   { "location.coordinates": "2dsphere", category: 1 },
-  { sparse: true, name: "location_category_idx" }
+  { sparse: true, name: "location_category_idx" },
 );
 
 /**
@@ -216,6 +216,36 @@ listingSchema.index(
     weights: { title: 10, tags: 5, description: 1 },
     name: "listings_text_idx",
   },
+);
+
+/**
+ * Compound geospatial + type index for efficient nearby queries with type filtering.
+ * Speeds up $geoNear queries with { type: "post" } filter.
+ * Used by: GET /api/listings/near?type=post
+ */
+listingSchema.index(
+  { "location.coordinates": "2dsphere", type: 1, status: 1 },
+  { sparse: true, name: "location_type_status_idx" },
+);
+
+/**
+ * Compound geospatial + price index for nearby queries with price filtering.
+ * Speeds up $geoNear queries with { price: { $gte: min, $lte: max } } filter.
+ * Used by: GET /api/listings/near?minPrice=100&maxPrice=5000
+ */
+listingSchema.index(
+  { "location.coordinates": "2dsphere", price: 1, status: 1 },
+  { sparse: true, name: "location_price_status_idx" },
+);
+
+/**
+ * Compound index for owner + location filtering.
+ * Speeds up user's own listings queries with geospatial filtering.
+ * Used by admin/user-specific nearby queries.
+ */
+listingSchema.index(
+  { owner: 1, "location.coordinates": "2dsphere", status: 1 },
+  { sparse: true, name: "owner_location_status_idx" },
 );
 
 /** Compound index for per-owner content sorted by recency. */
