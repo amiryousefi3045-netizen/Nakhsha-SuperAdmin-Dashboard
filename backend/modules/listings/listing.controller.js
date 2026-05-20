@@ -30,8 +30,8 @@ const {
 const {
   createSuccessResponse,
   createErrorResponse,
-} = require("../utils/response");
-const logger = require("../utils/logger");
+} = require("../../utils/response");
+const logger = require("../../utils/logger");
 
 // ────────────────────────────────────────────────────────────────────────────
 // Async Wrapper for Centralized Error Handling

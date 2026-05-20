@@ -14,7 +14,7 @@
  * All queries return lean documents for performance.
  */
 
-const GeoService = require("../services/GeoService");
+const GeoService = require("../../services/GeoService");
 
 class ListingGeoService {
   constructor() {

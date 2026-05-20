@@ -18,15 +18,15 @@ const {
   diffImages,
   sanitizeImages,
   validateImagePaths,
-} = require("../utils/imageDiffing");
+} = require("../../utils/imageDiffing");
 const {
   validateCreateListing,
   validateCreateDetails,
   validateUpdateListing,
   validateUpdateDetails,
 } = require("./listing.validation");
-const CacheManager = require("../utils/cacheManager");
-const logger = require("../utils/logger");
+const CacheManager = require("../../utils/cacheManager");
+const logger = require("../../utils/logger");
 const listingGeoService = require("./listing.geo");
 
 class ListingService {

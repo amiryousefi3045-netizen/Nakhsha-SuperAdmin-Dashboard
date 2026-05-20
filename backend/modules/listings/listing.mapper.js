@@ -11,7 +11,7 @@
  * - Error response shaping
  */
 
-const { toAbsoluteUrl } = require("../utils/urls");
+const { toAbsoluteUrl } = require("../../utils/urls");
 
 // ────────────────────────────────────────────────────────────────────────────
 // Full Listing Response Mappers

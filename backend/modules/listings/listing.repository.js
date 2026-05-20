@@ -18,8 +18,8 @@ const {
   TourListing,
   TrainingListing,
   AcademyListing,
-} = require("../models/Listing");
-const { Craft } = require("../models/Craft");
+} = require("../../models/Listing");
+const { Craft } = require("../../models/Craft");
 
 // Map listing types to discriminator models
 const LISTING_TYPE_MODELS = {
