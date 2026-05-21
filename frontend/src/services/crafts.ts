@@ -211,8 +211,13 @@ export async function fetchCrafts(opts: CraftFilters = {}): Promise<{
   page: number;
   limit: number;
 }> {
+  const params = { ...opts } as Record<string, any>;
+  if (Array.isArray(params.priceRange)) {
+    params.priceRange = `${params.priceRange[0]}-${params.priceRange[1]}`;
+  }
+
   const result = await apiClient.get<ApiResponse<Craft[]>>("/crafts", {
-    params: opts,
+    params,
   });
 
   if (!result.success) {

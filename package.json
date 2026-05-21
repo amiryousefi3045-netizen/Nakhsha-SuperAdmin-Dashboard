@@ -7,10 +7,13 @@
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "build": "npm run build --prefix frontend",
     "start": "npm run start --prefix backend",
-    "test": "npm test --prefix backend",
-    "test:coverage": "npm run test:coverage --prefix backend"
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
+    "typecheck": "npm run typecheck --prefix frontend",
+    "test": "cross-env NODE_ENV=test JWT_SECRET=ci-test-secret-for-jest-only MONGO_URI=mongodb://localhost:27017/nakhsha_test npm test --prefix backend",
+    "test:coverage": "cross-env NODE_ENV=test JWT_SECRET=ci-test-secret-for-jest-only MONGO_URI=mongodb://localhost:27017/nakhsha_test npm run test:coverage --prefix backend",
+    "verify": "npm run lint && npm run test && npm run typecheck && npm run build"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",

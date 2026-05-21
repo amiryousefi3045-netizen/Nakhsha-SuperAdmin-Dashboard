@@ -178,9 +178,12 @@ router.get("/", heavyLimiter, async (req, res) => {
     if (forSale === "true") filter.forSale = true;
 
     // Price range filter (format: "min-max" or "min+" for open-ended)
-    const priceRange = getFilter("priceRange");
+    let priceRange = getFilter("priceRange");
+    if (Array.isArray(priceRange)) {
+      priceRange = priceRange.join("-");
+    }
     if (priceRange) {
-      const [min, max] = priceRange.split("-");
+      const [min, max] = String(priceRange).split("-");
       if (min && !isNaN(min)) {
         filter.price = filter.price || {};
         filter.price.$gte = parseFloat(min);
