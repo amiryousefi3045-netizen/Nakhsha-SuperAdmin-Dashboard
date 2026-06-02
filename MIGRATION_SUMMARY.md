@@ -238,29 +238,20 @@ No changes needed for these files — they were already correctly configured:
 
 ---
 
-## 🗂️ Docker Files (Deprecated)
+## 🗂️ Docker Files (Removed)
 
-The following Docker-related files are **no longer used** for development but remain in the repository for reference:
+The following Docker-related files have been **removed from the repository**:
 
-- `docker-compose.yml` — Development Docker Compose (Legacy)
-- `docker-compose.production.yml` — Production Docker Compose (Legacy)
-- `docker-compose.aapanel.yml` — aaPanel deployment (Legacy)
-- `backend/Dockerfile` — Backend container definition (Legacy)
-- `frontend/Dockerfile` — Frontend container definition (Legacy)
-- `frontend/.dockerignore` — Docker ignore rules (Legacy)
+- `docker-compose.yml` — Development Docker Compose (Removed)
+- `docker-compose.production.yml` — Production Docker Compose (Removed)
+- `docker-compose.aapanel.yml` — aaPanel deployment (Removed)
+- `backend/Dockerfile` — Backend container definition (Removed)
+- `frontend/Dockerfile` — Frontend container definition (Removed)
+- `backend/.dockerignore` — Docker ignore rules (Removed)
+- `frontend/.dockerignore` — Docker ignore rules (Removed)
+- `frontend/nginx.conf` — Docker nginx configuration (Removed)
 
-**To remove these files** (optional):
-
-```bash
-# Archive them for reference
-mkdir _deprecated_docker
-mv docker-compose*.yml _deprecated_docker/
-mv backend/Dockerfile frontend/Dockerfile _deprecated_docker/
-mv frontend/.dockerignore _deprecated_docker/
-
-# Or delete them entirely
-rm docker-compose*.yml backend/Dockerfile frontend/Dockerfile frontend/.dockerignore
-```
+If you have archived versions of these files for reference, they can be kept in a `_deprecated_docker/` directory outside the main repository.
 
 ---
 

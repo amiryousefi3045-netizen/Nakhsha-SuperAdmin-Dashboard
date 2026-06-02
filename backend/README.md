@@ -39,21 +39,7 @@ Backend در http://localhost:5000 اجرا می‌شود.
 
 ---
 
-## 🐳 Docker
-
-```bash
-# از root directory
-docker-compose up -d
-
-# فقط backend
-docker-compose up -d backend
-```
-
-مستندات کامل: [DOCKER_GUIDE.md](../DOCKER_GUIDE.md)
-
----
-
-## 📚 API Documentation
+## API Documentation
 
 Swagger UI در http://localhost:5000/api-docs در دسترس است.
 
@@ -61,27 +47,27 @@ Swagger UI در http://localhost:5000/api-docs در دسترس است.
 
 #### Authentication
 
-- `POST /api/auth/register` - ثبت‌نام
-- `POST /api/auth/login` - ورود
-- `POST /api/auth/otp/start` - درخواست OTP
-- `POST /api/auth/otp/verify` - تایید OTP
-- `GET /api/auth/me` - پروفایل (نیاز به auth)
+- `POST /auth/register` - ثبت‌نام
+- `POST /auth/login` - ورود
+- `POST /auth/otp/start` - درخواست OTP
+- `POST /auth/otp/verify` - تایید OTP
+- `GET /auth/me` - پروفایل (نیاز به auth)
 
 #### Crafts (محصولات)
 
-- `GET /api/crafts` - لیست محصولات (با فیلتر و pagination)
-- `GET /api/crafts/:id` - جزئیات محصول
-- `POST /api/crafts` - ایجاد محصول (نیاز به auth)
-- `PUT /api/crafts/:id` - ویرایش محصول (owner)
-- `DELETE /api/crafts/:id` - حذف محصول (owner)
+- `GET /crafts` - لیست محصولات (با فیلتر و pagination)
+- `GET /crafts/:id` - جزئیات محصول
+- `POST /crafts` - ایجاد محصول (نیاز به auth)
+- `PUT /crafts/:id` - ویرایش محصول (owner)
+- `DELETE /crafts/:id` - حذف محصول (owner)
 
 #### Geospatial
 
-- `GET /api/listings/near` - جستجوی محصولات نزدیک
+- `GET /listings/near` - جستجوی محصولات نزدیک
 
 #### Health
 
-- `GET /api/health` - بررسی سلامت سرویس
+- `GET /health` - بررسی سلامت سرویس
 
 ---
 
@@ -182,7 +168,6 @@ backend/
 ├── uploads/                # Uploaded files (gitignored)
 ├── .env.example
 ├── jest.config.js
-├── Dockerfile
 ├── package.json
 └── server.js
 ```
@@ -256,7 +241,7 @@ Use this before every production deploy to confirm the hardening is intact.
 - [ ] All listed origins use HTTPS and contain no trailing slash
 - [ ] No wildcard (`*`) appears anywhere in CORS config or `Access-Control-Allow-Origin` response headers
 
-#### HTTP Headers (verify with `curl -I https://api.nakhsha.ir/api/health`)
+#### HTTP Headers (verify with `curl -I https://api.nakhsha.ir/health`)
 
 - [ ] `Content-Security-Policy` is present and does **not** contain `unsafe-inline` outside `/api-docs`
 - [ ] `Strict-Transport-Security` header is present with `max-age=31536000`
@@ -275,14 +260,14 @@ Use this before every production deploy to confirm the hardening is intact.
 
 #### Body Limits
 
-- [ ] `POST /api/auth/login` with a 1 MB JSON body returns 413
+- [ ] `POST /auth/login` with a 1 MB JSON body returns 413
 - [ ] Multer `LIMIT_FILE_SIZE` error returns 413 (not 500) with a Persian message
 
 #### Environment / Secrets
 
 - [ ] `JWT_SECRET` is at least 64 random bytes (generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`)
 - [ ] `SENTRY_DSN` is set and points to the production Sentry project
-- [ ] `.env` is **not** present inside the Docker image (`docker run --rm nakhsha-backend ls .env` should return nothing)
+- [ ] `.env` is **not** committed to version control (check `.gitignore`)
 - [ ] MongoDB URI uses authentication (`mongodb://<user>:<pass>@...`) and is not the default dev URI
 
 #### Error Monitoring
@@ -484,7 +469,6 @@ MIT License - مشاهده [LICENSE](../LICENSE)
 - [x] Global error handler
 - [x] API documentation (Swagger)
 - [x] Environment validation
-- [x] Docker setup
 - [x] Enhanced security
 
 ### Phase 3 (🔜 Planned)

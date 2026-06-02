@@ -152,9 +152,7 @@ Draft.discriminator(
   new mongoose.Schema({
     price: {
       type: Number,
-      required: function () {
-        return this.type === "post";
-      },
+      min: 0,
     },
     forSale: {
       type: Boolean,

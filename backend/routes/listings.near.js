@@ -1,12 +1,12 @@
 /**
- * listings.near.js — GET /api/listings/near
+ * listings.near.js — GET /listings/near
  *
  * Production-grade geospatial "nearby listings" endpoint for the canonical
  * Listing model (collection: user_listings).
  *
  * Powered by GeoService for advanced multi-filter queries.
  *
- * Mounted at /api/listings in server.js BEFORE the main listings router so
+ * Mounted at /listings in server.js BEFORE the main listings router so
  * that the /near path is resolved before any generic /:id handler.
  *
  * Query Parameters:
@@ -88,14 +88,14 @@ function formatMarkerItem(marker, req) {
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/listings/near
+ * GET /listings/near
  *
  * Enhanced geospatial query with multi-filter support, powered by GeoService.
  * Uses $geoNear aggregation stage which requires the sparse 2dsphere index
  * defined in models/Listing.js.
  *
  * Example:
- *   GET /api/listings/near?lat=35.69&lng=51.42&radiusKm=5&category=pottery&minPrice=100&maxPrice=5000&limit=20
+ *   GET /listings/near?lat=35.69&lng=51.42&radiusKm=5&category=pottery&minPrice=100&maxPrice=5000&limit=20
  */
 router.get("/near", heavyLimiter, async (req, res) => {
   const reqId = req.id;
@@ -181,7 +181,7 @@ router.get("/near", heavyLimiter, async (req, res) => {
         err.message.includes("geo near") ||
         err.message.includes("geoNear"))
     ) {
-      logger.error("GET /api/listings/near — geo index error", {
+      logger.error("GET /listings/near — geo index error", {
         reqId,
         error: err.message,
       });
@@ -199,7 +199,7 @@ router.get("/near", heavyLimiter, async (req, res) => {
         );
     }
 
-    logger.error("GET /api/listings/near — unexpected error", {
+    logger.error("GET /listings/near — unexpected error", {
       reqId,
       error: err.message,
       stack: err.stack,
@@ -220,11 +220,11 @@ router.get("/near", heavyLimiter, async (req, res) => {
 });
 
 /**
- * GET /api/listings/near/stats
+ * GET /listings/near/stats
  * Get aggregated statistics about nearby listings.
  *
  * Example:
- *   GET /api/listings/near/stats?lat=35.69&lng=51.42&radiusKm=5
+ *   GET /listings/near/stats?lat=35.69&lng=51.42&radiusKm=5
  */
 router.get("/near/stats", heavyLimiter, async (req, res) => {
   const reqId = req.id;
@@ -329,7 +329,7 @@ router.get("/near/stats", heavyLimiter, async (req, res) => {
       ),
     );
   } catch (err) {
-    logger.error("GET /api/listings/near/stats — error", {
+    logger.error("GET /listings/near/stats — error", {
       reqId,
       error: err.message,
     });

@@ -77,28 +77,6 @@ crontab -l
 
 3. Set credentials to run under background account
 
-### Option C: Docker Compose
-
-Add backup service to `docker-compose.production.yml`:
-
-```yaml
-backup:
-  image: mongo:7
-  depends_on:
-    - mongodb
-  volumes:
-    - ./scripts:/scripts:ro
-    - mongodb-backups:/backups
-  entrypoint: |
-    sh -c 'while true; do
-      /scripts/backup-mongodb.sh
-      sleep 86400
-    done'
-  environment:
-    - MONGODB_URI=mongodb://admin:password@mongodb:27017/nakhsha
-    - BACKUP_DIR=/backups
-```
-
 ---
 
 ## 3. Backup Verification
@@ -145,7 +123,8 @@ ls -la ./_backups/nakhsha_backup_*/nakhsha/
 ### Step 1: Stop Application
 
 ```bash
-docker-compose down
+sudo systemctl stop nakhsha-backend
+sudo systemctl stop nakhsha-frontend
 ```
 
 ### Step 2: Verify Backup Integrity
@@ -186,7 +165,8 @@ mongosh "mongodb://localhost:27017/nakhsha"
 ### Step 5: Restart Application
 
 ```bash
-docker-compose up -d
+sudo systemctl start nakhsha-backend
+sudo systemctl start nakhsha-frontend
 ```
 
 ---

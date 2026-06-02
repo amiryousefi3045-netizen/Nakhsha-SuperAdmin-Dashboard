@@ -77,7 +77,7 @@ app.use(
 
 // Debug CORS requests
 app.use((req, res, next) => {
-  if (req.path.includes("/api/auth/otp")) {
+  if (req.path.includes("/auth/otp")) {
     logger.info("OTP request debug:", {
       method: req.method,
       path: req.path,
@@ -247,9 +247,9 @@ const uploadsLimiter = rateLimit({
 });
 
 // Apply rate limits to specific routes
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
-app.use("/api/uploads", uploadsLimiter);
+app.use("/auth/login", authLimiter);
+app.use("/auth/register", authLimiter);
+app.use("/uploads", uploadsLimiter);
 // Explicit body-size caps — prevents large-payload DoS attacks.
 // Uploads use multipart/form-data and are handled by multer, so these limits
 // only apply to JSON / URL-encoded API requests.
@@ -329,7 +329,7 @@ const Draft = require("./models/Draft");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
 const postsRoutes = require("./routes/posts");
-// NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
+// NOTE: `/recipes` compatibility alias removed. Use `/crafts` instead.
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 
@@ -360,7 +360,7 @@ const loadListingRoutes = () => {
 };
 // Heavy-endpoint rate limiter — also applied per-route inside the route files;
 // the app.use() here acts as a second layer for any future routes added under
-// /api/listings without explicit per-handler wiring.
+// /listings without explicit per-handler wiring.
 const { heavyLimiter } = require("./middleware/rateLimiter");
 const healthRoutes = require("./routes/health");
 
@@ -368,16 +368,21 @@ const healthRoutes = require("./routes/health");
 app.use(express.static(path.join(__dirname, "public")));
 
 // Routes
-app.use("/api/health", healthRoutes);
-app.use("/api/auth", authRoutes);
+app.use("/health", healthRoutes);
+app.use("/auth", authRoutes);
 // Mount canonical crafts API first
-app.use("/api/crafts", craftRoutes);
+app.use("/crafts", craftRoutes);
 // Mount posts API
-app.use("/api/posts", postsRoutes);
-// (Removed compatibility alias to /api/recipes)
-// NOTE: Listing routes will be mounted after DB connection in the startup function
-app.use("/api/users", userRoutes);
-app.use("/api/uploads", uploadRoutes);
+app.use("/posts", postsRoutes);
+// (Removed compatibility alias to /recipes)
+
+// Load and mount listing routes synchronously (models are safe to load)
+loadListingRoutes();
+app.use("/listings", draftsModule);
+app.use("/listings", listingsModule);
+
+app.use("/users", userRoutes);
+app.use("/uploads", uploadRoutes);
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
@@ -503,12 +508,8 @@ const PORT = process.env.PORT || 5000;
 (async () => {
   await connectDB();
 
-  // Load listing routes after DB is ready
-  loadListingRoutes();
-
-  // Mount listing routes
-  app.use("/api/listings", draftsModule);
-  app.use("/api/listings", listingsModule);
+  // Listing routes are now mounted synchronously before this point
+  // DB connection here ensures indexes are synchronized and connection pool is ready
 
   const server = app.listen(PORT, () => {
     logger.info(`Server is running on port ${PORT}`);

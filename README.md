@@ -22,8 +22,7 @@
 
 **مستندات دیگر:**
 
-- **aaPanel**: [`Document/AAPANEL_QUICK_START.md`](Document/AAPANEL_QUICK_START.md)
-- **Docker** (Legacy): [`Document/DOCKER_COMPLETE_GUIDE.md`](Document/DOCKER_COMPLETE_GUIDE.md)
+- **VPS Deployment**: [`DEPLOYMENT_VPS_NODOCKER.md`](DEPLOYMENT_VPS_NODOCKER.md)
 
 ### 📖 فهرست کامل مستندات
 
@@ -39,9 +38,8 @@ Nakhsha/
 ├── backend/          # Node.js + Express + MongoDB API
 ├── frontend/         # React + Vite + TailwindCSS
 ├── Document/         # 📚 تمام مستندات پروژه
-├── docker-compose.yml                # Docker Compose اصلی
-├── docker-compose.production.yml     # Production با Docker Hub images
-└── docker-compose.aapanel.yml        # تنظیمات aaPanel
+├── scripts/          # اسکریپت‌های بر روی؟
+├── .env.example      # متغیرهای محیطی نمونه
 ```
 
 ---
@@ -130,12 +128,6 @@ docker-compose -f docker-compose.aapanel.yml up -d
 - Backend: `omid3179/nakhsha-backend:latest`
 - Frontend: `omid3179/nakhsha-frontend:latest`
 - MongoDB: `mongo:7` (رسمی)
-
-```bash
-docker-compose -f docker-compose.production.yml up -d
-```
-
----
 
 ## 🛠️ تکنولوژی‌ها
 

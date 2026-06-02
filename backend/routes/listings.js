@@ -1,9 +1,9 @@
 /**
  * listings.js — CRUD router for the canonical Listing collection.
  *
- * Mounted at /api/listings in server.js.
+ * Mounted at /listings in server.js.
  *
- * Note: the GET /api/listings/near endpoint is handled by a separate
+ * Note: the GET /listings/near endpoint is handled by a separate
  * router (routes/listings.near.js) which is mounted first in server.js
  * so that the /near path is resolved before any generic handlers here.
  */
@@ -52,7 +52,26 @@ const TYPE_MODEL = {
  * @param {import('express').Request} req  – used for PUBLIC_BASE_URL fallback
  * @returns {object}
  */
+/**
+ * Helper to omit undefined values for cleaner response objects
+ * @param {object} obj
+ * @returns {object} New object with undefined values removed
+ */
+function omitUndefined(obj) {
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 function formatListingItem(doc, req) {
+  if (!doc) {
+    throw new Error("formatListingItem received null/undefined doc");
+  }
+
   const base = {
     id: doc._id,
     type: doc.type,
@@ -70,9 +89,8 @@ function formatListingItem(doc, req) {
 
   // Append type-specific fields that live at the document root (discriminator props)
   switch (doc.type) {
-    case "post":
-      return {
-        ...base,
+    case "post": {
+      const postFields = {
         price: doc.price,
         forSale: doc.forSale,
         category: doc.category,
@@ -80,9 +98,10 @@ function formatListingItem(doc, req) {
           ? Object.fromEntries(doc.attributes)
           : undefined,
       };
-    case "tour":
-      return {
-        ...base,
+      return { ...base, ...omitUndefined(postFields) };
+    }
+    case "tour": {
+      const tourFields = {
         startDate: doc.startDate,
         endDate: doc.endDate,
         duration: doc.duration,
@@ -90,9 +109,10 @@ function formatListingItem(doc, req) {
         capacity: doc.capacity,
         itinerary: doc.itinerary,
       };
-    case "training":
-      return {
-        ...base,
+      return { ...base, ...omitUndefined(tourFields) };
+    }
+    case "training": {
+      const trainingFields = {
         schedule: doc.schedule,
         startDate: doc.startDate,
         endDate: doc.endDate,
@@ -101,14 +121,17 @@ function formatListingItem(doc, req) {
         level: doc.level,
         instructor: doc.instructor,
       };
-    case "academy":
-      return {
-        ...base,
+      return { ...base, ...omitUndefined(trainingFields) };
+    }
+    case "academy": {
+      const academyFields = {
         addressDetails: doc.addressDetails,
         phone: doc.phone,
         workingHours: doc.workingHours,
         website: doc.website,
       };
+      return { ...base, ...omitUndefined(academyFields) };
+    }
     default:
       return base;
   }
@@ -137,7 +160,7 @@ function zodParse(schema, value) {
   };
 }
 
-// ── POST /api/listings ────────────────────────────────────────────────────────
+// ── POST /listings ────────────────────────────────────────────────────────
 
 /**
  * Create a new listing (draft or published).
@@ -203,6 +226,7 @@ router.post("/", requireAuth, async (req, res) => {
     const Model = TYPE_MODEL[type];
 
     const docData = {
+      type,
       title,
       description,
       tags,
@@ -245,7 +269,7 @@ router.post("/", requireAuth, async (req, res) => {
         );
     }
 
-    logger.error("POST /api/listings — unexpected error", {
+    logger.error("POST /listings — unexpected error", {
       reqId: req.id,
       error: err.message,
       stack: err.stack,
@@ -264,7 +288,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/listings/:id ─────────────────────────────────────────────────────
+// ── GET /listings/:id ─────────────────────────────────────────────────────
 
 router.get("/:id", async (req, res) => {
   try {
@@ -290,7 +314,7 @@ router.get("/:id", async (req, res) => {
           ),
         );
     }
-    logger.error("GET /api/listings/:id — unexpected error", {
+    logger.error("GET /listings/:id — unexpected error", {
       error: err.message,
     });
     return res
@@ -306,7 +330,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ── PATCH /api/listings/:id ────────────────────────────────────────────────────
+// ── PATCH /listings/:id ────────────────────────────────────────────────────
 /**
  * Update a listing with revision control and image diffing.
  *
@@ -328,7 +352,7 @@ router.patch("/:id", requireAuth, (req, res) =>
   listingController.patchListing(req, res),
 );
 
-// ── GET /api/listings/:id/edit ─────────────────────────────────────────────────
+// ── GET /listings/:id/edit ─────────────────────────────────────────────────
 /**
  * Get listing data optimized for edit form population.
  * Includes all necessary fields but excludes heavy audit data.
@@ -339,7 +363,7 @@ router.get("/:id/edit", (req, res) =>
   listingController.getListingForEdit(req, res),
 );
 
-// ── GET /api/listings/:id/history ─────────────────────────────────────────────
+// ── GET /listings/:id/history ─────────────────────────────────────────────
 /**
  * Get edit history for a listing.
  * Shows who edited what and when.
@@ -351,7 +375,7 @@ router.get("/:id/history", (req, res) =>
   listingController.getListingHistory(req, res),
 );
 
-// ── GET /api/listings/:id/revisions/:revision ──────────────────────────────────
+// ── GET /listings/:id/revisions/:revision ──────────────────────────────────
 /**
  * Get specific revision diff.
  * Shows what changed in a particular revision.

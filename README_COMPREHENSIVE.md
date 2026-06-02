@@ -28,7 +28,6 @@
 - `backend/` — سورس API: `server.js`, `models/`, `routes/`, `services/`, `middleware/`
 - `frontend/` — اپ React با Vite
 - `Document/` — (نسخه‌ی کامل در این فایل ادغام شده، نیازی به ارجاع نیست)
-- `docker-compose.yml` و `docker-compose.production.yml` — تنظیمات کانتینر
 
 ## فهرست کامل وابستگی‌ها (نسخه‌ها) و اسکریپت‌ها
 

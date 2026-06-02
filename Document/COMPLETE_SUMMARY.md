@@ -179,56 +179,7 @@ const env = validateEnv();
 
 ---
 
-#### 4. Docker & Docker Compose
-
-📁 **فایل‌ها:**
-
-- `backend/Dockerfile`
-- `frontend/Dockerfile`
-- `docker-compose.yml`
-- `.env.docker.example`
-- `DOCKER_GUIDE.md`
-- `backend/.dockerignore`
-- `frontend/.dockerignore`
-
-🐳 **Services:**
-
-1. **MongoDB** (mongo:7)
-
-   - Health check
-   - Persistent volumes
-   - Authentication
-
-2. **Backend** (Node.js)
-
-   - Health check
-   - Logs & uploads volumes
-   - Depends on MongoDB
-
-3. **Frontend** (Nginx)
-   - Multi-stage build
-   - Static files serving
-   - Depends on Backend
-
-**دستورات:**
-
-```bash
-# Build
-docker-compose build
-
-# Run
-docker-compose up -d
-
-# Logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-```
-
----
-
-#### 5. Enhanced Security Headers
+#### 4. Enhanced Security Headers
 
 📁 **فایل:** `backend/server.js`
 
@@ -262,7 +213,6 @@ docker-compose down
 - `.env.example`
 - `jest.config.js`
 - `Dockerfile`
-- `.dockerignore`
 - `README.md`
 - `__tests__/auth.test.js`
 - `__tests__/crafts.test.js`
@@ -270,14 +220,11 @@ docker-compose down
 
 **Root:**
 
-- `docker-compose.yml`
-- `.env.docker.example`
-- `DOCKER_GUIDE.md`
+- (None)
 
 **Frontend:**
 
-- `Dockerfile`
-- `.dockerignore`
+- (None)
 
 **Documentation:**
 
@@ -297,7 +244,7 @@ docker-compose down
 - `backend/routes/auth.js` - logger, swagger annotations
 - `backend/models/User.js` - logger
 - `backend/package.json` - test scripts
-- `package.json` (root) - docker scripts, test scripts
+- `package.json` (root) - test scripts
 
 ---
 
@@ -350,25 +297,6 @@ cd backend && npm run test:watch
 npm run test:coverage
 ```
 
-### Docker
-
-```bash
-# Build
-npm run docker:build
-
-# Start
-npm run docker:up
-
-# Logs
-npm run docker:logs
-
-# Stop
-npm run docker:down
-
-# Restart
-npm run docker:restart
-```
-
 ---
 
 ## 📚 مستندات
@@ -381,7 +309,6 @@ http://localhost:5000/api-docs
 
 - [Backend README](backend/README.md)
 - [Test Guide](backend/__tests__/README.md)
-- [Docker Guide](DOCKER_GUIDE.md)
 - [Testing & Logging](Document/TESTING_AND_LOGGING_IMPLEMENTATION.md)
 - [Phase 2 Report](Document/PHASE_2_IMPLEMENTATION.md)
 
@@ -396,7 +323,7 @@ http://localhost:5000/api-docs
 | **Errors**         | try-catch   | Global handler + custom classes |
 | **API Docs**       | ندارد       | Swagger UI کامل                 |
 | **Env**            | if checks   | Type-safe validation            |
-| **Deploy**         | Manual      | Docker Compose                  |
+| **Deploy**         | Manual      | systemd + nginx                 |
 | **Security**       | پایه        | Production-ready headers        |
 | **Dev Experience** | متوسط       | عالی (docs, types, tests)       |
 
@@ -410,7 +337,6 @@ http://localhost:5000/api-docs
 | **Error Handling**    | ❌   | ✅   | 100%  |
 | **Documentation**     | ❌   | ✅   | 100%  |
 | **Type Safety (Env)** | ❌   | ✅   | 100%  |
-| **Docker Ready**      | ❌   | ✅   | 100%  |
 | **Security Score**    | 6/10 | 9/10 | +50%  |
 | **Production Ready**  | ❌   | ✅   | 100%  |
 
@@ -429,7 +355,6 @@ http://localhost:5000/api-docs
 
 ### Production Readiness
 
-✅ Docker deployment  
 ✅ Security headers  
 ✅ Error logging & monitoring  
 ✅ Health checks  
@@ -452,35 +377,30 @@ http://localhost:5000/api-docs
 ### پیشنهادات برای آینده
 
 1. **Performance**
-
    - Redis caching
    - CDN برای uploads
    - Database query optimization
    - Response compression
 
 2. **Monitoring & Observability**
-
    - Prometheus metrics
    - Grafana dashboards
    - APM (Application Performance Monitoring)
    - Log aggregation (ELK/Loki)
 
 3. **Testing**
-
    - E2E tests (Playwright/Cypress)
    - Load testing (k6)
    - Security testing (OWASP)
    - Visual regression tests
 
 4. **CI/CD**
-
    - GitHub Actions workflows
    - Automated testing
    - Automated deployment
    - Preview environments
 
 5. **Features**
-
    - Database migrations (migrate-mongo)
    - Admin dashboard
    - Email notifications
@@ -501,7 +421,7 @@ http://localhost:5000/api-docs
 ### لینک‌های مفید
 
 - 📖 [Swagger Docs](http://localhost:5000/api-docs)
-- 🐳 [Docker Hub](https://hub.docker.com/)
+
 - 📚 [Jest Docs](https://jestjs.io/)
 - 📝 [Winston Docs](https://github.com/winstonjs/winston)
 - 🔐 [Helmet Docs](https://helmetjs.github.io/)
@@ -522,7 +442,6 @@ http://localhost:5000/api-docs
 ❌ بدون مستندات API  
 ❌ خطاهای inconsistent  
 ❌ Environment validation نداشت  
-❌ بدون Docker  
 ❌ Security headers ناقص
 
 ### بعد
@@ -532,7 +451,6 @@ http://localhost:5000/api-docs
 ✅ Swagger API documentation  
 ✅ Global error handler  
 ✅ Type-safe environment  
-✅ Docker Compose ready  
 ✅ Production-grade security
 
 ---
@@ -559,7 +477,7 @@ http://localhost:5000/api-docs
 - ✅ Logging حرفه‌ای دارد
 - ✅ Error handling مناسب دارد
 - ✅ مستندات کامل دارد
-- ✅ Docker ready است
+
 - ✅ Security headers دارد
 - ✅ Environment validation دارد
 
