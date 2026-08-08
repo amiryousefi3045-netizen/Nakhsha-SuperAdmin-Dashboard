@@ -47,27 +47,27 @@ Swagger UI در http://localhost:5000/api-docs در دسترس است.
 
 #### Authentication
 
-- `POST /auth/register` - ثبت‌نام
-- `POST /auth/login` - ورود
-- `POST /auth/otp/start` - درخواست OTP
-- `POST /auth/otp/verify` - تایید OTP
-- `GET /auth/me` - پروفایل (نیاز به auth)
+- `POST /api/auth/register` - ثبت‌نام
+- `POST /api/auth/login` - ورود
+- `POST /api/auth/otp/start` - درخواست OTP
+- `POST /api/auth/otp/verify` - تایید OTP
+- `GET /api/auth/me` - پروفایل (نیاز به auth)
 
 #### Crafts (محصولات)
 
-- `GET /crafts` - لیست محصولات (با فیلتر و pagination)
-- `GET /crafts/:id` - جزئیات محصول
-- `POST /crafts` - ایجاد محصول (نیاز به auth)
-- `PUT /crafts/:id` - ویرایش محصول (owner)
-- `DELETE /crafts/:id` - حذف محصول (owner)
+- `GET /api/crafts` - لیست محصولات (با فیلتر و pagination)
+- `GET /api/crafts/:id` - جزئیات محصول
+- `POST /api/crafts` - ایجاد محصول (نیاز به auth)
+- `PUT /api/crafts/:id` - ویرایش محصول (owner)
+- `DELETE /api/crafts/:id` - حذف محصول (owner)
 
 #### Geospatial
 
-- `GET /listings/near` - جستجوی محصولات نزدیک
+- `GET /api/listings/near` - جستجوی محصولات نزدیک
 
 #### Health
 
-- `GET /health` - بررسی سلامت سرویس
+- `GET /api/health` - بررسی سلامت سرویس
 
 ---
 
@@ -241,7 +241,7 @@ Use this before every production deploy to confirm the hardening is intact.
 - [ ] All listed origins use HTTPS and contain no trailing slash
 - [ ] No wildcard (`*`) appears anywhere in CORS config or `Access-Control-Allow-Origin` response headers
 
-#### HTTP Headers (verify with `curl -I https://api.nakhsha.ir/health`)
+#### HTTP Headers (verify with `curl -I https://api.nakhsha.ir/api/health`)
 
 - [ ] `Content-Security-Policy` is present and does **not** contain `unsafe-inline` outside `/api-docs`
 - [ ] `Strict-Transport-Security` header is present with `max-age=31536000`
@@ -260,7 +260,7 @@ Use this before every production deploy to confirm the hardening is intact.
 
 #### Body Limits
 
-- [ ] `POST /auth/login` with a 1 MB JSON body returns 413
+- [ ] `POST /api/auth/login` with a 1 MB JSON body returns 413
 - [ ] Multer `LIMIT_FILE_SIZE` error returns 413 (not 500) with a Persian message
 
 #### Environment / Secrets

@@ -1,9 +1,9 @@
 /**
  * listings.js — CRUD router for the canonical Listing collection.
  *
- * Mounted at /listings in server.js.
+ * Mounted at /api/listings in server.js.
  *
- * Note: the GET /listings/near endpoint is handled by a separate
+ * Note: the GET /api/listings/near endpoint is handled by a separate
  * router (routes/listings.near.js) which is mounted first in server.js
  * so that the /near path is resolved before any generic handlers here.
  */
@@ -160,7 +160,7 @@ function zodParse(schema, value) {
   };
 }
 
-// ── POST /listings ────────────────────────────────────────────────────────
+// ── POST /api/listings ────────────────────────────────────────────────────────
 
 /**
  * Create a new listing (draft or published).
@@ -269,7 +269,7 @@ router.post("/", requireAuth, async (req, res) => {
         );
     }
 
-    logger.error("POST /listings — unexpected error", {
+    logger.error("POST /api/listings — unexpected error", {
       reqId: req.id,
       error: err.message,
       stack: err.stack,
@@ -288,7 +288,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// ── GET /listings/:id ─────────────────────────────────────────────────────
+// ── GET /api/listings/:id ─────────────────────────────────────────────────────
 
 router.get("/:id", async (req, res) => {
   try {
@@ -314,7 +314,7 @@ router.get("/:id", async (req, res) => {
           ),
         );
     }
-    logger.error("GET /listings/:id — unexpected error", {
+    logger.error("GET /api/listings/:id — unexpected error", {
       error: err.message,
     });
     return res
@@ -330,7 +330,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ── PATCH /listings/:id ────────────────────────────────────────────────────
+// ── PATCH /api/listings/:id ────────────────────────────────────────────────────
 /**
  * Update a listing with revision control and image diffing.
  *
@@ -352,7 +352,7 @@ router.patch("/:id", requireAuth, (req, res) =>
   listingController.patchListing(req, res),
 );
 
-// ── GET /listings/:id/edit ─────────────────────────────────────────────────
+// ── GET /api/listings/:id/edit ─────────────────────────────────────────────────
 /**
  * Get listing data optimized for edit form population.
  * Includes all necessary fields but excludes heavy audit data.
@@ -363,7 +363,7 @@ router.get("/:id/edit", (req, res) =>
   listingController.getListingForEdit(req, res),
 );
 
-// ── GET /listings/:id/history ─────────────────────────────────────────────
+// ── GET /api/listings/:id/history ─────────────────────────────────────────────
 /**
  * Get edit history for a listing.
  * Shows who edited what and when.
@@ -375,7 +375,7 @@ router.get("/:id/history", (req, res) =>
   listingController.getListingHistory(req, res),
 );
 
-// ── GET /listings/:id/revisions/:revision ──────────────────────────────────
+// ── GET /api/listings/:id/revisions/:revision ──────────────────────────────────
 /**
  * Get specific revision diff.
  * Shows what changed in a particular revision.

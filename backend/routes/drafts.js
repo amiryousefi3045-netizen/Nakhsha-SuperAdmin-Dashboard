@@ -19,7 +19,7 @@ const router = express.Router();
 // ========== DRAFT CREATION & RETRIEVAL ==========
 
 /**
- * POST /listings/draft
+ * POST /api/listings/draft
  * Create a new draft
  * Body: { type, currentStep?, isCompleted?, ...initialData }
  * Response: 201 { success: true, data: { draft } }
@@ -32,7 +32,7 @@ router.post(
 );
 
 /**
- * PATCH /listings/:id/draft
+ * PATCH /api/listings/:id/draft
  * Autosave draft with optimistic locking
  * Body: { _version, currentStep?, data }
  * Response: 200 { success: true, data: { draft, changedFields, hasChanges } }
@@ -46,7 +46,7 @@ router.patch(
 );
 
 /**
- * GET /listings/draft/latest
+ * GET /api/listings/draft/latest
  * Get latest active draft for user (optionally by type)
  * Query: ?type=post|tour|training|academy
  * Response: 200 { success: true, data: { draft } }
@@ -55,7 +55,7 @@ router.patch(
 router.get("/draft/latest", requireAuth, DraftController.getLatestDraft);
 
 /**
- * GET /listings/draft/:id
+ * GET /api/listings/draft/:id
  * Get specific draft by ID
  * Response: 200 { success: true, data: { draft } }
  * Response: 404 { success: false, error: { code: 'DRAFT_NOT_FOUND' } }
@@ -63,7 +63,7 @@ router.get("/draft/latest", requireAuth, DraftController.getLatestDraft);
 router.get("/draft/:id", requireAuth, DraftController.getDraftById);
 
 /**
- * GET /listings/draft
+ * GET /api/listings/draft
  * List all active drafts for user (paginated)
  * Query: ?limit=10&skip=0
  * Response: 200 { success: true, data: { drafts, total, hasMore } }
@@ -71,7 +71,7 @@ router.get("/draft/:id", requireAuth, DraftController.getDraftById);
 router.get("/draft", requireAuth, DraftController.listDrafts);
 
 /**
- * DELETE /listings/draft/:id
+ * DELETE /api/listings/draft/:id
  * Soft delete (mark as discarded)
  * Response: 200 { success: true, data: { message } }
  * Response: 404 { success: false, error: { code: 'DRAFT_NOT_FOUND' } }
@@ -81,7 +81,7 @@ router.delete("/draft/:id", requireAuth, DraftController.deleteDraft);
 // ========== DRAFT PUBLISHING ==========
 
 /**
- * POST /listings/:draftId/publish
+ * POST /api/listings/:draftId/publish
  * Promote draft to published listing
  * Body: { ...finalDataOverrides }
  * Response: 201 { success: true, data: { listing, draft } }
@@ -92,7 +92,7 @@ router.post("/:draftId/publish", requireAuth, DraftController.publishDraft);
 // ========== DRAFT STATISTICS ==========
 
 /**
- * GET /listings/draft/stats/:userId
+ * GET /api/listings/draft/stats/:userId
  * Get draft statistics (only own or admin)
  * Response: 200 { success: true, data: { stats: { activeCount, publishedCount, etc } } }
  */

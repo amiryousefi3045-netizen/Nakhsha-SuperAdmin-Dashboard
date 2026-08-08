@@ -77,7 +77,7 @@ app.use(
 
 // Debug CORS requests
 app.use((req, res, next) => {
-  if (req.path.includes("/auth/otp")) {
+  if (req.path.includes("/api/auth/otp")) {
     logger.info("OTP request debug:", {
       method: req.method,
       path: req.path,
@@ -136,14 +136,14 @@ app.use(
 // ─── Helmet security headers ────────────────────────────────────────────────
 //
 // CSP strategy:
-//  • /api-docs   — needs unsafe-inline for Swagger UI; served by a separate
+//  • /docs       — needs unsafe-inline for Swagger UI; served by a separate
 //                  app.use block below with a relaxed policy.
 //  • Everything else — strict policy; no unsafe-inline.
 //
 app.use((req, res, next) => {
   // Swagger UI needs inline scripts/styles.  Apply a permissive CSP only for
-  // the /api-docs prefix and nowhere else.
-  if (req.path.startsWith("/api-docs")) {
+  // the /docs prefix and nowhere else.
+  if (req.path.startsWith("/docs")) {
     return helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
       crossOriginEmbedderPolicy: false,
@@ -329,7 +329,7 @@ const Draft = require("./models/Draft");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
 const postsRoutes = require("./routes/posts");
-// NOTE: `/recipes` compatibility alias removed. Use `/crafts` instead.
+// NOTE: `/api/recipes` compatibility alias removed. Use `/api/crafts` instead.
 const userRoutes = require("./routes/users");
 const uploadRoutes = require("./routes/uploads");
 
@@ -360,7 +360,7 @@ const loadListingRoutes = () => {
 };
 // Heavy-endpoint rate limiter — also applied per-route inside the route files;
 // the app.use() here acts as a second layer for any future routes added under
-// /listings without explicit per-handler wiring.
+// /api/listings without explicit per-handler wiring.
 const { heavyLimiter } = require("./middleware/rateLimiter");
 const healthRoutes = require("./routes/health");
 
@@ -374,7 +374,7 @@ app.use("/auth", authRoutes);
 app.use("/crafts", craftRoutes);
 // Mount posts API
 app.use("/posts", postsRoutes);
-// (Removed compatibility alias to /recipes)
+// (Removed compatibility alias to /api/recipes)
 
 // Load and mount listing routes synchronously (models are safe to load)
 loadListingRoutes();
@@ -495,7 +495,7 @@ const connectDB = async () => {
 
 // Swagger API Documentation
 app.use(
-  "/api-docs",
+  "/docs",
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
     customCss: ".swagger-ui .topbar { display: none }",
