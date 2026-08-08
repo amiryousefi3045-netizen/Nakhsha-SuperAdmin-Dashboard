@@ -1,41 +1,48 @@
+﻿# Frontend .gitignore for Nakhsha
+
+# Dependencies
+node_modules/
+**/node_modules/
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Build output
+dist/
+dist-ssr/
+build/
+.vite/
 *.local
+
+# Environment — never commit real secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Uploads / generated assets
+public/uploads/
+
+# Cache and temporary files
+.cache/
+.tmp/
+coverage/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
-# Vite / Frontend-specific
-.vite/
-build/
-coverage/
-.cache/
-public/uploads/
-
-# Environment — never commit real secrets
-.env
-.env.*
-*.env
-# Keep the example template in version control
-!.env.example
 
 # Ignore system files
 Thumbs.db

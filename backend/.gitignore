@@ -1,17 +1,20 @@
-# Backend .gitignore for Nakhsha backend
+﻿# Backend .gitignore for Nakhsha backend
 
-# Node
+# Dependencies
 node_modules/
+**/node_modules/
 
 # Logs
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
 # Environment — never commit real secrets
 .env
 .env.*
 *.env
-# Keep the example template in version control
 !.env.example
 
 # Runtime / build
@@ -20,6 +23,12 @@ build/
 
 # Uploads / user files (do not commit)
 uploads/
+**/uploads/
+
+# Cache and temporary files
+.cache/
+.tmp/
+coverage/
 
 # IDEs
 .vscode/
@@ -28,11 +37,8 @@ uploads/
 # OS
 .DS_Store
 Thumbs.db
-
-# Coverage
-coverage/
+Desktop.ini
 
 # PM2 / process files
 pids/
 *.pid
-

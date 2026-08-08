@@ -18,7 +18,7 @@
 
 **برای استقرار بر روی سرور (VPS):**
 
-- 👉 **[`DEPLOYMENT_VPS_NODOCKER.md`](DEPLOYMENT_VPS_NODOCKER.md)** — راهنمای استقرار بر روی Ubuntu/Debian VPS (بدون Docker)
+- 👉 **[`DEPLOYMENT_VPS_NODOCKER.md`](DEPLOYMENT_VPS_NODOCKER.md)** — راهنمای استقرار بر روی Ubuntu/Debian VPS
 
 **مستندات دیگر:**
 
@@ -112,22 +112,9 @@ ssh root@your-vps-ip
 
 ### با aaPanel (Legacy)
 
-اگر از aaPanel استفاده می‌کنید:
-
-```bash
-# روی سرور
-docker-compose -f docker-compose.aapanel.yml up -d
-```
+اگر از aaPanel استفاده می‌کنید، راهنمای نصب و پیکربندی را در فایل زیر دنبال کنید:
 
 **راهنمای کامل**: [Document/AAPANEL_DEPLOYMENT_GUIDE.md](Document/AAPANEL_DEPLOYMENT_GUIDE.md)
-
-### Docker (Legacy - توصیه نمی‌شود)
-
-ایمیج‌های آماده (برای ارجاع):
-
-- Backend: `omid3179/nakhsha-backend:latest`
-- Frontend: `omid3179/nakhsha-frontend:latest`
-- MongoDB: `mongo:7` (رسمی)
 
 ## 🛠️ تکنولوژی‌ها
 
@@ -153,7 +140,6 @@ docker-compose -f docker-compose.aapanel.yml up -d
 
 ### DevOps
 
-- **Containerization**: Docker + Docker Compose
 - **CI/CD**: GitHub Actions (optional)
 - **Proxy**: nginx (frontend serving)
 
@@ -211,14 +197,6 @@ cp .env.example .env   # ویندوز: copy .env.example .env
 | `SMS_PASSWORD`    | رمز API سرویس SMS                                                                                          |
 | `SMS_MOCK`        | در محیط توسعه `true` قرار دهید تا SMS واقعی ارسال نشود                                                     |
 | `ALLOWED_ORIGINS` | Originهای مجاز CORS (جدا با ویرگول)                                                                        |
-
-### Docker Compose (ریشه پروژه)
-
-```bash
-cp .env.example .env   # ویندوز: copy .env.example .env
-```
-
-مقادیر `MONGO_USERNAME`، `MONGO_PASSWORD` و `JWT_SECRET` را با مقادیر امن جایگزین کنید.
 
 ---
 
@@ -303,7 +281,6 @@ npm run test:coverage
 
 - [مستندات کامل](Document/README.md)
 - [راهنمای استقرار aaPanel](Document/AAPANEL_QUICK_START.md)
-- [راهنمای Docker](Document/DOCKER_COMPLETE_GUIDE.md)
 - [مستندات Geospatial](Document/GEOSPATIAL_HARDENING_COMPLETE.md)
 - [مستندات MongoDB](Document/MONGODB_PRODUCTION_HARDENING.md)
 
