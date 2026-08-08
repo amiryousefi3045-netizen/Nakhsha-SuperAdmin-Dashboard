@@ -131,10 +131,25 @@ router.get("/clusters", heavyLimiter, async (req, res) => {
     }
 
     // Validate pagination
-    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
-    const skip = Math.max(parseInt(req.query.skip) || 0, 0);
+    const rawLimit = req.query.limit;
+    const rawSkip = req.query.skip;
+    const limit = rawLimit === undefined ? 100 : parseInt(rawLimit, 10);
+    const skip = rawSkip === undefined ? 0 : parseInt(rawSkip, 10);
 
-    if (limit < 1 || skip < 0) {
+    if (Number.isNaN(limit) || limit < 1 || limit > 500) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "INVALID_PAGINATION",
+            "Limit must be between 1 and 500",
+            null,
+            reqId,
+          ),
+        );
+    }
+
+    if (Number.isNaN(skip) || skip < 0) {
       return res
         .status(400)
         .json(

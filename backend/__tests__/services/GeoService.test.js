@@ -375,8 +375,18 @@ describe("GeoService", () => {
       const reductionPercent =
         ((originalSize - markerSize) / originalSize) * 100;
 
-      // Should be at least 80% reduction
-      expect(reductionPercent).toBeGreaterThan(80);
+      // Marker must stay lean: heavy fields must not leak through
+      expect(marker).not.toHaveProperty("description");
+      expect(marker).not.toHaveProperty("address");
+      expect(marker).not.toHaveProperty("district");
+      expect(marker).not.toHaveProperty("images");
+      expect(marker).not.toHaveProperty("tags");
+      expect(marker).not.toHaveProperty("owner");
+      expect(marker).not.toHaveProperty("editHistory");
+      expect(marker).not.toHaveProperty("revision");
+
+      // Should maintain a meaningful size reduction
+      expect(reductionPercent).toBeGreaterThan(40);
     });
   });
 

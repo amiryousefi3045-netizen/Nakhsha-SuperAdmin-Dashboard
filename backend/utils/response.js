@@ -71,16 +71,37 @@ function createErrorResponse(code, message, details = null, reqId = null) {
 /**
  * Build a standardized success response envelope.
  *
- * @param {Object}      data  - Payload to merge into the envelope
+ * Supports two calling styles for compatibility:
+ *   createSuccessResponse(data, reqId)
+ *   createSuccessResponse(data, metadata, reqId)
+ *
+ * @param {Object} data - Payload to merge into the envelope
+ * @param {Object|string|null} metadataOrReqId - Optional metadata object or reqId string
  * @param {string|null} reqId - Request correlation ID (req.id)
  * @returns {{ success: true, reqId: string|null, ...data }}
  */
-function createSuccessResponse(data = {}, reqId = null) {
-  return {
+function createSuccessResponse(
+  data = {},
+  metadataOrReqId = null,
+  reqId = null,
+) {
+  const envelope = {
     success: true,
     reqId: reqId ?? null,
     ...data,
   };
+
+  if (reqId === null && typeof metadataOrReqId === "string") {
+    envelope.reqId = metadataOrReqId;
+  } else if (
+    metadataOrReqId &&
+    typeof metadataOrReqId === "object" &&
+    !Array.isArray(metadataOrReqId)
+  ) {
+    envelope.metadata = metadataOrReqId;
+  }
+
+  return envelope;
 }
 
 module.exports = {

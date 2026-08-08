@@ -2,7 +2,7 @@ const request = require("supertest");
 const mongoose = require("mongoose");
 const Draft = require("../models/Draft");
 const User = require("../models/User");
-const Listing = require("../models/Listing");
+const { Listing } = require("../models/Listing");
 const DraftService = require("../services/DraftService");
 const DraftRepository = require("../repository/DraftRepository");
 const jwt = require("jsonwebtoken");
@@ -25,8 +25,8 @@ describe("Draft Autosave System - Integration Tests", () => {
     // Create test user
     testUser = await User.create({
       name: "Test User",
-      email: `test-${Date.now()}@example.com`,
-      password: "hashedPassword123",
+      phone: "09120000100",
+      role: "user",
     });
     testUserId = testUser._id.toString();
 
@@ -227,8 +227,8 @@ describe("Draft Autosave System - Integration Tests", () => {
       // Create another user's draft
       const otherUser = await User.create({
         name: "Other User",
-        email: `other-${Date.now()}@example.com`,
-        password: "hashedPassword123",
+        phone: "09120000101",
+        role: "user",
       });
       const otherDraft = await DraftService.initializeDraft(
         otherUser._id.toString(),
@@ -286,8 +286,8 @@ describe("Draft Autosave System - Integration Tests", () => {
       // Create new user with no drafts
       const newUser = await User.create({
         name: "No Drafts User",
-        email: `nodraws-${Date.now()}@example.com`,
-        password: "hashedPassword123",
+        phone: "09120000102",
+        role: "user",
       });
       const newToken = jwt.sign(
         { id: newUser._id.toString(), role: "user" },
@@ -326,8 +326,8 @@ describe("Draft Autosave System - Integration Tests", () => {
     it("should prevent access to other users' drafts", async () => {
       const otherUser = await User.create({
         name: "Other User 2",
-        email: `other2-${Date.now()}@example.com`,
-        password: "hashedPassword123",
+        phone: "09120000103",
+        role: "user",
       });
       const otherToken = jwt.sign(
         { id: otherUser._id.toString(), role: "user" },

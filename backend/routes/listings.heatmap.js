@@ -119,8 +119,14 @@ router.get("/heatmap", heavyLimiter, async (req, res) => {
 
     // Validate aggregateBy
     const validAggregations = ["count", "avgPrice", "avgRating"];
-    const aggregateBy = (req.query.aggregateBy || "count").toLowerCase();
-    if (!validAggregations.includes(aggregateBy)) {
+    const requestedAggregateBy = (
+      req.query.aggregateBy || "count"
+    ).toLowerCase();
+    const aggregateBy = validAggregations.find(
+      (value) => value.toLowerCase() === requestedAggregateBy,
+    );
+
+    if (!aggregateBy) {
       return res
         .status(400)
         .json(

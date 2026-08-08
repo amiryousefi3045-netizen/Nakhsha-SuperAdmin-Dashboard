@@ -118,28 +118,29 @@ router.get("/near", heavyLimiter, async (req, res) => {
     }
 
     const params = validation.normalized;
+    const filters = {
+      category: req.query.category,
+      type: req.query.type,
+      status: req.query.status || "published",
+      minPrice: req.query.minPrice,
+      maxPrice: req.query.maxPrice,
+      owner: req.query.owner,
+      minRating: req.query.minRating,
+      query: req.query.query,
+      verified: req.query.verified,
+    };
 
     // Execute geospatial query via GeoService
     const result = await GeoService.findNearbyListings(
       params.lat,
       params.lng,
-      params.radiusKm,
-      {
-        category: params.category,
-        type: params.type,
-        status: params.status,
-        minPrice: params.minPrice,
-        maxPrice: params.maxPrice,
-        owner: params.owner,
-        minRating: params.minRating,
-        query: params.query,
-        verified: params.verified,
-      },
+      filters,
       {
         limit: params.limit,
         skip: params.skip,
         lean: true,
       },
+      params.radiusKm,
     );
 
     if (!result.success) {
@@ -169,6 +170,10 @@ router.get("/near", heavyLimiter, async (req, res) => {
               executionTime: result.metadata.executionTime,
             },
           },
+        },
+        {
+          executionTime: result.metadata.executionTime,
+          queryRadius: params.radiusKm,
         },
         reqId,
       ),
@@ -210,7 +215,7 @@ router.get("/near", heavyLimiter, async (req, res) => {
       .status(500)
       .json(
         createErrorResponse(
-          "INTERNAL_ERROR",
+          "SERVER_ERROR",
           "خطای داخلی سرور رخ داد",
           null,
           reqId,

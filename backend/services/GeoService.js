@@ -69,12 +69,31 @@ class GeoService {
   async findNearbyListings(
     latitude,
     longitude,
-    radiusKm,
-    filters = {},
-    options = {},
+    filtersOrRadius = {},
+    optionsOrFilters = {},
+    radiusKm = undefined,
   ) {
     try {
       const startTime = Date.now();
+
+      let resolvedRadiusKm = radiusKm;
+      let filters = filtersOrRadius;
+      let normalizedOptions = optionsOrFilters;
+
+      if (
+        typeof filtersOrRadius === "number" ||
+        typeof filtersOrRadius === "string"
+      ) {
+        resolvedRadiusKm = parseFloat(filtersOrRadius);
+        filters = optionsOrFilters || {};
+        normalizedOptions = {};
+      } else {
+        resolvedRadiusKm = radiusKm === undefined ? 5 : parseFloat(radiusKm);
+      }
+
+      if (Number.isNaN(resolvedRadiusKm)) {
+        resolvedRadiusKm = 5;
+      }
 
       // Validate inputs
       const validation = this.validateGeoPoint(latitude, longitude);
@@ -98,9 +117,9 @@ class GeoService {
       }
 
       // Normalize options
-      const limit = Math.min(parseInt(options.limit) || 100, 500);
-      const skip = parseInt(options.skip) || 0;
-      const lean = options.lean !== false; // Default true for performance
+      const limit = Math.min(parseInt(normalizedOptions.limit) || 100, 500);
+      const skip = parseInt(normalizedOptions.skip) || 0;
+      const lean = normalizedOptions.lean !== false; // Default true for performance
 
       // Get Listing model
       const Listing = mongoose.model("Listing");
@@ -109,7 +128,7 @@ class GeoService {
       const pipeline = this.buildAggregationPipeline(
         latitude,
         longitude,
-        radiusKm,
+        resolvedRadiusKm,
         filters,
         {
           limit,
@@ -132,7 +151,7 @@ class GeoService {
       const countPipeline = this.buildAggregationPipeline(
         latitude,
         longitude,
-        radiusKm,
+        resolvedRadiusKm,
         filters,
         {
           countOnly: true,
@@ -157,7 +176,7 @@ class GeoService {
         },
         metadata: {
           executionTime,
-          queryRadius: radiusKm,
+          queryRadius: resolvedRadiusKm,
           resultsCount: markers.length,
         },
       };

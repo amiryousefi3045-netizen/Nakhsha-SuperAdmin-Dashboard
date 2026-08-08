@@ -369,20 +369,28 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // Routes
 app.use("/health", healthRoutes);
+app.use("/api/health", healthRoutes);
 app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 // Mount canonical crafts API first
 app.use("/crafts", craftRoutes);
+app.use("/api/crafts", craftRoutes);
 // Mount posts API
 app.use("/posts", postsRoutes);
+app.use("/api/posts", postsRoutes);
 // (Removed compatibility alias to /api/recipes)
 
 // Load and mount listing routes synchronously (models are safe to load)
 loadListingRoutes();
 app.use("/listings", draftsModule);
+app.use("/api/listings", draftsModule);
 app.use("/listings", listingsModule);
+app.use("/api/listings", listingsModule);
 
 app.use("/users", userRoutes);
+app.use("/api/users", userRoutes);
 app.use("/uploads", uploadRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);

@@ -200,7 +200,7 @@ const validateDraftForPublish = (draft, type) => {
  */
 const detectChanges = (oldData, newData) => {
   const changedFields = [];
-  const hasChanges = false;
+  let hasChanges = false;
 
   // Iterate through new data and check if it differs from old
   Object.keys(newData || {}).forEach((key) => {

@@ -166,8 +166,19 @@ class GeoValidator {
     const { minLimit = 1, maxLimit = 500 } = options;
     const errors = [];
 
-    const parsedLimit = parseInt(limit) || 100;
-    const parsedSkip = parseInt(skip) || 0;
+    const rawLimit =
+      limit === undefined || limit === null || limit === ""
+        ? undefined
+        : parseInt(limit, 10);
+    const rawSkip =
+      skip === undefined || skip === null || skip === ""
+        ? undefined
+        : parseInt(skip, 10);
+
+    const parsedLimit =
+      rawLimit === undefined || Number.isNaN(rawLimit) ? 100 : rawLimit;
+    const parsedSkip =
+      rawSkip === undefined || Number.isNaN(rawSkip) ? 0 : rawSkip;
 
     if (parsedLimit < minLimit) {
       errors.push(`تعداد نتایج باید حداقل ${minLimit} باشد`);
@@ -376,17 +387,15 @@ class GeoValidator {
     // Coordinates (required)
     if (!params.lat || !params.lng) {
       errors.push("مختصات جغرافیایی (lat, lng) الزامی هستند");
-      return { valid: false, errors };
+    } else {
+      const coordValidation = this.validateCoordinates(params.lat, params.lng);
+      if (!coordValidation.valid) {
+        errors.push(...coordValidation.errors);
+      } else {
+        normalized.lat = coordValidation.lat;
+        normalized.lng = coordValidation.lng;
+      }
     }
-
-    const coordValidation = this.validateCoordinates(params.lat, params.lng);
-    if (!coordValidation.valid) {
-      errors.push(...coordValidation.errors);
-      return { valid: false, errors };
-    }
-
-    normalized.lat = coordValidation.lat;
-    normalized.lng = coordValidation.lng;
 
     // Radius
     const radiusValidation = this.validateRadius(params.radiusKm);
