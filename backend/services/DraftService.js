@@ -3,7 +3,7 @@ const {
   validateDraftForPublish,
   detectChanges,
 } = require("../utils/draftValidation");
-const Listing = require("../models/Listing");
+const { Listing } = require("../models/Listing");
 
 /**
  * DraftService - Business logic layer for draft persistence and autosave
@@ -243,6 +243,14 @@ class DraftService {
       };
     }
 
+    // Include location only when it carries a complete [lng, lat] pair;
+    // an empty/defaulted location (e.g. { coordinates: [] }) must not reach
+    // the Listing schema, whose validator requires exactly two coordinates.
+    const hasValidLocation =
+      listingData.location &&
+      Array.isArray(listingData.location.coordinates) &&
+      listingData.location.coordinates.length === 2;
+
     try {
       // Create listing from draft data
       const listingPayload = {
@@ -250,9 +258,10 @@ class DraftService {
         description: listingData.description,
         type: listingData.type,
         owner: ownerId,
+        draftId: draftId,
         tags: listingData.tags || [],
         images: listingData.images || [],
-        location: listingData.location,
+        location: hasValidLocation ? listingData.location : undefined,
         status: "published",
         // Type-specific fields
         ...(listingData.type === "post" && {
@@ -386,7 +395,9 @@ class DraftService {
   _formatDraftResponse(draft) {
     if (!draft) return null;
 
-    const obj = draft._id ? draft.toObject() : draft;
+    // Handle both mongoose documents and lean objects
+    const obj =
+      draft && typeof draft.toObject === "function" ? draft.toObject() : draft;
 
     return {
       _id: obj._id,

@@ -118,13 +118,43 @@ const partialUpdateAcademyDraftSchema = baseDraftSchema
   })
   .partial();
 
+// Partial update schema for autosave: ANY field optional, `type` NOT required.
+// Autosave payloads are partial form data and may legitimately omit the
+// discriminator key, so a discriminatedUnion is unsuitable here (zod v4 throws
+// "Duplicate discriminator value" when the discriminator key is missing).
 const partialUpdateDraftSchema = z
-  .discriminatedUnion("type", [
-    partialUpdatePostDraftSchema,
-    partialUpdateTourDraftSchema,
-    partialUpdateTrainingDraftSchema,
-    partialUpdateAcademyDraftSchema,
-  ])
+  .object({
+    type: z.enum(["post", "tour", "training", "academy"]).optional(),
+    currentStep: z.number().int().min(1).optional(),
+    isCompleted: z.boolean().optional(),
+    title: z.string().min(5).max(200).optional(),
+    description: z.string().max(5000).optional(),
+    tags: z.array(z.string()).optional(),
+    images: z.array(z.string()).optional(),
+    location: z
+      .object({
+        type: z.literal("Point"),
+        coordinates: z.tuple([z.number(), z.number()]),
+      })
+      .optional(),
+    price: z.number().positive().optional(),
+    forSale: z.boolean().optional(),
+    category: z.string().optional(),
+    attributes: z.record(z.any()).optional(),
+    startDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().optional(),
+    duration: z.string().optional(),
+    durationDays: z.number().positive().optional(),
+    capacity: z.number().positive().optional(),
+    itinerary: z.array(z.string()).optional(),
+    schedule: z.string().optional(),
+    level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
+    instructor: z.string().optional(),
+    addressDetails: z.string().optional(),
+    phone: z.string().optional(),
+    workingHours: z.string().optional(),
+    website: z.string().url().optional(),
+  })
   .optional();
 
 // ========== OPTIMISTIC LOCK SCHEMA ==========

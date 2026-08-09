@@ -382,6 +382,8 @@ app.use("/api/posts", postsRoutes);
 
 // Load and mount listing routes synchronously (models are safe to load)
 loadListingRoutes();
+app.use("/api/listings", draftRoutes);
+app.use("/listings", draftRoutes);
 app.use("/listings", draftsModule);
 app.use("/api/listings", draftsModule);
 app.use("/listings", listingsModule);

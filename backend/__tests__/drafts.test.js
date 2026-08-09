@@ -17,10 +17,14 @@ describe("Draft Autosave System - Integration Tests", () => {
   beforeAll(async () => {
     // Connect to test database
     const testDbUri =
-      process.env.TEST_MONGODB_URI || "mongodb://127.0.0.1:27017/nakhsha-test";
-    await mongoose.connect(testDbUri, {
-      serverSelectionTimeoutMS: 5000,
-    });
+      process.env.MONGODB_TEST_URI ||
+      process.env.MONGODB_URI ||
+      "mongodb://127.0.0.1:27017/nakhsha_test";
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(testDbUri, {
+        serverSelectionTimeoutMS: 5000,
+      });
+    }
 
     // Create test user
     testUser = await User.create({
@@ -30,14 +34,15 @@ describe("Draft Autosave System - Integration Tests", () => {
     });
     testUserId = testUser._id.toString();
 
+    // Import app after DB connection (ensures .env / JWT_SECRET are loaded
+    // before the token is signed, so sign and verify use the same secret)
+    app = require("../server");
+
     // Generate auth token
     authToken = jwt.sign(
       { id: testUserId, role: "user" },
       process.env.JWT_SECRET || "test-secret",
     );
-
-    // Import app after DB connection
-    app = require("../server");
   });
 
   afterAll(async () => {
@@ -491,7 +496,7 @@ describe("Draft Autosave System - Integration Tests", () => {
         const draft = await DraftRepository.createDraft({
           owner: testUserId,
           type: "post",
-          data: { title: "Test" },
+          data: { title: "Test Draft" },
         });
 
         // First update increments version to 1
@@ -519,7 +524,7 @@ describe("Draft Autosave System - Integration Tests", () => {
         const draft = await DraftRepository.createDraft({
           owner: testUserId,
           type: "post",
-          data: { title: "Test" },
+          data: { title: "Test Draft" },
         });
 
         const result = await DraftRepository.updateDraftPartial(
@@ -538,8 +543,8 @@ describe("Draft Autosave System - Integration Tests", () => {
 
   describe("TTL Index - Auto Deletion", () => {
     it("should have TTL index on createdAt field", async () => {
-      const indexes = await Draft.collection.getIndexes();
-      const ttlIndex = Object.values(indexes).find(
+      const indexes = await Draft.collection.indexes();
+      const ttlIndex = indexes.find(
         (idx) => idx.expireAfterSeconds !== undefined,
       );
 
@@ -552,7 +557,7 @@ describe("Draft Autosave System - Integration Tests", () => {
   describe("Discriminator Type Handling", () => {
     it("should handle post discriminator fields", async () => {
       const draft = await DraftService.initializeDraft(testUserId, "post", {
-        title: "Post",
+        title: "Post Draft",
         description: "Desc",
         price: 100,
         forSale: true,
@@ -569,7 +574,7 @@ describe("Draft Autosave System - Integration Tests", () => {
       const endDate = new Date(startDate.getTime() + 3 * 24 * 60 * 60 * 1000);
 
       const draft = await DraftService.initializeDraft(testUserId, "tour", {
-        title: "Tour",
+        title: "Tour Draft",
         description: "Desc",
         startDate,
         endDate,

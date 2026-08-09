@@ -104,9 +104,30 @@ function createSuccessResponse(
   return envelope;
 }
 
+/**
+ * Backward-compatible envelope builder used by legacy controllers.
+ *
+ * Accepts the legacy signature:
+ *   buildResponse({ success: bool, data?, error?, reqId? })
+ *
+ * Unlike createSuccessResponse, `data` is kept NESTED (not spread), matching
+ * the legacy `{ success, data, reqId }` / `{ success, error, reqId }` shape
+ * that legacy route consumers (and their tests) rely on.
+ *
+ * @param {{ success: boolean, data?: Object, error?: { code: string, message: string }, reqId?: string|null }} opts
+ * @returns {Object}
+ */
+function buildResponse({ success, data, error, reqId }) {
+  const envelope = { success, reqId: reqId ?? null };
+  if (data !== undefined) envelope.data = data;
+  if (error !== undefined) envelope.error = error;
+  return envelope;
+}
+
 module.exports = {
   createErrorResponse,
   createSuccessResponse,
   codeFromStatus,
   HTTP_STATUS_CODES,
+  buildResponse,
 };
