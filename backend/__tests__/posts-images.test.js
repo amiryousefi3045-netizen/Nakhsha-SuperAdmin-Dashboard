@@ -64,9 +64,13 @@ beforeEach(async () => {
 
   // Generate auth token (simulate login)
   const jwt = require("jsonwebtoken");
-  authToken = jwt.sign({ userId: testUser._id }, process.env.JWT_SECRET, {
-    expiresIn: "24h",
-  });
+  authToken = jwt.sign(
+    { id: testUser._id, role: "user" },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "24h",
+    },
+  );
 });
 
 describe("Post Image Upload", () => {
@@ -77,7 +81,7 @@ describe("Post Image Upload", () => {
         .attach("images", testImageBuffer, "test.png")
         .expect(401);
 
-      expect(response.body).toHaveProperty("status", "fail");
+      expect(response.body).toHaveProperty("success", false);
     });
 
     it("should validate post ID format", async () => {
@@ -87,8 +91,8 @@ describe("Post Image Upload", () => {
         .attach("images", testImageBuffer, "test.png")
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "fail");
-      expect(response.body.error.field).toBe("id");
+      expect(response.body).toHaveProperty("success", false);
+      expect(response.body.error.details.field).toBe("id");
     });
 
     it("should require post to exist", async () => {
@@ -99,7 +103,7 @@ describe("Post Image Upload", () => {
         .attach("images", testImageBuffer, "test.png")
         .expect(404);
 
-      expect(response.body).toHaveProperty("status", "fail");
+      expect(response.body).toHaveProperty("success", false);
     });
 
     it("should require ownership of the post", async () => {
@@ -124,7 +128,7 @@ describe("Post Image Upload", () => {
         .attach("images", testImageBuffer, "test.png")
         .expect(403);
 
-      expect(response.body).toHaveProperty("status", "fail");
+      expect(response.body).toHaveProperty("success", false);
     });
 
     it("should require at least one image", async () => {
@@ -133,8 +137,8 @@ describe("Post Image Upload", () => {
         .set("Authorization", `Bearer ${authToken}`)
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "fail");
-      expect(response.body.error.field).toBe("images");
+      expect(response.body).toHaveProperty("success", false);
+      expect(response.body.error.details.field).toBe("images");
     });
 
     it("should successfully upload valid images", async () => {
@@ -173,7 +177,7 @@ describe("Post Image Upload", () => {
       });
 
       const response = await request_instance.expect(400);
-      expect(response.body).toHaveProperty("status", "fail");
+      expect(response.body).toHaveProperty("success", false);
     });
 
     it("should reject invalid file types", async () => {
@@ -185,7 +189,7 @@ describe("Post Image Upload", () => {
         .attach("images", textBuffer, "test.txt")
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "fail");
+      expect(response.body).toHaveProperty("success", false);
     });
   });
 });

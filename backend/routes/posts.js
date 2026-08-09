@@ -149,10 +149,34 @@ router.post("/", requireAuth, validate(createPostSchema), async (req, res) => {
 });
 
 // POST /api/posts/:id/images - Upload images to post
+// Multer runs as middleware BEFORE the handler, so its errors (file count,
+// size, type) would otherwise bypass the handler's try/catch and bubble to the
+// global error handler as 500s. Wrap it to map upload errors to 400.
+const uploadPostImages = (req, res, next) => {
+  imageUpload.array("images", 6)(req, res, (err) => {
+    if (!err) return next();
+
+    let message = "خطا در بارگذاری تصویر";
+    if (err.code === "LIMIT_FILE_SIZE") {
+      message = "حجم فایل نباید از ۲ مگابایت بیشتر باشد";
+    } else if (err.code === "LIMIT_FILE_COUNT") {
+      message = "حداکثر ۶ تصویر مجاز است";
+    } else if (err.message === "INVALID_FILE_TYPE") {
+      message = "فرمت تصویر باید JPEG، PNG یا WebP باشد";
+    }
+
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("VALIDATION_ERROR", message, { field: "images" }),
+      );
+  });
+};
+
 router.post(
   "/:id/images",
   requireAuth,
-  imageUpload.array("images", 6),
+  uploadPostImages,
   async (req, res) => {
     try {
       const postId = req.params.id;
@@ -260,39 +284,6 @@ router.post(
       });
     } catch (error) {
       console.error("POST /api/posts/:id/images error:", error);
-
-      // Handle multer errors
-      if (error.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json(
-          createErrorResponse(
-            "VALIDATION_ERROR",
-            "حجم فایل نباید از ۲ مگابایت بیشتر باشد",
-            {
-              field: "images",
-            },
-          ),
-        );
-      }
-
-      if (error.code === "LIMIT_FILE_COUNT") {
-        return res.status(400).json(
-          createErrorResponse("VALIDATION_ERROR", "حداکثر ۶ تصویر مجاز است", {
-            field: "images",
-          }),
-        );
-      }
-
-      if (error.message === "INVALID_FILE_TYPE") {
-        return res.status(400).json(
-          createErrorResponse(
-            "VALIDATION_ERROR",
-            "فرمت تصویر باید JPEG، PNG یا WebP باشد",
-            {
-              field: "images",
-            },
-          ),
-        );
-      }
 
       res
         .status(500)
