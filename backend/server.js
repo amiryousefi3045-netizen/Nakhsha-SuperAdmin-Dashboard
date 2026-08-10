@@ -142,8 +142,8 @@ app.use(
 //
 app.use((req, res, next) => {
   // Swagger UI needs inline scripts/styles.  Apply a permissive CSP only for
-  // the /docs prefix and nowhere else.
-  if (req.path.startsWith("/docs")) {
+  // the /api-docs prefix and the legacy /docs alias.
+  if (req.path.startsWith("/api-docs") || req.path.startsWith("/docs")) {
     return helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
       crossOriginEmbedderPolicy: false,
@@ -396,13 +396,21 @@ app.use("/api/uploads", uploadRoutes);
 
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(
-  "/docs",
+  "/api-docs",
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
     customCss: ".swagger-ui .topbar { display: none }",
     customSiteTitle: "Nakhsha API Documentation",
   }),
 );
+
+app.get("/api-docs.json", (_req, res) => {
+  res.json(swaggerSpec);
+});
+
+app.get("/docs", (_req, res) => {
+  res.redirect(301, "/api-docs");
+});
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
@@ -512,16 +520,6 @@ const connectDB = async () => {
     });
   }
 };
-
-// Swagger API Documentation
-app.use(
-  "/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customCss: ".swagger-ui .topbar { display: none }",
-    customSiteTitle: "Nakhsha API Documentation",
-  }),
-);
 
 const PORT = process.env.PORT || 5000;
 
