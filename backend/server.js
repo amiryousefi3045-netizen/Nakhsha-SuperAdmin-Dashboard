@@ -394,6 +394,16 @@ app.use("/api/users", userRoutes);
 app.use("/uploads", uploadRoutes);
 app.use("/api/uploads", uploadRoutes);
 
+// Swagger API Documentation - must be BEFORE 404 handler
+app.use(
+  "/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCss: ".swagger-ui .topbar { display: none }",
+    customSiteTitle: "Nakhsha API Documentation",
+  }),
+);
+
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
 
