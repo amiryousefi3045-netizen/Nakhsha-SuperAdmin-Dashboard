@@ -251,7 +251,7 @@ export const CraftDetail: React.FC = () => {
     if (!target) return;
 
     const canDelete =
-      user.role === "admin" ||
+      ["admin", "super_admin"].includes(user.role) ||
       (data?.artisan?.id && user.id === data.artisan.id) ||
       String(target.user) === String(user.id);
 
@@ -412,7 +412,9 @@ export const CraftDetail: React.FC = () => {
             </div>
           </div>
 
-          {user && (user.role === "admin" || user.id === data.artisan?.id) && (
+          {user &&
+            (["admin", "super_admin"].includes(user.role) ||
+              user.id === data.artisan?.id) && (
             <div className="mt-3 flex gap-2">
               <Button
                 as={Link}
@@ -528,7 +530,7 @@ export const CraftDetail: React.FC = () => {
               comments.map((c) => {
                 const canDelete =
                   user &&
-                  (user.role === "admin" ||
+                  (["admin", "super_admin"].includes(user.role) ||
                     (data?.artisan?.id && user.id === data.artisan.id) ||
                     String(c.user) === String(user.id));
 

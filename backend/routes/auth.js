@@ -15,6 +15,7 @@ const { createUserDTO, createErrorResponse } = require("../utils/userDto");
 const { generateUniqueHandle } = require("../utils/handleGenerator");
 const { requireAuth } = require("../middleware/auth");
 const TokenService = require("../services/TokenService");
+const AuditService = require("../services/AuditService");
 const router = express.Router();
 
 /**
@@ -630,6 +631,10 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         // Generate unique handle for new user
         const handle = await generateUniqueHandle(normPhone);
 
+        // New accounts always start as a plain `user`. The super_admin role is
+        // never assigned by "first user" bootstrapping — the ONLY legal path is
+        // an OTP login whose phone matches SUPER_ADMIN_PHONE (applied below,
+        // after a fresh document is available).
         user = await User.create({
           name: "کاربر نخشا",
           phone: normPhone,
@@ -644,6 +649,14 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
           phone: normPhone,
           handle: handle,
         });
+
+        if (!process.env.SUPER_ADMIN_PHONE) {
+          logger.warn(
+            "SUPER_ADMIN_PHONE is not configured — no automatic super_admin " +
+              "assignment is possible until it is set in backend/.env",
+            { phone: normPhone },
+          );
+        }
       } catch (createError) {
         logger.error("Failed to create user", {
           error: createError.message,
@@ -660,8 +673,8 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
     }
 
     // Fetch fresh user document with all required fields for complete UserDTO
-    const freshUser = await User.findById(user._id).select(
-      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt",
+    let freshUser = await User.findById(user._id).select(
+      "name phone handle role avatar bio location creatorType isVerified tokenVersion createdAt updatedAt",
     );
 
     if (!freshUser) {
@@ -676,10 +689,76 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
         );
     }
 
+    // ── SUPER_ADMIN_PHONE auto-assignment (the ONLY legal promotion path) ────
+    // A user whose normalized phone equals SUPER_ADMIN_PHONE is promoted to
+    // super_admin on OTP login. Covers both brand-new and pre-existing
+    // accounts. Idempotent + singleton-safe: if a super_admin already exists,
+    // the User model's pre-validate hook rejects the save, we keep the user's
+    // REAL previous role (re-fetched below) and never fail the login.
+    if (
+      process.env.SUPER_ADMIN_PHONE &&
+      normalizePhone(normPhone) ===
+        normalizePhone(process.env.SUPER_ADMIN_PHONE) &&
+      freshUser.role !== "super_admin"
+    ) {
+      logger.info("SUPER_ADMIN_PHONE matched on OTP login; attempting promotion", {
+        userId: freshUser._id,
+        phone: normPhone,
+      });
+      try {
+        freshUser.role = "super_admin";
+        freshUser.permissions = [];
+        await freshUser.save();
+
+        logger.info("User promoted to super_admin via SUPER_ADMIN_PHONE", {
+          userId: freshUser._id,
+          phone: normPhone,
+        });
+
+        // Fire-and-forget audit record; failure must not break login.
+        AuditService.log({
+          userId: String(freshUser._id),
+          action: "USER_ROLE_CHANGE",
+          resource: { type: "USER", id: String(freshUser._id) },
+          changes: {
+            before: { role: "user" },
+            after: { role: "super_admin" },
+          },
+          result: "SUCCESS",
+          requestContext: req,
+          riskLevel: "CRITICAL",
+          metadata: {
+            autoAssigned: true,
+            source: "SUPER_ADMIN_PHONE",
+          },
+        }).catch(() => {});
+      } catch (promotionError) {
+        // Another super_admin exists (singleton invariant). Re-fetch so the
+        // session uses the previous role and the conflict never leaks to the
+        // client.
+        logger.warn(
+          "SUPER_ADMIN_PHONE matched but a super_admin already exists; " +
+            "keeping the previous role and issuing normal tokens",
+          {
+            userId: freshUser._id,
+            phone: normPhone,
+            error: promotionError.message,
+          },
+        );
+        const reloaded = await User.findById(user._id).select(
+          "name phone handle role avatar bio location creatorType isVerified tokenVersion createdAt updatedAt",
+        );
+        if (reloaded) {
+          freshUser = reloaded;
+        }
+      }
+    }
+
     // Generate JWT token (short-lived access token)
     const accessToken = TokenService.generateAccessToken(
       freshUser._id,
       freshUser.role,
+      freshUser.tokenVersion,
     );
 
     // Create refresh token (long-lived, stored in DB)
@@ -821,7 +900,7 @@ router.post("/refresh", async (req, res) => {
         await TokenService.rotateRefreshToken(refreshToken, userId, req);
 
       // Get user for role
-      const user = await User.findById(userId).select("role");
+      const user = await User.findById(userId).select("role tokenVersion");
       if (!user) {
         return res
           .status(404)
@@ -829,7 +908,11 @@ router.post("/refresh", async (req, res) => {
       }
 
       // Generate new access token
-      const accessToken = TokenService.generateAccessToken(userId, user.role);
+      const accessToken = TokenService.generateAccessToken(
+        userId,
+        user.role,
+        user.tokenVersion,
+      );
 
       logger.info("Token refreshed successfully", { userId });
 

@@ -11,20 +11,25 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const RefreshToken = require("../models/RefreshToken");
+const User = require("../models/User");
 const logger = require("../utils/logger");
 
 class TokenService {
   /**
    * Generate access token (short-lived, for API requests)
+   * The `tokenVersion` is embedded as the `ver` claim so requireAuth can
+   * reject access tokens minted before a logout-all / block / role change.
    * @param {string} userId - User MongoDB ID
    * @param {string} role - User role
+   * @param {number} [tokenVersion] - Current tokenVersion of the user
    * @returns {string} Signed JWT
    */
-  static generateAccessToken(userId, role) {
+  static generateAccessToken(userId, role, tokenVersion) {
     const payload = {
       id: userId,
       role,
       type: "access",
+      ver: Number.isFinite(Number(tokenVersion)) ? Number(tokenVersion) : 0,
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
@@ -196,7 +201,9 @@ class TokenService {
 
   /**
    * Revoke all tokens for a user (logout all devices)
-   * Used for security incidents or account lockout
+   * Used for security incidents or account lockout.
+   * Also bumps `User.tokenVersion` so every previously issued stateless access
+   * JWT is rejected by requireAuth on the next request.
    */
   static async revokeAllTokens(userId, reason = "ADMIN_REVOKE") {
     try {
@@ -210,6 +217,17 @@ class TokenService {
           revocationReason: reason,
         },
       );
+
+      await User.updateOne(
+        { _id: userId },
+        { $inc: { tokenVersion: 1 } },
+      ).catch(async (incError) => {
+        logger.error("Failed to bump tokenVersion on revokeAllTokens", {
+          userId,
+          error: incError.message,
+        });
+        throw incError;
+      });
 
       logger.warn("All refresh tokens revoked for user", {
         userId,

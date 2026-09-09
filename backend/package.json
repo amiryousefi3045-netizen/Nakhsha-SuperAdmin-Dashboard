@@ -7,9 +7,9 @@
     "start": "cross-env NODE_ENV=production node server.js",
     "dev": "cross-env NODE_ENV=development node server.js",
     "lint": "eslint .",
-    "test": "cross-env NODE_ENV=test jest",
-    "test:watch": "cross-env NODE_ENV=test jest --watch",
-    "test:coverage": "cross-env NODE_ENV=test jest --coverage",
+    "test": "cross-env NODE_ENV=test jest --runInBand",
+    "test:watch": "cross-env NODE_ENV=test jest --runInBand --watch",
+    "test:coverage": "cross-env NODE_ENV=test jest --runInBand --coverage",
     "test:api": "node scripts/api-smoke.js",
     "monitor": "node scripts/otp-monitor.js"
   },

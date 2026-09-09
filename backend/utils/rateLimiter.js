@@ -295,4 +295,16 @@ module.exports = {
   checkRateLimit,
   detectSuspiciousActivity,
   RATE_LIMIT_CONFIG,
+  /**
+   * TEST-ONLY: clear the in-memory rate-limit store.
+   *
+   * Jest runs suites with --runInBand against a single MongoDB; because the
+   * store lives in this module (shared across the whole process in serial
+   * mode), a suite could otherwise inherit the IP/phone budgets consumed by a
+   * previous suite. Calling this in beforeAll gives every suite a clean slate.
+   * Never use it in production.
+   */
+  _resetRateLimitStoreForTests() {
+    rateLimitStore.clear();
+  },
 };

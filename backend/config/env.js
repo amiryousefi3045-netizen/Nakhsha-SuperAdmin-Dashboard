@@ -32,6 +32,14 @@ const validateEnv = () => {
       desc: "مدت اعتبار توکن",
     }),
 
+    // Super Admin bootstrap: the ONLY legal assignment path for the
+    // super_admin role is an OTP login whose normalized phone matches this
+    // value. Leave empty to disable auto-promotion entirely.
+    SUPER_ADMIN_PHONE: str({
+      default: "",
+      desc: "شماره تلفن سوپر ادمین برای تخصیص خودکار نقش در ورود OTP",
+    }),
+
     // OTP Configuration
     OTP_TTL_SECONDS: num({
       default: 120,

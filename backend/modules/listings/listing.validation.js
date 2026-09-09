@@ -100,8 +100,7 @@ const tourDetailsSchema = z.object({
 const trainingDetailsSchema = z.object({
   schedule: z
     .array(scheduleItemSchema)
-    .min(1, "حداقل یک زمان‌بندی در برنامه الزامی است")
-    .optional(),
+    .min(1, "حداقل یک زمان‌بندی در برنامه الزامی است"),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   duration: z.string().trim().optional(),

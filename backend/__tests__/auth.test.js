@@ -3,348 +3,234 @@ const mongoose = require("mongoose");
 const app = require("../server");
 const User = require("../models/User");
 const OtpCode = require("../models/OtpCode");
+const { _resetRateLimitStoreForTests } = require("../utils/rateLimiter");
 
-// Mock MongoDB connection for tests
+// Rate-limit budget notes (per-jest-worker, in-memory store in utils/rateLimiter.js):
+//   - IP:  max 10 otp/start + otp/verify requests per 15 min
+//   - Phone: max 5 otp requests per phone per 2 min
+//   - Suspicious detector: blocks when > 2 indicators; supertest UA contains "node"
+//     so exactly 1 indicator (bot_user_agent) is always present; keep <= 5 distinct
+//     phones and <= 20 requests/min to stay under the threshold.
+// This file issues exactly 9 OTP requests across 5 distinct phones.
+const COOLDOWN_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
+
+const PS = {
+  cooldown: "09132220001",
+  cooldownPassed: "09132220002",
+  login: "09132220003",
+  invalid: "09132220004",
+};
+
+// Populated by the "logs in (auto-registers)" test and reused by the Profile
+// block — avoids a second OTP login (rate-limit budget: 9 requests/file).
+let verifiedAccessToken;
+
 beforeAll(async () => {
-  // Set test environment
   process.env.NODE_ENV = "test";
-  process.env.JWT_SECRET = "test-secret-key";
+  process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret-key";
+  _resetRateLimitStoreForTests();
 
-  // Connect to test database
   const mongoUri =
     process.env.MONGODB_TEST_URI || "mongodb://127.0.0.1:27017/nakhsha_test";
   await mongoose.connect(mongoUri);
-});
 
-afterAll(async () => {
-  // Cleanup
-  await User.deleteMany({});
-  await OtpCode.deleteMany({});
-  await mongoose.connection.close();
-});
-
-beforeEach(async () => {
-  // Clear collections before each test
+  // Clean slate exactly once; tests below use dedicated phones so no further
+  // cross-test cleanup is required.
   await User.deleteMany({});
   await OtpCode.deleteMany({});
   app.locals.dbReady = true;
 });
 
-describe("Auth Routes - Registration", () => {
-  describe("POST /api/auth/register", () => {
-    it("should register a new user with valid credentials", async () => {
-      const userData = {
-        name: "علی احمدی",
-        phone: "09123456789",
-        password: "password123",
-      };
+afterAll(async () => {
+  await mongoose.connection.close();
+});
 
-      const response = await request(app)
-        .post("/api/auth/register")
-        .send(userData)
-        .expect(201);
+describe("Auth Routes - Deprecated legacy endpoints", () => {
+  it("POST /api/auth/register returns 410 and points to OTP", async () => {
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "علی احمدی", phone: "09123456789", password: "x" })
+      .expect(410);
 
-      expect(response.body).toHaveProperty("token");
-      expect(response.body).toHaveProperty("user");
-      expect(response.body.user.name).toBe(userData.name);
-      expect(response.body.user.phone).toBe(userData.phone);
-    });
+    expect(response.body.deprecated).toBe(true);
+    expect(response.body.useOtpInstead).toBe(true);
+    expect(response.body.message).toContain("غیرفعال");
+  });
 
-    it("should reject registration with missing required fields", async () => {
-      const response = await request(app)
-        .post("/api/auth/register")
-        .send({ name: "علی احمدی" })
-        .expect(400);
+  it("POST /api/auth/login returns 410 and points to OTP", async () => {
+    const response = await request(app)
+      .post("/api/auth/login")
+      .send({ phone: "09123456789", password: "x" })
+      .expect(410);
 
-      expect(response.body).toHaveProperty("message");
-    });
-
-    it("should reject registration with invalid phone number", async () => {
-      const userData = {
-        name: "علی احمدی",
-        phone: "123", // Invalid Iranian phone
-        password: "password123",
-      };
-
-      const response = await request(app)
-        .post("/api/auth/register")
-        .send(userData)
-        .expect(400);
-
-      expect(response.body.message).toContain("شماره موبایل");
-    });
-
-    it("should reject registration with duplicate phone", async () => {
-      const userData = {
-        name: "علی احمدی",
-        phone: "09123456789",
-        password: "password123",
-      };
-
-      // Register first user
-      await request(app).post("/api/auth/register").send(userData).expect(201);
-
-      // Try to register again with same phone
-      const response = await request(app)
-        .post("/api/auth/register")
-        .send(userData)
-        .expect(400);
-
-      expect(response.body.message).toContain("قبلاً ثبت شده");
-    });
+    expect(response.body.deprecated).toBe(true);
+    expect(response.body.useOtpInstead).toBe(true);
+    expect(response.body.message).toContain("غیرفعال");
   });
 });
 
-describe("Auth Routes - Login", () => {
-  describe("POST /api/auth/login", () => {
-    beforeEach(async () => {
-      // Create a test user
-      await request(app).post("/api/auth/register").send({
-        name: "حسین رضایی",
-        phone: "09123456789",
-        password: "password123",
-      });
+describe("Auth Routes - OTP start", () => {
+  it("rejects an invalid phone number with VALIDATION_ERROR", async () => {
+    const response = await request(app)
+      .post("/api/auth/otp/start")
+      .send({ phone: "123" })
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(response.body.error.details.field).toBe("phone");
+    expect(response.body.reqId).toBeDefined();
+  });
+
+  it("enforces resend cooldown for a second request sent too early", async () => {
+    const first = await request(app)
+      .post("/api/auth/otp/start")
+      .send({ phone: PS.cooldown })
+      .expect(200);
+
+    expect(first.body.ok).toBe(true);
+    expect(first.body.cooldownSeconds).toBe(COOLDOWN_SECONDS);
+    expect(typeof first.body.devCode).toBe("string");
+    expect(first.body.devCode).toMatch(/^\d{6}$/);
+
+    // The OTP record must be persisted (hashed) in MongoDB
+    const otp = await OtpCode.findOne({ phone: PS.cooldown });
+    expect(otp).toBeTruthy();
+    expect(otp.codeHash).toBeTruthy();
+    expect(otp.codeHash).not.toBe(first.body.devCode);
+
+    const second = await request(app)
+      .post("/api/auth/otp/start")
+      .send({ phone: PS.cooldown })
+      .expect(429);
+
+    expect(second.body.success).toBe(false);
+    expect(second.body.error.code).toBe("RATE_LIMITED");
+    expect(second.body.error.details.cooldown).toBe(true);
+    expect(second.body.error.details.retryAfterSeconds).toBeGreaterThan(0);
+    expect(second.body.error.details.retryAfterSeconds).toBeLessThanOrEqual(
+      COOLDOWN_SECONDS,
+    );
+  });
+
+  it("allows a request after the cooldown window has passed", async () => {
+    // Seed an OTP record whose lastSentAt is older than the cooldown
+    await OtpCode.create({
+      phone: PS.cooldownPassed,
+      codeHash: "irrelevant",
+      expiresAt: new Date(Date.now() + 120_000),
+      lastSentAt: new Date(Date.now() - (COOLDOWN_SECONDS + 5) * 1000),
+      resendCount: 1,
     });
 
-    it("should login with valid credentials", async () => {
-      const response = await request(app)
-        .post("/api/auth/login")
-        .send({
-          phone: "09123456789",
-          password: "password123",
-        })
-        .expect(200);
+    const response = await request(app)
+      .post("/api/auth/otp/start")
+      .send({ phone: PS.cooldownPassed })
+      .expect(200);
 
-      expect(response.body).toHaveProperty("token");
-      expect(response.body).toHaveProperty("user");
-      expect(response.body.user.phone).toBe("09123456789");
-    });
-
-    it("should reject login with wrong password", async () => {
-      const response = await request(app)
-        .post("/api/auth/login")
-        .send({
-          phone: "09123456789",
-          password: "wrongpassword",
-        })
-        .expect(401);
-
-      expect(response.body.message).toContain("نام‌کاربری یا رمز عبور");
-    });
-
-    it("should reject login with non-existent phone", async () => {
-      const response = await request(app)
-        .post("/api/auth/login")
-        .send({
-          phone: "09999999999",
-          password: "password123",
-        })
-        .expect(401);
-
-      expect(response.body.message).toBeDefined();
-    });
-
-    it("should reject login with missing credentials", async () => {
-      const response = await request(app)
-        .post("/api/auth/login")
-        .send({
-          phone: "09123456789",
-        })
-        .expect(400);
-
-      expect(response.body).toHaveProperty("message");
-    });
+    expect(response.body.ok).toBe(true);
+    expect(response.body.cooldownSeconds).toBe(COOLDOWN_SECONDS);
   });
 });
 
-describe("Auth Routes - OTP", () => {
-  describe("POST /api/auth/otp/start", () => {
-    it("should send OTP to valid phone number", async () => {
-      const response = await request(app)
-        .post("/api/auth/otp/start")
-        .send({ phone: "09123456789" })
-        .expect(200);
+describe("Auth Routes - OTP verify", () => {
+  it("logs in (auto-registers) a user and issues access + refresh tokens", async () => {
+    const start = await request(app)
+      .post("/api/auth/otp/start")
+      .send({ phone: PS.login })
+      .expect(200);
 
-      expect(response.body.message).toContain("کد ارسال شد");
+    const verify = await request(app)
+      .post("/api/auth/otp/verify")
+      .send({ phone: PS.login, code: start.body.devCode })
+      .expect(200);
 
-      // Verify OTP was created in database
-      const otp = await OtpCode.findOne({ phone: "09123456789" });
-      expect(otp).toBeTruthy();
-    });
+    expect(verify.body.accessToken).toBeDefined();
+    expect(verify.body.refreshToken).toBeDefined();
+    expect(verify.body.refreshExpiresAt).toBeDefined();
+    // Backward-compat alias kept by the API
+    expect(verify.body.token).toBe(verify.body.accessToken);
+    expect(verify.body.user).toBeDefined();
+    expect(verify.body.user.phone).toBe(PS.login);
 
-    it("should reject invalid phone number", async () => {
-      const response = await request(app)
-        .post("/api/auth/otp/start")
-        .send({ phone: "123" })
-        .expect(400);
+    // Populate the token for the downstream Profile block
+    verifiedAccessToken = verify.body.accessToken;
 
-      expect(response.body.message).toContain("شماره موبایل");
-    });
+    // The OTP record is consumed after a successful verification
+    const consumed = await OtpCode.findOne({ phone: PS.login });
+    expect(consumed).toBeFalsy();
 
-    describe("resend cooldown (OTP_RESEND_SECONDS)", () => {
-      const testPhone = "09121111111";
-      const COOLDOWN = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
-
-      beforeEach(async () => {
-        await OtpCode.deleteMany({ phone: testPhone });
-        // Suppress rate-limiter side-effects by ensuring dbReady
-        app.locals.dbReady = true;
-      });
-
-      it("blocks a second request sent before the cooldown expires", async () => {
-        // First request — must succeed
-        const first = await request(app)
-          .post("/api/auth/otp/start")
-          .send({ phone: testPhone })
-          .expect(200);
-
-        expect(first.body.ok).toBe(true);
-        expect(first.body.cooldownSeconds).toBe(COOLDOWN);
-
-        // Immediate second request — must be blocked
-        const second = await request(app)
-          .post("/api/auth/otp/start")
-          .send({ phone: testPhone })
-          .expect(429);
-
-        expect(second.body.error).toBe("RATE_LIMITED");
-        expect(second.body.details).toMatchObject({ cooldown: true });
-        expect(second.body.details.retryAfterSeconds).toBeGreaterThan(0);
-        expect(second.body.details.retryAfterSeconds).toBeLessThanOrEqual(
-          COOLDOWN,
-        );
-      });
-
-      it("allows a request after the cooldown window has passed", async () => {
-        // Seed an OTP record whose lastSentAt is older than the cooldown
-        await OtpCode.create({
-          phone: testPhone,
-          codeHash: "irrelevant",
-          expiresAt: new Date(Date.now() + 120_000),
-          lastSentAt: new Date(Date.now() - (COOLDOWN + 5) * 1000),
-          resendCount: 1,
-        });
-
-        const response = await request(app)
-          .post("/api/auth/otp/start")
-          .send({ phone: testPhone })
-          .expect(200);
-
-        expect(response.body.ok).toBe(true);
-        expect(response.body.cooldownSeconds).toBe(COOLDOWN);
-      });
-
-      it("returns correct cooldownSeconds value in the success response", async () => {
-        const response = await request(app)
-          .post("/api/auth/otp/start")
-          .send({ phone: testPhone })
-          .expect(200);
-
-        expect(typeof response.body.cooldownSeconds).toBe("number");
-        expect(response.body.cooldownSeconds).toBe(COOLDOWN);
-      });
-    });
+    // New user is created in DB
+    const created = await User.findOne({ phone: PS.login });
+    expect(created).toBeTruthy();
   });
 
-  describe("POST /api/auth/otp/verify", () => {
-    let validCode;
-    const testPhone = "09123456789";
+  it("rejects an invalid code with OTP_INVALID then an expired code with OTP_EXPIRED", async () => {
+    const start = await request(app)
+      .post("/api/auth/otp/start")
+      .send({ phone: PS.invalid })
+      .expect(200);
 
-    beforeEach(async () => {
-      // Request OTP first
-      const response = await request(app)
-        .post("/api/auth/otp/start")
-        .send({ phone: testPhone });
+    const wrongCode = start.body.devCode === "000000" ? "000001" : "000000";
 
-      // Get the code from response (available in dev mode)
-      validCode = response.body.devCode;
-    });
+    const invalid = await request(app)
+      .post("/api/auth/otp/verify")
+      .send({ phone: PS.invalid, code: wrongCode })
+      .expect(400);
 
-    it("should verify valid OTP and create/login user", async () => {
-      const response = await request(app)
-        .post("/api/auth/otp/verify")
-        .send({
-          phone: testPhone,
-          code: validCode,
-        })
-        .expect(200);
+    expect(invalid.body.success).toBe(false);
+    expect(invalid.body.error.code).toBe("OTP_INVALID");
+    expect(invalid.body.error.details.field).toBe("code");
+    expect(invalid.body.error.details.attemptsRemaining).toBeGreaterThan(0);
 
-      expect(response.body).toHaveProperty("token");
-      expect(response.body).toHaveProperty("user");
-    });
+    // Force expiration then retry with the valid code
+    await OtpCode.updateOne(
+      { phone: PS.invalid },
+      { expiresAt: new Date(Date.now() - 1000) },
+    );
 
-    it("should reject invalid OTP code", async () => {
-      const response = await request(app)
-        .post("/api/auth/otp/verify")
-        .send({
-          phone: testPhone,
-          code: "000000",
-        })
-        .expect(401);
+    const expired = await request(app)
+      .post("/api/auth/otp/verify")
+      .send({ phone: PS.invalid, code: start.body.devCode })
+      .expect(400);
 
-      expect(response.body.message).toContain("نامعتبر");
-    });
-
-    it("should reject expired OTP", async () => {
-      // Manually expire the OTP
-      await OtpCode.updateOne(
-        { phone: testPhone },
-        { expiresAt: new Date(Date.now() - 1000) },
-      );
-
-      const response = await request(app)
-        .post("/api/auth/otp/verify")
-        .send({
-          phone: testPhone,
-          code: validCode,
-        })
-        .expect(401);
-
-      expect(response.body.message).toContain("منقضی");
-    });
+    expect(expired.body.success).toBe(false);
+    expect(expired.body.error.code).toBe("OTP_EXPIRED");
+    expect(expired.body.error.details.expired).toBe(true);
   });
 });
 
 describe("Auth Routes - Profile", () => {
-  let authToken;
-  let testUser;
+  it("GET /api/auth/me returns the current user profile with a valid token", async () => {
+    expect(verifiedAccessToken).toBeDefined();
 
-  beforeEach(async () => {
-    // Register and login to get token
-    const response = await request(app).post("/api/auth/register").send({
-      name: "مهدی محمدی",
-      phone: "09123456789",
-      password: "password123",
-    });
+    const response = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${verifiedAccessToken}`)
+      .expect(200);
 
-    authToken = response.body.token;
-    testUser = response.body.user;
+    expect(response.body.user).toBeDefined();
+    expect(response.body.user.phone).toBe(PS.login);
   });
 
-  describe("GET /api/auth/me", () => {
-    it("should return current user profile with valid token", async () => {
-      const response = await request(app)
-        .get("/api/auth/me")
-        .set("Authorization", `Bearer ${authToken}`)
-        .expect(200);
+  it("GET /api/auth/me rejects a request without a token", async () => {
+    const response = await request(app).get("/api/auth/me").expect(401);
 
-      expect(response.body).toHaveProperty("user");
-      expect(response.body.user.phone).toBe(testUser.phone);
-    });
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body.error.message).toContain(
+      "Missing or invalid authorization token",
+    );
+  });
 
-    it("should reject request without token", async () => {
-      const response = await request(app).get("/api/auth/me").expect(401);
+  it("GET /api/auth/me rejects a request with an invalid token", async () => {
+    const response = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", "Bearer invalid-token")
+      .expect(401);
 
-      expect(response.body.message).toContain("Unauthorized");
-    });
-
-    it("should reject request with invalid token", async () => {
-      const response = await request(app)
-        .get("/api/auth/me")
-        .set("Authorization", "Bearer invalid-token")
-        .expect(401);
-
-      expect(response.body.message).toContain("Unauthorized");
-    });
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body.error.message).toContain("Invalid or expired token");
   });
 });

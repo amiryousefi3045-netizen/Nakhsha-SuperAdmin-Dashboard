@@ -102,7 +102,7 @@ export interface User {
       lng: number | null;
     };
   };
-  role: "user" | "tour_leader" | "admin";
+  role: "user" | "tour_leader" | "admin" | "super_admin";
   creatorType: "artisan" | "tour_leader";
   isVerified: boolean;
   createdAt: string;

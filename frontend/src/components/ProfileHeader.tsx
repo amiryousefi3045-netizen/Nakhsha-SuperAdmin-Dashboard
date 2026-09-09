@@ -50,7 +50,7 @@ const ProfileHeader: FC<ProfileHeaderProps> = ({
         icon: "✓",
         className: "bg-green-100 text-green-700 border-green-200",
       });
-    if (user.role === "admin")
+    if (user.role && ["admin", "super_admin"].includes(user.role))
       badges.push({
         text: "مدیر",
         icon: "👑",

@@ -1,6 +1,24 @@
 const mongoose = require("mongoose");
 const logger = require("../utils/logger");
 
+/**
+ * Granular permissions available for `admin` users.
+ * The `super_admin` role is implicitly granted every capability and its
+ * `permissions` array must always remain empty.
+ */
+const ALLOWED_PERMISSIONS = Object.freeze([
+  "DELETE_USERS",
+  "APPROVE_CONTENT",
+  "VIEW_AUDIT_LOGS",
+]);
+
+const ROLES = Object.freeze([
+  "user",
+  "tour_leader",
+  "admin",
+  "super_admin",
+]);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -57,8 +75,51 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "tour_leader", "admin"],
+      enum: ROLES,
       default: "user",
+    },
+    /**
+     * Whether the account is currently blocked. Blocked users are rejected on
+     * every protected request (requireRole queries the DB, never trusts a JWT).
+     */
+    isBlocked: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    /**
+     * Monotonic counter stamped into every access JWT (`ver` claim).
+     * Incremented by `revokeAllTokens` (logout-all, role change, block) so a
+     * previously issued stateless access token is rejected by requireAuth on
+     * the very next request instead of living until its natural expiry.
+     */
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    /**
+     * Optional note explaining why an admin blocked/unblocked the account.
+     */
+    moderatorNote: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: [500, "یادداشت نباید بیش از ۵۰۰ کاراکتر باشد"],
+    },
+    /**
+     * Granular permissions array. Only meaningful for role === "admin".
+     * `user`, `tour_leader` and `super_admin` must always keep it empty.
+     */
+    permissions: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (value) {
+          return value.every((p) => ALLOWED_PERMISSIONS.includes(p));
+        },
+        message: "دسترسی نامعتبر است",
+      },
     },
     creatorType: {
       type: String,
@@ -106,6 +167,64 @@ userSchema.index({ "location.geometry": "2dsphere" }, { sparse: true });
 // Compound index for role-based queries
 userSchema.index({ role: 1, isVerified: 1 });
 
+// ============================================================================
+// SINGLETON SUPER ADMIN INVARIANT
+// ============================================================================
+// Database-level enforcement: only one document may ever carry the
+// "super_admin" role. The partial index guarantees uniqueness even when two
+// concurrent OTP logins try to assign the role at the same time.
+userSchema.index(
+  { role: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { role: "super_admin" },
+    name: "unique_super_admin_count",
+  },
+);
+
+// ============================================================================
+// PRE-VALIDATION GUARDS
+// ============================================================================
+// 1. Permission semantics: only `admin` may hold granular permissions. Any
+//    other role silently resets the array to [] (never stored).
+// 2. Singleton check: a second super_admin must be rejected before the unique
+//    index throws, from any code path that tries to assign the role.
+userSchema.pre("validate", function (next) {
+  if (this.role !== "admin") {
+    this.permissions = [];
+  }
+  next();
+});
+
+userSchema.pre("validate", async function (next) {
+  const isBecomingSuperAdmin =
+    this.role === "super_admin" &&
+    (this.isNew || this.isModified("role"));
+
+  if (!isBecomingSuperAdmin) {
+    return next();
+  }
+
+  try {
+    const Model = this.constructor;
+    const existing = await Model.countDocuments({
+      role: "super_admin",
+      _id: { $ne: this._id },
+    });
+
+    // If another document already holds the super_admin role, this document
+    // must never be assigned it (singleton invariant).
+    if (existing > 0) {
+      const err = new Error("از قبل یک سوپر ادمین وجود دارد");
+      err.code = 409;
+      return next(err);
+    }
+    return next();
+  } catch (e) {
+    return next(e);
+  }
+});
+
 // Pre-save middleware to normalize legacy coordinates to GeoJSON
 userSchema.pre("save", function (next) {
   try {
@@ -148,3 +267,5 @@ userSchema.set("toJSON", {
 const User = mongoose.model("User", userSchema);
 
 module.exports = User;
+module.exports.ALLOWED_PERMISSIONS = ALLOWED_PERMISSIONS;
+module.exports.ROLES = ROLES;

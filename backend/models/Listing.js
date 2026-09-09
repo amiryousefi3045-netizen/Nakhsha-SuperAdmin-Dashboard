@@ -58,7 +58,7 @@ const listingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["draft", "published"],
+      enum: ["draft", "pending", "published", "rejected", "archived"],
       default: "draft",
     },
     /**
@@ -256,6 +256,12 @@ listingSchema.index({ draftId: 1 }, { sparse: true });
 
 /** Index for optimistic concurrency control lookups. */
 listingSchema.index({ _id: 1, revision: 1 });
+
+/** Index for status-based admin filtering sorted by recency. */
+listingSchema.index({ status: 1, createdAt: -1 });
+
+/** Compound index for type + status admin filtering. */
+listingSchema.index({ type: 1, status: 1, createdAt: -1 });
 
 const Listing = mongoose.model("Listing", listingSchema);
 

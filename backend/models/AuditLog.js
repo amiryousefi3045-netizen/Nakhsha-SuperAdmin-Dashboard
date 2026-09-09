@@ -25,12 +25,16 @@ const auditLogSchema = new mongoose.Schema(
     action: {
       type: String,
       enum: [
-        // User actions
+// User actions
         "USER_CREATED",
         "USER_UPDATED",
         "USER_DELETED",
+        "USER_DELETE",
         "USER_VERIFIED",
         "USER_ROLE_CHANGED",
+        "USER_ROLE_CHANGE",
+        "USER_PERMISSIONS_CHANGE",
+        "USER_BLOCK",
         "USER_SUSPENDED",
         "USER_REACTIVATED",
 
@@ -45,6 +49,7 @@ const auditLogSchema = new mongoose.Schema(
         // Listing/Content actions
         "LISTING_CREATED",
         "LISTING_UPDATED",
+        "LISTING_EDIT",
         "LISTING_PUBLISHED",
         "LISTING_DELETED",
         "LISTING_STATUS_CHANGED",
@@ -57,6 +62,10 @@ const auditLogSchema = new mongoose.Schema(
         "CRAFT_DELETED",
 
         // Admin actions
+        "SUPER_ADMIN_AUTO_ASSIGN",
+        "ADMIN_PROFILE_UPDATE",
+        "ADMIN_LOGOUT_ALL",
+        "PROVIDER_STATUS_CHANGE",
         "ADMIN_USER_DELETED",
         "ADMIN_USER_BANNED",
         "ADMIN_USER_UNBANNED",
@@ -140,6 +149,8 @@ const auditLogSchema = new mongoose.Schema(
       batch: String, // For bulk operations, batch identifier
       affectedCount: Number, // For bulk ops, how many items affected
       duration: Number, // How long action took (ms)
+      autoAssigned: Boolean, // True when a role was auto-assigned (super admin bootstrap)
+      source: String, // Assignment path, e.g. "SUPER_ADMIN_PHONE"
     },
 
     // Compliance fields

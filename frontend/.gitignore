@@ -28,6 +28,11 @@ build/
 # Uploads / generated assets
 public/uploads/
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
 # Cache and temporary files
 .cache/
 .tmp/

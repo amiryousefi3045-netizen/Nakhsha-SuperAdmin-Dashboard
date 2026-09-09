@@ -389,8 +389,11 @@ class DraftController {
       const userId = req.params.userId;
       const ownerId = req.user.id;
 
-      // Only allow users to view their own stats (unless admin)
-      if (userId !== ownerId && req.user.role !== "admin") {
+      // Only allow users to view their own stats (unless admin/super_admin)
+      if (
+        userId !== ownerId &&
+        !["admin", "super_admin"].includes(req.user.role)
+      ) {
         return res.status(403).json(
           buildResponse({
             success: false,

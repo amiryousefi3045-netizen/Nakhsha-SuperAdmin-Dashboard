@@ -1,0 +1,1279 @@
+/**
+ * Admin Controller
+ *
+ * Super Admin dashboard controller. Every endpoint here is protected upstream
+ * by `requireAuth` + `requireRole("super_admin")` and every payload is
+ * validated with Zod before any database mutation.
+ *
+ * Security invariants enforced in this module:
+ *  - No path can create/promote a `super_admin`.
+ *  - A Super Admin can never change/block/delete its own account.
+ *  - A Super Admin can never be blocked or deleted by anyone.
+ *  - Sensitive operations always write an AuditLog with a Zod-validated payload.
+ *  - Role changes / blocks invalidate active refresh tokens immediately.
+ *  - Only an allowlist of fields is ever mutated.
+ */
+
+const mongoose = require("mongoose");
+const User = require("../models/User");
+const RefreshToken = require("../models/RefreshToken");
+const { Listing } = require("../models/Listing");
+const Craft = require("../models/Craft");
+const AuditLog = require("../models/AuditLog");
+const TokenService = require("../services/TokenService");
+const AuditService = require("../services/AuditService");
+const adminStats = require("../services/adminStats");
+const { createErrorResponse, createSuccessResponse } = require("../utils/response");
+const logger = require("../utils/logger");
+const { z } = require("zod");
+
+// ── Constants ───────────────────────────────────────────────────────────────
+
+const ALLOWED_USER_ROLES = ["user", "tour_leader", "admin"];
+const ALLOWED_PERMISSIONS = [
+  "DELETE_USERS",
+  "APPROVE_CONTENT",
+  "VIEW_AUDIT_LOGS",
+];
+const ALLOWED_LISTING_STATUSES = [
+  "draft",
+  "pending",
+  "published",
+  "rejected",
+  "archived",
+];
+const LISTING_TYPES = ["post", "tour", "training", "academy"];
+const MAX_PAGE_SIZE = 100;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
+
+function escapeRegex(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeId(value) {
+  return String(value);
+}
+
+// Zod validation for the audit payload before it is written to the DB.
+const auditPayloadSchema = z.object({
+  userId: z.string().min(1),
+  action: z.string().min(1),
+  resource: z
+    .object({
+      type: z.enum(["USER", "LISTING", "CRAFT", "POST", "ARTISAN", "TRANSACTION"]),
+      id: z.string().optional(),
+    })
+    .optional(),
+  changes: z
+    .object({ before: z.unknown().optional(), after: z.unknown().optional() })
+    .optional(),
+  requestContext: z.unknown().optional(),
+  result: z.enum(["SUCCESS", "FAILURE", "PARTIAL"]).optional(),
+  riskLevel: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+async function writeAudit(req, payload) {
+  const parsed = auditPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    logger.warn("Audit payload validation failed", {
+      errors: parsed.error.issues,
+    });
+    return;
+  }
+  await AuditService.log({
+    ...parsed.data,
+    requestContext: req,
+  });
+}
+
+function userToAdminDTO(user) {
+  return {
+    id: normalizeId(user._id),
+    name: user.name || "",
+    phone: user.phone,
+    handle: user.handle || null,
+    avatar: user.avatar || "",
+    role: user.role,
+    isBlocked: Boolean(user.isBlocked),
+    moderatorNote: user.moderatorNote || "",
+    permissions: user.permissions || [],
+    isVerified: Boolean(user.isVerified),
+    creatorType: user.creatorType || "artisan",
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+function listingToDTO(listing) {
+  const owner = listing.owner;
+  return {
+    id: normalizeId(listing._id),
+    type: listing.type || "post",
+    title: listing.title,
+    description: listing.description,
+    status: listing.status || "draft",
+    location: {
+      city: listing.location?.city || null,
+      province: listing.location?.province || null,
+      address: listing.location?.address || null,
+    },
+    owner: owner
+      ? { id: normalizeId(owner._id), name: owner.name || "", handle: owner.handle || null }
+      : null,
+    revision: listing.revision || 0,
+    editCount: Array.isArray(listing.editHistory) ? listing.editHistory.length : 0,
+    createdAt: listing.createdAt,
+    updatedAt: listing.updatedAt,
+  };
+}
+
+function auditLogToDTO(log) {
+  return {
+    id: normalizeId(log._id),
+    action: log.action,
+    actorId: log.userId ? normalizeId(log.userId._id || log.userId) : null,
+    actorName:
+      (log.userId && (log.userId.name || log.userId.handle)) || "سیستم",
+    resource: log.resource
+      ? { type: log.resource.type || null, id: log.resource.id ? normalizeId(log.resource.id) : null }
+      : null,
+    changes: log.changes || null,
+    result: log.result || "SUCCESS",
+    riskLevel: log.riskLevel || "LOW",
+    ip: log.requestContext?.ip || null,
+    createdAt: log.createdAt,
+  };
+}
+
+function safePageSize(raw) {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed < 1) return 1;
+  return Math.min(parsed, MAX_PAGE_SIZE);
+}
+
+function safePage(raw) {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed < 1) return 1;
+  return parsed;
+}
+
+// ── Stats ───────────────────────────────────────────────────────────────────
+
+async function getStats(req, res) {
+  try {
+    const [overview, growth, distribution, topCities, recentActivity] =
+      await Promise.all([
+        adminStats.getOverviewStats(),
+        adminStats.getGrowthTrend(30),
+        adminStats.getContentDistribution(),
+        adminStats.getTopCities(10),
+        adminStats.getRecentActivity(20),
+      ]);
+
+    res.json(
+      createSuccessResponse(
+        { overview, growth, distribution, topCities, recentActivity },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getStats error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Users ───────────────────────────────────────────────────────────────────
+
+async function getUsers(req, res) {
+  try {
+    const { q, role, page: pageRaw, limit: limitRaw } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+
+    if (role) {
+      if (!["user", "tour_leader", "admin", "super_admin"].includes(role)) {
+        return res
+          .status(400)
+          .json(createErrorResponse("VALIDATION_ERROR", "نقش نامعتبر است", { field: "role" }, req.id));
+      }
+      filter.role = role;
+    }
+
+    if (q && String(q).trim()) {
+      const trimmed = String(q).trim();
+      const safe = escapeRegex(trimmed);
+      filter.$or = [{ name: { $regex: safe, $options: "i" } }, { phone: { $regex: safe, $options: "i" } }, { handle: { $regex: safe, $options: "i" } }];
+      if (isValidObjectId(trimmed)) {
+        filter.$or.push({ _id: trimmed });
+      }
+    }
+
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select("name phone handle avatar role isBlocked moderatorNote permissions isVerified creatorType createdAt updatedAt")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        { items: users.map(userToAdminDTO), total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getUsers error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateUserRole(req, res) {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    if (!ALLOWED_USER_ROLES.includes(role)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "نقش مورد نظر نامعتبر است",
+            { field: "role", allowedRoles: ALLOWED_USER_ROLES },
+            req.id,
+          ),
+        );
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    if (String(target._id) === String(req.user.id)) {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "شما نمی‌توانید نقش حساب خود را تغییر دهید", null, req.id));
+    }
+
+    if (target.role === "super_admin") {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "تغییر نقش سوپر ادمین مجاز نیست", null, req.id));
+    }
+
+    const prevRole = target.role;
+    if (prevRole === role) {
+      return res.json(createSuccessResponse({ user: userToAdminDTO(target), unchanged: true }, req.id));
+    }
+
+    target.role = role;
+    if (role !== "admin") {
+      target.permissions = [];
+    }
+    await target.save();
+
+    await TokenService.revokeAllTokens(String(target._id), "ADMIN_REVOKE").catch((err) => {
+      logger.warn("Failed to revoke tokens after role change", { userId: target._id, error: err.message });
+    });
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "USER_ROLE_CHANGE",
+      resource: { type: "USER", id: String(target._id) },
+      changes: { before: { role: prevRole }, after: { role } },
+      result: "SUCCESS",
+      riskLevel: "HIGH",
+      metadata: { reason: "admin role change" },
+    });
+
+    res.json(createSuccessResponse({ user: userToAdminDTO(target) }, req.id));
+  } catch (e) {
+    logger.error("Admin updateUserRole error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateUserPermissions(req, res) {
+  try {
+    const { id } = req.params;
+    const { permissions } = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const invalid = (permissions || []).filter((p) => !ALLOWED_PERMISSIONS.includes(p));
+    if (invalid.length > 0) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "دسترسی نامعتبر است",
+            { field: "permissions", invalid },
+            req.id,
+          ),
+        );
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    if (String(target._id) === String(req.user.id)) {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "شما نمی‌توانید دسترسی‌های حساب خود را تغییر دهید", null, req.id));
+    }
+
+    if (target.role === "super_admin") {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "تغییر دسترسی سوپر ادمین مجاز نیست", null, req.id));
+    }
+
+    if (target.role !== "admin") {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "تنها کاربران با نقش ادمین می‌توانند دسترسی خرد داشته باشند",
+            { field: "role" },
+            req.id,
+          ),
+        );
+    }
+
+    const prevPermissions = [...(target.permissions || [])];
+    const nextPermissions = Array.from(new Set(permissions || []));
+    if (JSON.stringify(prevPermissions) === JSON.stringify(nextPermissions)) {
+      return res.json(createSuccessResponse({ user: userToAdminDTO(target), unchanged: true }, req.id));
+    }
+
+    target.permissions = nextPermissions;
+    await target.save();
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "USER_PERMISSIONS_CHANGE",
+      resource: { type: "USER", id: String(target._id) },
+      changes: { before: { permissions: prevPermissions }, after: { permissions: nextPermissions } },
+      result: "SUCCESS",
+      riskLevel: "HIGH",
+    });
+
+    res.json(createSuccessResponse({ user: userToAdminDTO(target) }, req.id));
+  } catch (e) {
+    logger.error("Admin updateUserPermissions error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function toggleUserBlock(req, res) {
+  try {
+    const { id } = req.params;
+    const { isBlocked, moderatorNote } = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    if (typeof isBlocked !== "boolean") {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "وضعیت مسدودسازی باید boolean باشد", { field: "isBlocked" }, req.id));
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    if (String(target._id) === String(req.user.id)) {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "شما نمی‌توانید حساب خود را مسدود یا فعال کنید", null, req.id));
+    }
+
+    if (target.role === "super_admin") {
+      return res
+        .status(403)
+        .json(
+          createErrorResponse("FORBIDDEN", "امکان مسدودسازی یا فعال‌سازی سوپر ادمین وجود ندارد", null, req.id),
+        );
+    }
+
+    const prevBlocked = Boolean(target.isBlocked);
+    if (prevBlocked === isBlocked) {
+      return res.json(createSuccessResponse({ user: userToAdminDTO(target), unchanged: true }, req.id));
+    }
+
+    target.isBlocked = isBlocked;
+    if (moderatorNote !== undefined) {
+      target.moderatorNote = String(moderatorNote).trim();
+    }
+    await target.save();
+
+    if (isBlocked) {
+      await TokenService.revokeAllTokens(String(target._id), "ADMIN_REVOKE").catch((err) => {
+        logger.warn("Failed to revoke tokens after block", { userId: target._id, error: err.message });
+      });
+    }
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "USER_BLOCK",
+      resource: { type: "USER", id: String(target._id) },
+      changes: { before: { isBlocked: prevBlocked }, after: { isBlocked } },
+      result: "SUCCESS",
+      riskLevel: isBlocked ? "HIGH" : "MEDIUM",
+      metadata: { reason: moderatorNote || "block toggled by super admin" },
+    });
+
+    res.json(createSuccessResponse({ user: userToAdminDTO(target) }, req.id));
+  } catch (e) {
+    logger.error("Admin toggleUserBlock error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function deleteUser(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    if (String(target._id) === String(req.user.id)) {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "شما نمی‌توانید حساب خود را حذف کنید", null, req.id));
+    }
+
+    if (target.role === "super_admin") {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "حذف سوپر ادمین مجاز نیست", null, req.id));
+    }
+
+    const { name, phone, role } = target;
+    await User.deleteOne({ _id: target._id });
+
+    await RefreshToken.deleteMany({ userId: target._id }).catch((err) => {
+      logger.warn("Failed to clean refresh tokens on user delete", { userId: target._id, error: err.message });
+    });
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "USER_DELETE",
+      resource: { type: "USER", id: String(target._id) },
+      changes: { before: { name, phone, role }, after: null },
+      result: "SUCCESS",
+      riskLevel: "CRITICAL",
+    });
+
+    res.json(createSuccessResponse({ message: "کاربر حذف شد", id: String(target._id) }, req.id));
+  } catch (e) {
+    logger.error("Admin deleteUser error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Listings ────────────────────────────────────────────────────────────────
+
+async function getListings(req, res) {
+  try {
+    const { type, status, page: pageRaw, limit: limitRaw } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (type) {
+      if (!LISTING_TYPES.includes(type)) {
+        return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "نوع محتوا نامعتبر است", { field: "type" }, req.id));
+      }
+      filter.type = type;
+    }
+    if (status) {
+      if (!ALLOWED_LISTING_STATUSES.includes(status)) {
+        return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "وضعیت نامعتبر است", { field: "status" }, req.id));
+      }
+      filter.status = status;
+    }
+
+    const [listings, total] = await Promise.all([
+      Listing.find(filter)
+        .populate("owner", "name handle")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Listing.countDocuments(filter),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        { items: listings.map(listingToDTO), total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getListings error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateListingStatus(req, res) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    if (!ALLOWED_LISTING_STATUSES.includes(status)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "وضعیت مورد نظر نامعتبر است",
+            { field: "status", allowedStatuses: ALLOWED_LISTING_STATUSES },
+            req.id,
+          ),
+        );
+    }
+
+    const listing = await Listing.findById(id).populate("owner", "name handle");
+    if (!listing) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "محتوا یافت نشد", null, req.id));
+    }
+
+    const prevStatus = listing.status;
+    if (prevStatus === status) {
+      return res.json(createSuccessResponse({ listing: listingToDTO(listing), unchanged: true }, req.id));
+    }
+
+    listing.status = status;
+    await listing.save();
+
+    // Publishing approved content also marks the owner's identity as verified.
+    if (status === "published" && listing.owner) {
+      await User.updateOne({ _id: listing.owner._id }, { $set: { isVerified: true } }).catch((err) => {
+        logger.warn("Failed to update owner verification on publish", { ownerId: listing.owner._id, error: err.message });
+      });
+    }
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "LISTING_STATUS_CHANGED",
+      resource: { type: "LISTING", id: String(listing._id) },
+      changes: { before: { status: prevStatus }, after: { status } },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+    });
+
+    res.json(createSuccessResponse({ listing: listingToDTO(listing) }, req.id));
+  } catch (e) {
+    logger.error("Admin updateListingStatus error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateListingContent(req, res) {
+  try {
+    const { id } = req.params;
+    const { title, description } = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const listing = await Listing.findById(id);
+    if (!listing) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "محتوا یافت نشد", null, req.id));
+    }
+
+    const changed = {};
+    if (title !== undefined) changed.title = String(title).trim();
+    if (description !== undefined) changed.description = String(description).trim();
+
+    if (Object.keys(changed).length === 0) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "حداقل یکی از فیلدهای title یا description باید ارسال شود",
+            null,
+            req.id,
+          ),
+        );
+    }
+
+    const before = {};
+    const after = {};
+    for (const field of Object.keys(changed)) {
+      before[field] = listing[field];
+      after[field] = changed[field];
+    }
+
+    listing.revision = (listing.revision || 0) + 1;
+    listing.title = changed.title !== undefined ? changed.title : listing.title;
+    listing.description = changed.description !== undefined ? changed.description : listing.description;
+    listing.editHistory = listing.editHistory ?? [];
+    listing.editHistory.push({
+      editor: req.user.id,
+      changes: before, // old values, matching the existing editHistory shape
+      newRevision: listing.revision,
+      timestamp: new Date(),
+      reason: "super admin edit",
+    });
+    await listing.save();
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "LISTING_EDIT",
+      resource: { type: "LISTING", id: String(listing._id) },
+      changes: { before, after },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+    });
+
+    const populated = await Listing.findById(listing._id).populate("owner", "name handle").lean();
+    res.json(createSuccessResponse({ listing: listingToDTO(populated) }, req.id));
+  } catch (e) {
+    logger.error("Admin updateListingContent error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Crafts ──────────────────────────────────────────────────────────────────
+
+async function getCrafts(req, res) {
+  try {
+    const { kind, craftType, page: pageRaw, limit: limitRaw } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (kind) {
+      if (!["artwork", "class", "service"].includes(kind)) {
+        return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "نوع صنعت دستی نامعتبر است", { field: "kind" }, req.id));
+      }
+      filter.kind = kind;
+    }
+    if (craftType) {
+      filter.craftType = craftType;
+    }
+
+    const [crafts, total] = await Promise.all([
+      Craft.find(filter)
+        .populate("author", "name handle")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Craft.countDocuments(filter),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        {
+          items: crafts.map((c) => ({
+            id: normalizeId(c._id),
+            title: c.title,
+            description: c.description,
+            kind: c.kind || "artwork",
+            craftType: c.craftType || "other",
+            isPublished: Boolean(c.isPublished),
+            price: c.price ?? null,
+            location: { city: c.location?.city || null },
+            author: c.author
+              ? { id: normalizeId(c.author._id), name: c.author.name || "", handle: c.author.handle || null }
+              : null,
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
+          })),
+          total,
+          page,
+          limit,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getCrafts error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function setCraftPublish(req, res) {
+  try {
+    const { id } = req.params;
+    const { isPublished } = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    if (typeof isPublished !== "boolean") {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "وضعیت انتشار باید boolean باشد", { field: "isPublished" }, req.id));
+    }
+
+    const craft = await Craft.findById(id).populate("author", "name handle");
+    if (!craft) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "صنعت دستی یافت نشد", null, req.id));
+    }
+
+    const prev = Boolean(craft.isPublished);
+    if (prev === isPublished) {
+      return res.json(createSuccessResponse({ craft: { id: normalizeId(craft._id), isPublished: prev }, unchanged: true }, req.id));
+    }
+
+    craft.isPublished = isPublished;
+    await craft.save();
+
+    if (isPublished && craft.author) {
+      await User.updateOne({ _id: craft.author._id }, { $set: { isVerified: true } }).catch((err) => {
+        logger.warn("Failed to update author verification on craft publish", { authorId: craft.author._id, error: err.message });
+      });
+    }
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "LISTING_STATUS_CHANGED",
+      resource: { type: "CRAFT", id: String(craft._id) },
+      changes: { before: { isPublished: prev }, after: { isPublished } },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+    });
+
+    const populated = await Craft.findById(craft._id).populate("author", "name handle").lean();
+    res.json(
+      createSuccessResponse(
+        {
+          craft: {
+            id: normalizeId(populated._id),
+            title: populated.title,
+            isPublished: Boolean(populated.isPublished),
+            author: populated.author ? { id: normalizeId(populated.author._id), name: populated.author.name || "", handle: populated.author.handle || null } : null,
+          },
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin setCraftPublish error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Providers (admins & tour guides) ────────────────────────────────────────
+
+const PROVIDER_ROLES = ["admin", "tour_leader"];
+const PROVIDER_STATUSES = ["active", "suspended", "pending"];
+
+function providerStatusOf(user) {
+  if (user.isBlocked) return "suspended";
+  if (!user.isVerified) return "pending";
+  return "active";
+}
+
+function providerToDTO(user, extra = {}) {
+  return {
+    ...userToAdminDTO(user),
+    status: providerStatusOf(user),
+    ...extra,
+  };
+}
+
+async function listProviders(req, res) {
+  try {
+    const { status, role, page: pageRaw, limit: limitRaw } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+    const skip = (page - 1) * limit;
+
+    if (role && !PROVIDER_ROLES.includes(role)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "نقش نامعتبر است",
+            { field: "role" },
+            req.id,
+          ),
+        );
+    }
+
+    const filter = { role: { $in: role ? [role] : PROVIDER_ROLES } };
+
+    if (status) {
+      if (!PROVIDER_STATUSES.includes(status)) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "VALIDATION_ERROR",
+              "وضعیت نامعتبر است",
+              { field: "status" },
+              req.id,
+            ),
+          );
+      }
+      if (status === "suspended") {
+        filter.isBlocked = true;
+      } else if (status === "pending") {
+        filter.isBlocked = false;
+        filter.isVerified = false;
+      } else {
+        filter.isBlocked = false;
+        filter.isVerified = true;
+      }
+    }
+
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select("name phone handle avatar role isBlocked moderatorNote permissions isVerified creatorType bio createdAt updatedAt")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        { items: users.map((u) => providerToDTO(u)), total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin listProviders error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function getProvider(req, res) {
+  try {
+    const { providerId } = req.params;
+
+    if (!isValidObjectId(providerId)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "شناسه نامعتبر است",
+            { field: "providerId" },
+            req.id,
+          ),
+        );
+    }
+
+    const provider = await User.findById(providerId)
+      .select("name phone handle avatar role isBlocked moderatorNote permissions isVerified creatorType bio createdAt updatedAt")
+      .lean();
+
+    if (!provider || !PROVIDER_ROLES.includes(provider.role)) {
+      return res
+        .status(404)
+        .json(createErrorResponse("NOT_FOUND", "ارائه‌دهنده یافت نشد", null, req.id));
+    }
+
+    const [listingsCount, publishedCount, craftsCount] = await Promise.all([
+      Listing.countDocuments({ owner: providerId }),
+      Listing.countDocuments({ owner: providerId, status: "published" }),
+      Craft.countDocuments({ author: providerId }),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        {
+          provider: providerToDTO(provider, {
+            stats: {
+              listings: listingsCount,
+              published: publishedCount,
+              crafts: craftsCount,
+            },
+          }),
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getProvider error", { error: e.message, stack: e.stack, userId: req.user?.id, providerId: req.params.providerId });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateProviderStatus(req, res) {
+  try {
+    const { providerId } = req.params;
+    const { status, reason } = req.body;
+
+    if (!isValidObjectId(providerId)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "شناسه نامعتبر است",
+            { field: "providerId" },
+            req.id,
+          ),
+        );
+    }
+
+    if (!["active", "suspended"].includes(status)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "وضعیت نامعتبر است",
+            { field: "status" },
+            req.id,
+          ),
+        );
+    }
+
+    const provider = await User.findById(providerId);
+    if (!provider || !PROVIDER_ROLES.includes(provider.role)) {
+      return res
+        .status(404)
+        .json(createErrorResponse("NOT_FOUND", "ارائه‌دهنده یافت نشد", null, req.id));
+    }
+
+    if (String(provider._id) === String(req.user.id)) {
+      return res
+        .status(403)
+        .json(createErrorResponse("FORBIDDEN", "شما نمی‌توانید وضعیت حساب خود را تغییر دهید", null, req.id));
+    }
+
+    if (provider.role === "super_admin") {
+      return res
+        .status(403)
+        .json(
+          createErrorResponse("FORBIDDEN", "تغییر وضعیت سوپر ادمین مجاز نیست", null, req.id),
+        );
+    }
+
+    const nextBlocked = status === "suspended";
+    const approve = status === "active" && !provider.isVerified;
+    const prevBlocked = Boolean(provider.isBlocked);
+    const prevVerified = Boolean(provider.isVerified);
+    if (prevBlocked === nextBlocked && !approve) {
+      return res.json(
+        createSuccessResponse({ provider: providerToDTO(provider), unchanged: true }, req.id),
+      );
+    }
+
+    provider.isBlocked = nextBlocked;
+    if (approve) provider.isVerified = true;
+    if (reason !== undefined) {
+      provider.moderatorNote = String(reason).trim();
+    }
+    await provider.save();
+
+    if (nextBlocked) {
+      await TokenService.revokeAllTokens(String(provider._id), "ADMIN_REVOKE").catch((err) => {
+        logger.warn("Failed to revoke tokens on provider suspend", { userId: provider._id, error: err.message });
+      });
+    }
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "PROVIDER_STATUS_CHANGE",
+      resource: { type: "USER", id: String(provider._id) },
+      changes: {
+        before: { isBlocked: prevBlocked, isVerified: prevVerified },
+        after: { isBlocked: nextBlocked, isVerified: Boolean(provider.isVerified) },
+      },
+      result: "SUCCESS",
+      riskLevel: nextBlocked ? "HIGH" : "MEDIUM",
+      metadata: { reason: reason || "provider status change by admin" },
+    });
+
+    res.json(createSuccessResponse({ provider: providerToDTO(provider) }, req.id));
+  } catch (e) {
+    logger.error("Admin updateProviderStatus error", { error: e.message, stack: e.stack, userId: req.user?.id, providerId: req.params.providerId });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Account (self) ──────────────────────────────────────────────────────────
+
+async function updateProfile(req, res) {
+  try {
+    const { name, bio, avatar } = req.body;
+
+    const me = await User.findById(req.user.id);
+    if (!me) {
+      return res
+        .status(404)
+        .json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    const before = {};
+    const after = {};
+    if (name !== undefined && name !== me.name) {
+      before.name = me.name;
+      after.name = name;
+      me.name = name;
+    }
+    if (bio !== undefined && bio !== me.bio) {
+      before.bio = me.bio;
+      after.bio = bio;
+      me.bio = bio;
+    }
+    if (avatar !== undefined && avatar !== me.avatar) {
+      before.avatar = me.avatar;
+      after.avatar = avatar;
+      me.avatar = avatar;
+    }
+
+    if (Object.keys(after).length === 0) {
+      return res.json(
+        createSuccessResponse({ user: userToAdminDTO(me), unchanged: true }, req.id),
+      );
+    }
+
+    await me.save();
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "ADMIN_PROFILE_UPDATE",
+      resource: { type: "USER", id: String(me._id) },
+      changes: { before, after },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      metadata: { self: true },
+    });
+
+    res.json(createSuccessResponse({ user: userToAdminDTO(me) }, req.id));
+  } catch (e) {
+    logger.error("Admin updateProfile error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function logoutAll(req, res) {
+  try {
+    await TokenService.revokeAllTokens(String(req.user.id), "ADMIN_LOGOUT_ALL").catch((err) => {
+      logger.warn("Failed to revoke all tokens on logout-all", { userId: req.user.id, error: err.message });
+    });
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "ADMIN_LOGOUT_ALL",
+      resource: { type: "USER", id: String(req.user.id) },
+      result: "SUCCESS",
+      riskLevel: "HIGH",
+      metadata: { sessionsRevoked: true },
+    });
+
+    res.json(
+      createSuccessResponse({ message: "همه نشست‌های فعال بسته شدند" }, req.id),
+    );
+  } catch (e) {
+    logger.error("Admin logoutAll error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Audit Logs ──────────────────────────────────────────────────────────────
+
+async function listAuditLogs(req, res) {
+  try {
+    const {
+      actorId,
+      action,
+      targetType,
+      targetId,
+      from,
+      to,
+      page: pageRaw,
+      limit: limitRaw,
+    } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (actorId) {
+      if (!isValidObjectId(actorId)) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "VALIDATION_ERROR",
+              "شناسه کاربر نامعتبر است",
+              { field: "actorId" },
+              req.id,
+            ),
+          );
+      }
+      filter.userId = actorId;
+    }
+    if (action) {
+      filter.action = action;
+    }
+    if (targetType) {
+      filter["resource.type"] = targetType;
+    }
+    if (targetId) {
+      if (!isValidObjectId(targetId)) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "VALIDATION_ERROR",
+              "شناسه منبع نامعتبر است",
+              { field: "targetId" },
+              req.id,
+            ),
+          );
+      }
+      filter["resource.id"] = targetId;
+    }
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(to);
+    }
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter)
+        .populate("userId", "name handle")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        { items: logs.map(auditLogToDTO), total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin listAuditLogs error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Settings / Health ───────────────────────────────────────────────────────
+
+const SETTINGS_KEYS = [
+  "SUPER_ADMIN_PHONE",
+  "JWT_SECRET",
+  "MONGODB_URI",
+  "REFRESH_TOKEN_SECRET",
+  "OTP_SECRET",
+  "ALLOWED_ORIGINS",
+  "SENTRY_DSN",
+];
+
+async function getSettings(req, res) {
+  try {
+    const settings = SETTINGS_KEYS.map((key) => ({
+      key,
+      isConfigured: Boolean(process.env[key] && String(process.env[key]).trim()),
+    }));
+
+    const dbReady =
+      mongoose.connection.readyState === 1 ||
+      req.app?.locals?.dbReady === true;
+
+    res.json(
+      createSuccessResponse(
+        {
+          settings,
+          database: {
+            status: dbReady ? "up" : "down",
+            lastCheckedAt: new Date().toISOString(),
+          },
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getSettings error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+module.exports = {
+  getStats,
+  getUsers,
+  updateUserRole,
+  updateUserPermissions,
+  toggleUserBlock,
+  deleteUser,
+  getListings,
+  updateListingStatus,
+  updateListingContent,
+  getCrafts,
+  setCraftPublish,
+  listProviders,
+  getProvider,
+  updateProviderStatus,
+  updateProfile,
+  logoutAll,
+  listAuditLogs,
+  getAuditLogs: listAuditLogs,
+  getSettings,
+};

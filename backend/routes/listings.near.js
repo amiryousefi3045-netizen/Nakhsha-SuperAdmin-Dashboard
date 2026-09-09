@@ -61,7 +61,9 @@ const PIPELINE_TIMEOUT_MS = 8000;
  * @param {object} req    – Express request (for URL generation)
  * @returns {object}
  */
-function formatMarkerItem(marker, req) {
+function formatMarkerItem(marker, req, imagesByListing) {
+  const images = (imagesByListing && imagesByListing.get(marker.id)) || [];
+  const imagesAbs = images.map((img) => (img ? toAbsoluteUrl(img, req) : img));
   return {
     id: marker.id,
     title: marker.title,
@@ -71,6 +73,8 @@ function formatMarkerItem(marker, req) {
     coordinates: marker.coordinates,
     city: marker.city,
     province: marker.province,
+    images,
+    imagesAbs,
     distanceMeters: marker.distanceMeters,
     distanceKm: marker.distanceKm,
     location: marker.city
@@ -83,6 +87,30 @@ function formatMarkerItem(marker, req) {
     rating: marker.rating || null,
     verified: marker.verified || false,
   };
+}
+
+/**
+ * Silently clamp query params above documented caps (radiusKm ≤ 50, limit ≤ 500).
+ * Validation stays strict; the API layer softens the upper bound for callers.
+ */
+function capQueryParams(query) {
+  const capped = { ...query };
+
+  if (capped.radiusKm !== undefined && capped.radiusKm !== null) {
+    const radius = parseFloat(capped.radiusKm);
+    if (!Number.isNaN(radius) && radius > 50) {
+      capped.radiusKm = 50;
+    }
+  }
+
+  if (capped.limit !== undefined && capped.limit !== null) {
+    const limit = parseInt(capped.limit, 10);
+    if (!Number.isNaN(limit) && limit > 500) {
+      capped.limit = 500;
+    }
+  }
+
+  return capped;
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -101,8 +129,11 @@ router.get("/near", heavyLimiter, async (req, res) => {
   const reqId = req.id;
 
   try {
+    // Clamp over-limit params first, then validate strictly
+    const query = capQueryParams(req.query);
+
     // Validate all query parameters using GeoValidator
-    const validation = GeoValidator.validateQueryParams(req.query);
+    const validation = GeoValidator.validateQueryParams(query);
     if (!validation.valid) {
       return res.status(400).json(
         createErrorResponse(
@@ -119,15 +150,15 @@ router.get("/near", heavyLimiter, async (req, res) => {
 
     const params = validation.normalized;
     const filters = {
-      category: req.query.category,
-      type: req.query.type,
-      status: req.query.status || "published",
-      minPrice: req.query.minPrice,
-      maxPrice: req.query.maxPrice,
-      owner: req.query.owner,
-      minRating: req.query.minRating,
-      query: req.query.query,
-      verified: req.query.verified,
+      category: query.category,
+      type: query.type,
+      status: query.status || "published",
+      minPrice: query.minPrice,
+      maxPrice: query.maxPrice,
+      owner: query.owner,
+      minRating: query.minRating,
+      query: query.query,
+      verified: query.verified,
     };
 
     // Execute geospatial query via GeoService
@@ -151,8 +182,27 @@ router.get("/near", heavyLimiter, async (req, res) => {
         );
     }
 
+    // Batched fetch of images so each item exposes `images` / `imagesAbs`
+    // while GeoService markers stay lightweight.
+    const markerIds = result.data.map((marker) => marker.id);
+    const imagesByListing = new Map();
+    if (markerIds.length > 0) {
+      const imageDocs = await Listing.find(
+        { _id: { $in: markerIds } },
+        { _id: 1, images: 1 },
+      ).lean();
+      for (const doc of imageDocs) {
+        imagesByListing.set(
+          String(doc._id),
+          Array.isArray(doc.images) ? doc.images : [],
+        );
+      }
+    }
+
     // Format markers with absolute image URLs for backward compatibility
-    const items = result.data.map((marker) => formatMarkerItem(marker, req));
+    const items = result.data.map((marker) =>
+      formatMarkerItem(marker, req, imagesByListing),
+    );
 
     // Return response in backward-compatible format
     return res.json(

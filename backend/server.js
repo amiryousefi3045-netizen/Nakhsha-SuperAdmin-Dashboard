@@ -382,8 +382,19 @@ app.use("/api/posts", postsRoutes);
 
 // Load and mount listing routes synchronously (models are safe to load)
 loadListingRoutes();
-app.use("/api/listings", draftRoutes);
+// Legacy listing routers must be mounted BEFORE the generic listings router so
+// that /near, /near/stats, /heatmap, /clusters and /within-boundary resolve
+// before any /:id handler (see routes/listings.near.js header).
+app.use("/api/listings", listingsNearRoutes);
+app.use("/api/listings", listingsHeatmapRoutes);
+app.use("/api/listings", listingsClusterRoutes);
+app.use("/api/listings", listingsWithinBoundaryRoutes);
+app.use("/listings", listingsNearRoutes);
+app.use("/listings", listingsHeatmapRoutes);
+app.use("/listings", listingsClusterRoutes);
+app.use("/listings", listingsWithinBoundaryRoutes);
 app.use("/listings", draftRoutes);
+app.use("/api/listings", draftRoutes);
 app.use("/listings", draftsModule);
 app.use("/api/listings", draftsModule);
 app.use("/listings", listingsModule);
@@ -393,6 +404,10 @@ app.use("/users", userRoutes);
 app.use("/api/users", userRoutes);
 app.use("/uploads", uploadRoutes);
 app.use("/api/uploads", uploadRoutes);
+
+// Admin (super_admin only) — the `admin` role is never allowed on /api/admin/*
+const adminRoutes = require("./routes/admin");
+app.use("/api/admin", adminRoutes);
 
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(

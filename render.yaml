@@ -1,0 +1,95 @@
+# =============================================================
+# Nakhsha (نخشا) - Render Blueprint - STAGING environment
+# =============================================================
+# Deploys two services:
+#   1. nakhsha-staging-api   -> backend Web Service (Node.js)
+#   2. nakhsha-staging-web   -> frontend Static Site (Vite build)
+#
+# Usage (Render Dashboard):
+#   1. GitHub repo must be connected to your Render account.
+#   2. Dashboard -> "New" -> "Blueprint" -> select this repo,
+#      branch `super-admin-testing` for the staging deploy.
+#   3. Render auto-creates both services and prompts for the
+#      `sync: false` env vars (real values are NOT stored here).
+#
+# URLs (predictable from service names if unique on Render):
+#   - API:      https://nakhsha-staging-api.onrender.com
+#   - Frontend: https://nakhsha-staging-web.onrender.com
+# If Render appends a suffix to a name, update ALLOWED_ORIGINS /
+# VITE_API_BASE / VITE_API_ORIGIN to the actual generated URLs.
+# =============================================================
+
+services:
+  # -----------------------------------------------------------
+  # Backend - Web Service
+  # -----------------------------------------------------------
+  - type: web
+    name: nakhsha-staging-api
+    env: node
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # NODE_ENV=production is forced by `npm start` (cross-env).
+      # Declared here too so envalid and winston see it even if the
+      # start command is ever replaced with `node server.js`.
+      - key: NODE_ENV
+        value: production
+      # SMS is mocked on staging: the OTP code is logged server-side
+      # and readable in the Render "Logs" tab (Melipayamak SMS is real
+      # only in production).
+      - key: SMS_MOCK
+        value: "true"
+      # First deploy on a fresh database -> build the schema indexes.
+      # Set to false after the initial deploy to avoid overhead.
+      - key: SYNC_INDEXES
+        value: "true"
+      # --- SECRETS / per-deploy values (fill in Render dashboard) ---
+      # MongoDB Atlas free tier (M0) connection string, e.g.
+      #   mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/nakhsha_staging
+      - key: MONGODB_URI
+        sync: false
+      # Long random secret dedicated to staging (never reuse prod secret).
+      # Generate with: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: JWT_SECRET
+        sync: false
+      # Staging super-admin phone (a test number, different from production
+      # so a staging account can never touch production data).
+      - key: SUPER_ADMIN_PHONE
+        sync: false
+      # CORS: exact origin of the frontend static site.
+      # Auto-populated from the web service below when its name is unique.
+      - key: ALLOWED_ORIGINS
+        fromService:
+          name: nakhsha-staging-web
+          type: static
+          property: url
+
+  # -----------------------------------------------------------
+  # Frontend - Static Site (Vite SPA)
+  # -----------------------------------------------------------
+  - type: static
+    name: nakhsha-staging-web
+    env: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      # SPA fallback: every client-side route (e.g. /admin) serves index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Absolute backend API base. `apiClient.ts` falls back to "/api"
+      # only when unset -- but a relative "/api" cannot work from a
+      # different origin on a static host, so it MUST be absolute.
+      # IMPORTANT: if the api service name got a suffix, update these
+      # to the real generated URL before deploy.
+      - key: VITE_API_BASE
+        value: https://nakhsha-staging-api.onrender.com/api
+      # Origin used to resolve stored media paths (/uploads/...).
+      - key: VITE_API_ORIGIN
+        value: https://nakhsha-staging-api.onrender.com
+      - key: VITE_SERVER_ORIGIN
+        value: https://nakhsha-staging-api.onrender.com

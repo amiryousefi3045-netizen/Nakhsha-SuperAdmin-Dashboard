@@ -5,6 +5,7 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import CraftDetail from "./pages/CraftDetail";
@@ -21,9 +22,32 @@ import TourDetailPage from "./pages/TourDetailPage";
 import TutorialDetailPage from "./pages/TutorialDetailPage";
 import CreateListingTypePage from "./pages/CreateListingTypePage";
 import CreateListingWizardPage from "./pages/CreateListingWizardPage";
+import { AdminLayout } from "./components/admin/AdminLayout";
+import { SuperAdminGuard } from "./components/admin/SuperAdminGuard";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import "./App.css";
+
+const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
+const DashboardAdmin = lazy(() => import("./pages/admin/DashboardAdmin"));
+const UsersAdmin = lazy(() => import("./pages/admin/UsersAdmin"));
+const ProvidersAdmin = lazy(() => import("./pages/admin/ProvidersAdmin"));
+const ListingsAdmin = lazy(() => import("./pages/admin/ListingsAdmin"));
+const CraftsAdmin = lazy(() => import("./pages/admin/CraftsAdmin"));
+const AuditLogsAdmin = lazy(() => import("./pages/admin/AuditLogsAdmin"));
+const SettingsAdmin = lazy(() => import("./pages/admin/SettingsAdmin"));
+
+const AdminPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
+  <Suspense
+    fallback={
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-[var(--color-muted)]">در حال بارگذاری پنل مدیریت...</div>
+      </div>
+    }
+  >
+    {children}
+  </Suspense>
+);
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -137,6 +161,80 @@ function App() {
                 <RequireAuth>
                   <MyCrafts />
                 </RequireAuth>
+              }
+            />
+          </Route>
+          {/* Super admin dashboard */}
+          <Route
+            path="admin/login"
+            element={
+              <AdminPageSuspense>
+                <AdminLogin />
+              </AdminPageSuspense>
+            }
+          />
+          <Route
+            path="admin"
+            element={
+              <SuperAdminGuard>
+                <AdminLayout />
+              </SuperAdminGuard>
+            }
+          >
+            <Route
+              index
+              element={
+                <AdminPageSuspense>
+                  <DashboardAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="users"
+              element={
+                <AdminPageSuspense>
+                  <UsersAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="providers"
+              element={
+                <AdminPageSuspense>
+                  <ProvidersAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="listings"
+              element={
+                <AdminPageSuspense>
+                  <ListingsAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="crafts"
+              element={
+                <AdminPageSuspense>
+                  <CraftsAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="audit-logs"
+              element={
+                <AdminPageSuspense>
+                  <AuditLogsAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="settings"
+              element={
+                <AdminPageSuspense>
+                  <SettingsAdmin />
+                </AdminPageSuspense>
               }
             />
           </Route>

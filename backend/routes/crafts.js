@@ -49,7 +49,7 @@ async function loadCraft(req, res, next) {
  * Uses the standardized req.user shape { id, role } set by requireAuth.
  */
 function ownerOrAdmin(req, res, next) {
-  if (req.user?.role === "admin") return next();
+  if (["admin", "super_admin"].includes(req.user?.role)) return next();
   if (!req.craft?.artisanId?.userId) {
     return res
       .status(403)
@@ -1068,7 +1068,7 @@ router.delete("/:id/comments/:commentId", requireAuth, async (req, res) => {
     const isArtisan =
       craft.artisanId?.userId &&
       String(craft.artisanId.userId) === String(req.user.id);
-    const isAdmin = req.user.role === "admin";
+    const isAdmin = ["admin", "super_admin"].includes(req.user.role);
 
     if (!isCommenter && !isArtisan && !isAdmin) {
       return res.status(403).json({ message: "Forbidden" });

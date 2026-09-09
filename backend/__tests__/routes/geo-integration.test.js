@@ -171,13 +171,25 @@ describe("Geospatial Routes", () => {
       expect(res.body.success).toBe(false);
     });
 
-    test("should reject invalid radius (> 50)", async () => {
+    test("should silently cap radiusKm > 50 to 50", async () => {
+      const GeoService = require("../../services/GeoService");
+      const findNearbyListings = jest.fn().mockResolvedValue({
+        success: true,
+        data: [],
+        pagination: { limit: 100, skip: 0, totalCount: 0, hasMore: false },
+        metadata: { executionTime: 50, queryRadius: 50 },
+      });
+      GeoService.findNearbyListings = findNearbyListings;
+
       const res = await request(app)
         .get("/api/listings/near")
         .query({ lat: "35.6892", lng: "51.389", radiusKm: "60" });
 
-      expect(res.status).toBe(400);
-      expect(res.body.success).toBe(false);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(findNearbyListings).toHaveBeenCalled();
+      const call = findNearbyListings.mock.calls[0];
+      expect(call[4]).toBe(50);
     });
 
     test("should accept valid query parameters", async () => {

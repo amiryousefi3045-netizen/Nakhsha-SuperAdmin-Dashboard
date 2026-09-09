@@ -86,3 +86,50 @@ jobs:
 
       - name: Build production bundle (Vite)
         run: npm run build
+
+  # ─────────────────────────────────────────────
+  # E2E (Playwright): backend + frontend + MongoDB
+  # ─────────────────────────────────────────────
+  e2e:
+    name: End-to-end – Playwright
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install Playwright browsers (Chromium)
+        working-directory: ./frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: ./frontend
+        run: npm run test:e2e
+        env:
+          CI: "true"
+          JWT_SECRET: ci-e2e-secret-for-playwright-only
+          MONGODB_URI: mongodb://localhost:27017/nakhsha_e2e

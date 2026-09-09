@@ -74,10 +74,12 @@ const refreshTokenSchema = new mongoose.Schema(
       type: String,
       enum: [
         "LOGOUT",
+        "ROTATED",
         "EXPIRED",
         "SECURITY_INCIDENT",
         "PASSWORD_CHANGE",
         "ADMIN_REVOKE",
+        "ADMIN_LOGOUT_ALL",
       ],
       default: null,
     },
