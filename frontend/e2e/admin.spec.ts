@@ -53,3 +53,32 @@ test("a non-super-admin account is refused with a clear card", async ({ page }) 
   });
   expect(denied.status()).toBe(403);
 });
+
+test("mobile: hamburger menu opens and navigation works at 375px", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await loginWithOtp(page, SUPER_ADMIN_PHONE);
+
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(
+    page.getByRole("heading", { name: "نمای کلی", level: 2 }),
+  ).toBeVisible();
+
+  // Desktop sidebar is hidden on mobile; the hamburger button is shown instead.
+  const hamburger = page.getByRole("button", { name: "باز کردن منو" });
+  await expect(hamburger).toBeVisible();
+  await expect(page.getByRole("link", { name: "کاربران" })).toBeHidden();
+
+  // Opening the hamburger reveals the sidebar overlay and its navigation.
+  await hamburger.click();
+  await expect(page.getByRole("link", { name: "کاربران" })).toBeVisible();
+  await page.getByRole("link", { name: "کاربران" }).click();
+  await expect(page).toHaveURL(/\/admin\/users/);
+  const heading = page.getByRole("heading", { name: "کاربران", level: 2 });
+  await expect(heading).toBeVisible();
+
+  // No horizontal layout break at 375px.
+  const noHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  );
+  expect(noHorizontalOverflow).toBe(true);
+});
