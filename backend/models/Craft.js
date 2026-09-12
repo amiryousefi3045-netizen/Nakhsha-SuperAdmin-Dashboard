@@ -248,7 +248,7 @@ craftSchema.statics.ensureIndexes = async function () {
       if (!hasGeo) {
         await this.collection.createIndex(
           { "location.geometry": "2dsphere" },
-          { background: true },
+          { background: true, sparse: true },
         );
       }
       if (!hasText) {

@@ -13,7 +13,7 @@ const mongoose = require("mongoose");
 
 const otpSchema = new mongoose.Schema(
   {
-    phone: { type: String, required: true, index: true },
+    phone: { type: String, required: true },
     codeHash: { type: String, required: true }, // Hashed OTP code (never store plaintext)
     expiresAt: { type: Date, required: true },
     attempts: { type: Number, default: 0 }, // Verification attempts

@@ -54,7 +54,6 @@ const listingSchema = new mongoose.Schema(
     draftId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Draft",
-      sparse: true,
     },
     status: {
       type: String,

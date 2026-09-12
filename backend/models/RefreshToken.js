@@ -46,8 +46,7 @@ const refreshTokenSchema = new mongoose.Schema(
     expiresAt: {
       type: Date,
       required: true,
-      index: true,
-      // TTL index: auto-delete expired tokens after 30 days + expiry
+      // TTL index is declared below via schema.index({ expiresAt: 1 }, ...)
     },
 
     // Revocation for logout or security events
@@ -86,6 +85,7 @@ const refreshTokenSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    autoIndex: false,
   },
 );
 
@@ -94,7 +94,6 @@ refreshTokenSchema.index(
   { expiresAt: 1 },
   {
     expireAfterSeconds: 2592000, // 30 days
-    name: "expireAfterSeconds",
   },
 );
 

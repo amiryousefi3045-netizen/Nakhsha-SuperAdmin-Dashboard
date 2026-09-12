@@ -501,8 +501,12 @@ const connectDB = async () => {
         }
 
         // Verify TTL index on OTP codes
-        const otpIndexes = await OtpCode.collection.getIndexes();
-        const ttlIndex = Object.values(otpIndexes).find(
+        // Use the native driver list, since mongoose's getIndexes() returns a
+        // compact serialization that drops the expireAfterSeconds option.
+        const otpIndexes = await mongoose.connection.db
+          .collection("otpcodes")
+          .indexes();
+        const ttlIndex = otpIndexes.find(
           (idx) => idx.expireAfterSeconds === 0,
         );
         if (ttlIndex) {
