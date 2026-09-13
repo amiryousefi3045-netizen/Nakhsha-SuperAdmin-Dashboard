@@ -22,6 +22,7 @@ import type {
   AssignableRole,
   AuditLogDetail,
   AuditLogEntry,
+  BatchResponse,
   ExportFile,
   ListingStatus,
   ListAuditLogsParams,
@@ -106,6 +107,28 @@ export async function deleteAdminUser(id: string): Promise<{ message: string; id
   return unwrap(res);
 }
 
+/** POST /admin/users/batch/block */
+export async function batchBlockUsers(ids: string[], isBlocked: boolean, moderatorNote?: string): Promise<BatchResponse> {
+  const res = await apiClient.post<BatchResponse>("/admin/users/batch/block", {
+    ids,
+    isBlocked,
+    ...(moderatorNote !== undefined && moderatorNote.trim() !== "" ? { moderatorNote } : {}),
+  });
+  return unwrap(res);
+}
+
+/** POST /admin/users/batch/role */
+export async function batchUpdateUserRole(ids: string[], role: AssignableRole): Promise<BatchResponse> {
+  const res = await apiClient.post<BatchResponse>("/admin/users/batch/role", { ids, role });
+  return unwrap(res);
+}
+
+/** POST /admin/users/batch/delete */
+export async function batchDeleteUsers(ids: string[]): Promise<BatchResponse> {
+  const res = await apiClient.post<BatchResponse>("/admin/users/batch/delete", { ids });
+  return unwrap(res);
+}
+
 // ── User sessions ──────────────────────────────────────────────────────────
 
 /** GET /admin/users/:id/sessions */
@@ -148,6 +171,12 @@ export async function updateListingContent(
 ): Promise<AdminListing> {
   const res = await apiClient.patch<AdminListingResponse>(`/admin/listings/${id}/content`, payload);
   return unwrap(res).listing;
+}
+
+/** POST /admin/listings/batch/status */
+export async function batchUpdateListingStatus(ids: string[], status: ListingStatus): Promise<BatchResponse> {
+  const res = await apiClient.post<BatchResponse>("/admin/listings/batch/status", { ids, status });
+  return unwrap(res);
 }
 
 // ── Crafts ─────────────────────────────────────────────────────────────────

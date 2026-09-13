@@ -47,6 +47,21 @@ export interface AdminProvider extends AdminUser {
   stats?: { listings: number; published: number; crafts: number };
 }
 
+/** One skipped/failed item in a bulk operation response. */
+export interface BatchResultItem {
+  id: string;
+  reason: string;
+}
+
+/** Shape returned by the admin bulk endpoints. */
+export interface BatchResponse {
+  batchId: string;
+  summary: { total: number; succeeded: number; skipped: number; failed: number };
+  succeeded: string[];
+  skipped: BatchResultItem[];
+  failed: BatchResultItem[];
+}
+
 export interface AdminListing {
   id: string;
   type: ListingType;

@@ -15,6 +15,7 @@
  */
 
 const mongoose = require("mongoose");
+const { randomUUID } = require("crypto");
 const User = require("../models/User");
 const RefreshToken = require("../models/RefreshToken");
 const { Listing } = require("../models/Listing");
@@ -45,6 +46,7 @@ const ALLOWED_LISTING_STATUSES = [
 ];
 const LISTING_TYPES = ["post", "tour", "training", "academy"];
 const MAX_PAGE_SIZE = 100;
+const BATCH_MAX_IDS = 50;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -603,6 +605,360 @@ async function revokeUserSession(req, res) {
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Bulk actions ────────────────────────────────────────────────────────────
+
+/**
+ * Deduplicate, cap and validate an array of ids for a bulk operation.
+ * Returns `null` when there is nothing to process or the input is invalid.
+ */
+function normalizeBatchIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  const unique = [...new Set(ids.map((i) => String(i).trim()).filter(Boolean))];
+  if (unique.length === 0 || unique.some((id) => !isValidObjectId(id))) return null;
+  return unique.slice(0, BATCH_MAX_IDS);
+}
+
+async function batchBlockUsers(req, res) {
+  try {
+    const { ids, isBlocked, moderatorNote } = req.body;
+    const batchIds = normalizeBatchIds(ids);
+    if (!batchIds) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه معتبری ارائه نشده است", { field: "ids", max: BATCH_MAX_IDS }, req.id));
+    }
+    
+
+    const batchId = randomUUID();
+    const targets = await User.find({ _id: { $in: batchIds } });
+    const byId = new Map(targets.map((u) => [String(u._id), u]));
+    const succeeded = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of batchIds) {
+      const target = byId.get(id);
+      if (!target) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      if (String(target._id) === String(req.user.id)) {
+        failed.push({ id, reason: "SELF" });
+        continue;
+      }
+      if (target.role === "super_admin") {
+        failed.push({ id, reason: "SUPER_ADMIN" });
+        continue;
+      }
+      const prevBlocked = Boolean(target.isBlocked);
+      if (prevBlocked === isBlocked) {
+        skipped.push({ id, reason: "UNCHANGED" });
+        continue;
+      }
+      try {
+        target.isBlocked = isBlocked;
+        if (moderatorNote !== undefined) target.moderatorNote = String(moderatorNote).trim();
+        await target.save();
+        if (isBlocked) {
+          await TokenService.revokeAllTokens(String(target._id), "ADMIN_REVOKE").catch((err) => {
+            logger.warn("Failed to revoke tokens on bulk block", { userId: target._id, error: err.message });
+          });
+        }
+        succeeded.push(String(target._id));
+        await writeAudit(req, {
+          userId: req.user.id,
+          action: "USER_BLOCK",
+          resource: { type: "USER", id: String(target._id) },
+          changes: { before: { isBlocked: prevBlocked }, after: { isBlocked } },
+          result: "SUCCESS",
+          riskLevel: isBlocked ? "HIGH" : "MEDIUM",
+          metadata: { batch: batchId, reason: moderatorNote || "bulk block toggled by super admin" },
+        });
+      } catch (e) {
+        logger.warn("Bulk block failed for user", { userId: id, error: e.message });
+        failed.push({ id, reason: "ERROR" });
+      }
+    }
+
+    if (succeeded.length > 0) {
+      await writeAudit(req, {
+        userId: req.user.id,
+        action: "DATA_BULK_OPERATION",
+        result: "SUCCESS",
+        riskLevel: isBlocked ? "HIGH" : "MEDIUM",
+        metadata: {
+          batch: batchId,
+          operation: isBlocked ? "BLOCK_USERS" : "UNBLOCK_USERS",
+          affectedCount: succeeded.length,
+          ids: succeeded,
+        },
+      });
+    }
+
+    res.json(
+      createSuccessResponse(
+        {
+          batchId,
+          summary: { total: batchIds.length, succeeded: succeeded.length, skipped: skipped.length, failed: failed.length },
+          succeeded,
+          skipped,
+          failed,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin batchBlockUsers error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function batchUpdateUserRole(req, res) {
+  try {
+    const { ids, role } = req.body;
+    const batchIds = normalizeBatchIds(ids);
+    if (!batchIds) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه معتبری ارائه نشده است", { field: "ids", max: BATCH_MAX_IDS }, req.id));
+    }
+    
+
+    const batchId = randomUUID();
+    const targets = await User.find({ _id: { $in: batchIds } });
+    const byId = new Map(targets.map((u) => [String(u._id), u]));
+    const succeeded = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of batchIds) {
+      const target = byId.get(id);
+      if (!target) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      if (String(target._id) === String(req.user.id)) {
+        failed.push({ id, reason: "SELF" });
+        continue;
+      }
+      if (target.role === "super_admin") {
+        failed.push({ id, reason: "SUPER_ADMIN" });
+        continue;
+      }
+      const prevRole = target.role;
+      if (prevRole === role) {
+        skipped.push({ id, reason: "UNCHANGED" });
+        continue;
+      }
+      try {
+        target.role = role;
+        if (role !== "admin") target.permissions = [];
+        await target.save();
+        await TokenService.revokeAllTokens(String(target._id), "ADMIN_REVOKE").catch((err) => {
+          logger.warn("Failed to revoke tokens on bulk role change", { userId: target._id, error: err.message });
+        });
+        succeeded.push(String(target._id));
+        await writeAudit(req, {
+          userId: req.user.id,
+          action: "USER_ROLE_CHANGE",
+          resource: { type: "USER", id: String(target._id) },
+          changes: { before: { role: prevRole }, after: { role } },
+          result: "SUCCESS",
+          riskLevel: "HIGH",
+          metadata: { batch: batchId, reason: "bulk role change" },
+        });
+      } catch (e) {
+        logger.warn("Bulk role change failed for user", { userId: id, error: e.message });
+        failed.push({ id, reason: "ERROR" });
+      }
+    }
+
+    if (succeeded.length > 0) {
+      await writeAudit(req, {
+        userId: req.user.id,
+        action: "DATA_BULK_OPERATION",
+        result: "SUCCESS",
+        riskLevel: "HIGH",
+        metadata: { batch: batchId, operation: "ROLE_CHANGE_USERS", role, affectedCount: succeeded.length, ids: succeeded },
+      });
+    }
+
+    res.json(
+      createSuccessResponse(
+        {
+          batchId,
+          summary: { total: batchIds.length, succeeded: succeeded.length, skipped: skipped.length, failed: failed.length },
+          succeeded,
+          skipped,
+          failed,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin batchUpdateUserRole error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function batchDeleteUsers(req, res) {
+  try {
+    const { ids } = req.body;
+    const batchIds = normalizeBatchIds(ids);
+    if (!batchIds) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه معتبری ارائه نشده است", { field: "ids", max: BATCH_MAX_IDS }, req.id));
+    }
+    
+
+    const batchId = randomUUID();
+    const targets = await User.find({ _id: { $in: batchIds } });
+    const byId = new Map(targets.map((u) => [String(u._id), u]));
+    const succeeded = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of batchIds) {
+      const target = byId.get(id);
+      if (!target) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      if (String(target._id) === String(req.user.id)) {
+        failed.push({ id, reason: "SELF" });
+        continue;
+      }
+      if (target.role === "super_admin") {
+        failed.push({ id, reason: "SUPER_ADMIN" });
+        continue;
+      }
+      try {
+        const { name, phone, role } = target;
+        await User.deleteOne({ _id: target._id });
+        await RefreshToken.deleteMany({ userId: target._id }).catch((err) => {
+          logger.warn("Failed to clean refresh tokens on bulk delete", { userId: target._id, error: err.message });
+        });
+        succeeded.push(String(target._id));
+        await writeAudit(req, {
+          userId: req.user.id,
+          action: "USER_DELETE",
+          resource: { type: "USER", id: String(target._id) },
+          changes: { before: { name, phone, role }, after: null },
+          result: "SUCCESS",
+          riskLevel: "CRITICAL",
+          metadata: { batch: batchId },
+        });
+      } catch (e) {
+        logger.warn("Bulk delete failed for user", { userId: id, error: e.message });
+        failed.push({ id, reason: "ERROR" });
+      }
+    }
+
+    if (succeeded.length > 0) {
+      await writeAudit(req, {
+        userId: req.user.id,
+        action: "DATA_BULK_OPERATION",
+        result: "SUCCESS",
+        riskLevel: "CRITICAL",
+        metadata: { batch: batchId, operation: "DELETE_USERS", affectedCount: succeeded.length, ids: succeeded },
+      });
+    }
+
+    res.json(
+      createSuccessResponse(
+        {
+          batchId,
+          summary: { total: batchIds.length, succeeded: succeeded.length, skipped: skipped.length, failed: failed.length },
+          succeeded,
+          skipped,
+          failed,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin batchDeleteUsers error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function batchUpdateListingStatus(req, res) {
+  try {
+    const { ids, status } = req.body;
+    const batchIds = normalizeBatchIds(ids);
+    if (!batchIds) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه معتبری ارائه نشده است", { field: "ids", max: BATCH_MAX_IDS }, req.id));
+    }
+    
+    if (!ALLOWED_LISTING_STATUSES.includes(status)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "وضعیت مورد نظر نامعتبر است", { field: "status", allowedStatuses: ALLOWED_LISTING_STATUSES }, req.id));
+    }
+
+    const batchId = randomUUID();
+    const listings = await Listing.find({ _id: { $in: batchIds } }).populate("owner", "name handle");
+    const byId = new Map(listings.map((l) => [String(l._id), l]));
+    const succeeded = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of batchIds) {
+      const listing = byId.get(id);
+      if (!listing) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      const prevStatus = listing.status;
+      if (prevStatus === status) {
+        skipped.push({ id, reason: "UNCHANGED" });
+        continue;
+      }
+      try {
+        listing.status = status;
+        await listing.save();
+        if (status === "published" && listing.owner) {
+          await User.updateOne({ _id: listing.owner._id }, { $set: { isVerified: true } }).catch((err) => {
+            logger.warn("Failed to update owner verification on bulk publish", { ownerId: listing.owner._id, error: err.message });
+          });
+        }
+        succeeded.push(String(listing._id));
+        await writeAudit(req, {
+          userId: req.user.id,
+          action: "LISTING_STATUS_CHANGED",
+          resource: { type: "LISTING", id: String(listing._id) },
+          changes: { before: { status: prevStatus }, after: { status } },
+          result: "SUCCESS",
+          riskLevel: "MEDIUM",
+          metadata: { batch: batchId },
+        });
+      } catch (e) {
+        logger.warn("Bulk status change failed for listing", { listingId: id, error: e.message });
+        failed.push({ id, reason: "ERROR" });
+      }
+    }
+
+    if (succeeded.length > 0) {
+      await writeAudit(req, {
+        userId: req.user.id,
+        action: "DATA_BULK_OPERATION",
+        result: "SUCCESS",
+        riskLevel: "MEDIUM",
+        metadata: { batch: batchId, operation: "STATUS_CHANGE_LISTINGS", status, affectedCount: succeeded.length, ids: succeeded },
+      });
+    }
+
+    res.json(
+      createSuccessResponse(
+        {
+          batchId,
+          summary: { total: batchIds.length, succeeded: succeeded.length, skipped: skipped.length, failed: failed.length },
+          succeeded,
+          skipped,
+          failed,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin batchUpdateListingStatus error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
   }
 }
 
@@ -1677,8 +2033,12 @@ module.exports = {
   deleteUser,
   getUserSessions,
   revokeUserSession,
+  batchBlockUsers,
+  batchUpdateUserRole,
+  batchDeleteUsers,
   getListings,
   updateListingStatus,
+  batchUpdateListingStatus,
   updateListingContent,
   getCrafts,
   setCraftPublish,

@@ -1,12 +1,13 @@
 import { useCallback, useState } from "react";
-import { Pencil, RefreshCw } from "lucide-react";
+import { Pencil, RefreshCw, X } from "lucide-react";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
 import {
   getAdminListings,
   updateListingContent,
   updateListingStatus,
+  batchUpdateListingStatus,
 } from "../../services/adminService";
-import type { AdminListing, ListingStatus, ListingType } from "../../types/admin";
+import type { AdminListing, ListingStatus, ListingType, BatchResponse } from "../../types/admin";
 import {
   StatusBadge,
   listingStatusTone,
@@ -15,6 +16,7 @@ import {
 } from "../../components/admin/StatusBadge";
 import { DataTable, type Column } from "../../components/admin/DataTable";
 import { Pagination } from "../../components/admin/Pagination";
+import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { EditContentModal } from "../../components/admin/EditContentModal";
 import { faNumber, formatDate } from "../../lib/adminFormat";
 
@@ -44,6 +46,10 @@ export function ListingsAdmin() {
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState<{ type: "status"; status: ListingStatus } | null>(null);
   const [editTarget, setEditTarget] = useState<AdminListing | null>(null);
   const [editBusy, setEditBusy] = useState(false);
 
@@ -86,7 +92,79 @@ export function ListingsAdmin() {
     }
   };
 
+  const rows = data?.items ?? [];
+
+  const toggleOne = (id: string, on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const togglePage = (on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const l of rows) {
+        if (on) next.add(l.id);
+        else next.delete(l.id);
+      }
+      return next;
+    });
+  };
+
+  const pageAllSelected = rows.length > 0 && rows.every((l) => selected.has(l.id));
+
+  const handleBulkStatus = async () => {
+    if (!bulkConfirm) return;
+    const ids = [...selected];
+    const targetStatus = bulkConfirm.status;
+    setBulkBusy(true);
+    setActionError(null);
+    setBulkMessage(null);
+    try {
+      const res: BatchResponse = await batchUpdateListingStatus(ids, targetStatus);
+      const { succeeded, skipped, failed } = res.summary;
+      if (succeeded > 0) {
+        setBulkMessage(`وضعیت ${faNumber(succeeded)} محتوا تغییر کرد.`);
+      }
+      if (failed > 0 || skipped > 0) {
+        setActionError(`${faNumber(failed)} مورد ناموفق و ${faNumber(skipped)} مورد بدون تغییر بود.`);
+      }
+      await reload();
+      setSelected(new Set());
+      setBulkConfirm(null);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "تغییر وضعیت گروهی ناموفق بود");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const columns: Column<AdminListing>[] = [
+    {
+      key: "select",
+      header: (
+        <input
+          type="checkbox"
+          checked={pageAllSelected}
+          disabled={rows.length === 0}
+          onChange={(e) => togglePage(e.target.checked)}
+          aria-label="انتخاب همه محتواهای این صفحه"
+          className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-30"
+        />
+      ),
+      render: (l) => (
+        <input
+          type="checkbox"
+          checked={selected.has(l.id)}
+          onChange={(e) => toggleOne(l.id, e.target.checked)}
+          aria-label={`انتخاب ${l.title}`}
+          className="h-4 w-4 accent-[var(--color-primary)]"
+        />
+      ),
+    },
     {
       key: "title",
       header: "عنوان",
@@ -213,6 +291,49 @@ export function ListingsAdmin() {
         </div>
       ) : null}
 
+      {bulkMessage ? (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          {bulkMessage}
+          <button type="button" className="ms-3 underline" onClick={() => setBulkMessage(null)}>بستن</button>
+        </div>
+      ) : null}
+
+      {selected.size > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 p-3">
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+            <span className="font-bold">{faNumber(selected.size)}</span>
+            <span>محتوا انتخاب‌شده</span>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setSelected(new Set())}
+              className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+            >
+              <X className="h-3.5 w-3.5" /> پاک کردن
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value=""
+              disabled={bulkBusy}
+              onChange={(e) => {
+                const targetStatus = e.target.value as ListingStatus;
+                if (targetStatus) setBulkConfirm({ type: "status", status: targetStatus });
+                e.target.value = "";
+              }}
+              title="تغییر وضعیت به"
+              className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] disabled:opacity-50"
+            >
+              <option value="">تغییر وضعیت به...</option>
+              {ALLOWED_STATUSES_ORDER.map((s) => (
+                <option key={s} value={s}>{LISTING_STATUS_LABEL[s]}</option>
+              ))}
+            </select>
+            {bulkBusy && <RefreshCw className="h-4 w-4 animate-spin text-[var(--color-primary)]" />}
+          </div>
+        </div>
+      ) : null}
+
       <DataTable
         columns={columns}
         rows={data?.items ?? []}
@@ -222,6 +343,20 @@ export function ListingsAdmin() {
       />
 
       <Pagination page={page} totalPages={totalPages} onChange={(p) => { setPage(p); window.scrollTo({ top: 0 }); }} />
+
+      <ConfirmDialog
+        open={bulkConfirm !== null}
+        title="تغییر وضعیت گروهی"
+        message={
+          bulkConfirm ? (
+            <>وضعیت <b>{faNumber(selected.size)}</b> محتوای انتخاب‌شده به «{LISTING_STATUS_LABEL[bulkConfirm.status]}» تغییر می‌کند. مطمئن هستید؟</>
+          ) : null
+        }
+        confirmLabel="تغییر وضعیت"
+        busy={bulkBusy}
+        onConfirm={handleBulkStatus}
+        onCancel={() => setBulkConfirm(null)}
+      />
 
       <EditContentModal
         open={editTarget !== null}

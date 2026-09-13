@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Search, Ban, ShieldCheck, Trash2, KeyRound, RefreshCw, UserCheck, UserX, Laptop } from "lucide-react";
+import { Search, Ban, ShieldCheck, Trash2, KeyRound, RefreshCw, UserCheck, UserX, Laptop, X } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
 import {
@@ -8,8 +8,11 @@ import {
   updateUserPermissions,
   toggleUserBlock,
   deleteAdminUser,
+  batchBlockUsers,
+  batchUpdateUserRole,
+  batchDeleteUsers,
 } from "../../services/adminService";
-import type { AdminPermission, AdminRole, AdminUser, AssignableRole } from "../../types/admin";
+import type { AdminPermission, AdminRole, AdminUser, AssignableRole, BatchResponse } from "../../types/admin";
 import { StatusBadge, roleTone, ROLE_LABEL } from "../../components/admin/StatusBadge";
 import { DataTable, type Column } from "../../components/admin/DataTable";
 import { Pagination } from "../../components/admin/Pagination";
@@ -47,6 +50,10 @@ export function UsersAdmin() {
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState<{ type: "block" | "unblock" | "delete" | "role"; role?: AssignableRole } | null>(null);
   const [confirm, setConfirm] = useState<{ type: "block" | "delete"; user: AdminUser } | null>(null);
   const [permUser, setPermUser] = useState<AdminUser | null>(null);
   const [permBusy, setPermBusy] = useState(false);
@@ -111,7 +118,93 @@ export function UsersAdmin() {
 
   const canMutate = (user: AdminUser) => user.role !== "super_admin" && user.id !== me?.id;
 
+  const rows = data?.items ?? [];
+
+  const toggleOne = (id: string, on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const togglePage = (on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const u of rows) {
+        if (!canMutate(u)) continue;
+        if (on) next.add(u.id);
+        else next.delete(u.id);
+      }
+      return next;
+    });
+  };
+
+  const selectableRows = rows.filter(canMutate);
+  const pageAllSelected = selectableRows.length > 0 && selectableRows.every((u) => selected.has(u.id));
+
+  const handleBulkConfirm = async () => {
+    if (!bulkConfirm) return;
+    const ids = [...selected];
+    const action = bulkConfirm.type;
+    const role = bulkConfirm.role;
+    setBulkBusy(true);
+    setActionError(null);
+    setBulkMessage(null);
+    try {
+      let res: BatchResponse;
+      if (action === "block" || action === "unblock") {
+        res = await batchBlockUsers(ids, action === "block");
+      } else if (action === "role" && role) {
+        res = await batchUpdateUserRole(ids, role);
+      } else {
+        res = await batchDeleteUsers(ids);
+      }
+      const { succeeded, skipped, failed } = res.summary;
+      if (succeeded > 0) {
+        setBulkMessage(`عملیات گروهی روی ${faNumber(succeeded)} کاربر با موفقیت انجام شد.`);
+      }
+      if (failed > 0 || skipped > 0) {
+        setActionError(`${faNumber(failed)} مورد ناموفق و ${faNumber(skipped)} مورد بدون تغییر بود.`);
+      }
+      await reload();
+      setSelected(new Set());
+      setBulkConfirm(null);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "عملیات گروهی ناموفق بود");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const columns: Column<AdminUser>[] = [
+    {
+      key: "select",
+      header: (
+        <input
+          type="checkbox"
+          checked={pageAllSelected}
+          disabled={selectableRows.length === 0}
+          onChange={(e) => togglePage(e.target.checked)}
+          aria-label="انتخاب همه کاربران این صفحه"
+          className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-30"
+        />
+      ),
+      render: (u) => {
+        const canSelect = canMutate(u);
+        return (
+          <input
+            type="checkbox"
+            checked={selected.has(u.id)}
+            disabled={!canSelect}
+            onChange={(e) => toggleOne(u.id, e.target.checked)}
+            aria-label={`انتخاب ${u.name || u.phone}`}
+            className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-30"
+          />
+        );
+      },
+    },
     {
       key: "user",
       header: "کاربر",
@@ -314,6 +407,73 @@ export function UsersAdmin() {
         </div>
       ) : null}
 
+      {bulkMessage ? (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          {bulkMessage}
+          <button type="button" className="ms-3 underline" onClick={() => setBulkMessage(null)}>بستن</button>
+        </div>
+      ) : null}
+
+      {selected.size > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 p-3">
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+            <span className="font-bold">{faNumber(selected.size)}</span>
+            <span>کاربر انتخاب‌شده</span>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setSelected(new Set())}
+              className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+            >
+              <X className="h-3.5 w-3.5" /> پاک کردن
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setBulkConfirm({ type: "block" })}
+              className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] hover:bg-amber-50 hover:text-amber-600 disabled:opacity-50"
+            >
+              <Ban className="me-1 inline h-4 w-4" /> مسدودسازی
+            </button>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setBulkConfirm({ type: "unblock" })}
+              className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] hover:bg-green-50 hover:text-green-700 disabled:opacity-50"
+            >
+              <ShieldCheck className="me-1 inline h-4 w-4" /> رفع مسدودی
+            </button>
+            <select
+              value=""
+              disabled={bulkBusy}
+              onChange={(e) => {
+                const role = e.target.value as AssignableRole;
+                if (role) setBulkConfirm({ type: "role", role });
+                e.target.value = "";
+              }}
+              title="تغییر نقش به"
+              className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] disabled:opacity-50"
+            >
+              <option value="">تغییر نقش به...</option>
+              {ASSIGNABLE_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setBulkConfirm({ type: "delete" })}
+              className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 className="me-1 inline h-4 w-4" /> حذف
+            </button>
+            {bulkBusy && <RefreshCw className="h-4 w-4 animate-spin text-[var(--color-primary)]" />}
+          </div>
+        </div>
+      ) : null}
+
       <DataTable
         columns={columns}
         rows={data?.items ?? []}
@@ -350,6 +510,49 @@ export function UsersAdmin() {
         busy={busyId === confirm?.user.id}
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkConfirm?.type === "block" || bulkConfirm?.type === "unblock"}
+        title={bulkConfirm?.type === "block" ? "مسدودسازی گروهی" : "رفع مسدودی گروهی"}
+        message={
+          bulkConfirm ? (
+            <>
+              آیا از {bulkConfirm.type === "block" ? "مسدودسازی" : "رفع مسدودی"} <b>{faNumber(selected.size)}</b> کاربر انتخاب‌شده مطمئن هستید؟{" "}
+              {bulkConfirm.type === "block" ? "با مسدودسازی، نشست‌های فعال همه این کاربران بسته می‌شود." : ""}
+            </>
+          ) : null
+        }
+        confirmLabel={bulkConfirm?.type === "block" ? "مسدودسازی" : "رفع مسدودی"}
+        danger={bulkConfirm?.type === "block"}
+        busy={bulkBusy}
+        onConfirm={handleBulkConfirm}
+        onCancel={() => setBulkConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkConfirm?.type === "role"}
+        title="تغییر نقش گروهی"
+        message={
+          bulkConfirm ? (
+            <>نقش <b>{faNumber(selected.size)}</b> کاربر انتخاب‌شده به «{ROLE_LABEL[bulkConfirm.role ?? "user"]}» تغییر می‌کند و نشست‌های فعال آن‌ها بسته می‌شود.</>
+          ) : null
+        }
+        confirmLabel="تغییر نقش"
+        busy={bulkBusy}
+        onConfirm={handleBulkConfirm}
+        onCancel={() => setBulkConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkConfirm?.type === "delete"}
+        title="حذف گروهی کاربران"
+        message={<>آیا از حذف کامل <b>{faNumber(selected.size)}</b> کاربر انتخاب‌شده مطمئن هستید؟ این عملیات قابل بازگشت نیست.</>}
+        confirmLabel="حذف"
+        danger
+        busy={bulkBusy}
+        onConfirm={handleBulkConfirm}
+        onCancel={() => setBulkConfirm(null)}
       />
 
       <PermissionsModal

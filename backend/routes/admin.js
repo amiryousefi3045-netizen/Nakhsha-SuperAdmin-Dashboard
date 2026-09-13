@@ -150,6 +150,51 @@ router.delete(
   adminController.deleteUser,
 );
 
+// Bulk user actions
+//   POST /api/admin/users/batch/block
+//   POST /api/admin/users/batch/role
+//   POST /api/admin/users/batch/delete
+const batchIdsSchema = {
+  ids: z.array(z.string().trim().min(1)).min(1).max(50),
+};
+
+const bulkUserBlockSchema = z.object({
+  ...batchIdsSchema,
+  isBlocked: z.boolean(),
+  moderatorNote: z.string().trim().max(500).optional(),
+});
+
+const bulkUserRoleSchema = z.object({
+  ...batchIdsSchema,
+  role: z.enum(["user", "tour_leader", "admin"]),
+});
+
+const bulkUserDeleteSchema = z.object(batchIdsSchema);
+
+router.post(
+  "/users/batch/block",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(bulkUserBlockSchema, "body"),
+  adminController.batchBlockUsers,
+);
+
+router.post(
+  "/users/batch/role",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(bulkUserRoleSchema, "body"),
+  adminController.batchUpdateUserRole,
+);
+
+router.post(
+  "/users/batch/delete",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(bulkUserDeleteSchema, "body"),
+  adminController.batchDeleteUsers,
+);
+
 // User sessions (device management)
 //   GET     /api/admin/users/:id/sessions
 //   DELETE  /api/admin/users/:id/sessions/:sessionId
@@ -221,6 +266,21 @@ router.patch(
   validate(listingIdParamsSchema, "params"),
   validate(updateListingStatusSchema, "body"),
   adminController.updateListingStatus,
+);
+
+// Bulk listing actions
+//   POST /api/admin/listings/batch/status
+const bulkListingStatusSchema = z.object({
+  ...batchIdsSchema,
+  status: z.enum(["draft", "pending", "published", "rejected", "archived"]),
+});
+
+router.post(
+  "/listings/batch/status",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(bulkListingStatusSchema, "body"),
+  adminController.batchUpdateListingStatus,
 );
 
 router.patch(
