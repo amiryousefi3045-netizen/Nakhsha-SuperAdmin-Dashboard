@@ -372,6 +372,17 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// Security & database health audit
+//   GET /api/admin/security-audit
+// ---------------------------------------------------------------------------
+router.get(
+  "/security-audit",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.runSecurityAudit,
+);
+
+// ---------------------------------------------------------------------------
 // Provider (admins & tour guides) management
 //   GET     /api/admin/providers
 //   GET     /api/admin/providers/:providerId

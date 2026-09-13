@@ -25,6 +25,7 @@ const TokenService = require("../services/TokenService");
 const AuditService = require("../services/AuditService");
 const adminStats = require("../services/adminStats");
 const adminEventHub = require("../services/AdminEventHub");
+const securityAudit = require("../services/securityAudit");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
 const { z } = require("zod");
@@ -2023,6 +2024,25 @@ async function getSettings(req, res) {
   }
 }
 
+async function runSecurityAudit(req, res) {
+  try {
+    const audit = await securityAudit.runAudit();
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "REPORT_ACCESSED",
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      metadata: { report: "security-audit", score: audit.score },
+    });
+    res.json(createSuccessResponse(audit, req.id));
+  } catch (e) {
+    logger.error("Admin runSecurityAudit error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 module.exports = {
   getStats,
   streamLiveEvents,
@@ -2053,4 +2073,5 @@ module.exports = {
   getAuditLog,
   exportAuditLogs,
   getSettings,
+  runSecurityAudit,
 };
