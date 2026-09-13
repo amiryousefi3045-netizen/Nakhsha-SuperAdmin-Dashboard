@@ -24,7 +24,7 @@ import type {
 } from "../types/apiClient";
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE || "/api";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE || "/api";
 const DEFAULT_TIMEOUT = 10000;
 const TOKEN_KEY = "nakhsha_token";
 
@@ -431,6 +431,18 @@ class ApiClient {
     } catch (error) {
       return this.wrapError<T[]>(error);
     }
+  }
+
+  /**
+   * Raw GET that bypasses the ApiResult wrapper. Used for binary downloads
+   * (e.g. the audit-log CSV export) where the body is a Blob, not JSON.
+   * @returns the underlying AxiosResponse (check `status`, read `data`).
+   */
+  async rawGet<T>(
+    url: string,
+    config?: Omit<RequestConfig, "skipAuth"> & { responseType?: "blob" | "text" | "json" | "arraybuffer" },
+  ): Promise<AxiosResponse<T>> {
+    return this.instance.get<T>(url, config as AxiosRequestConfig);
   }
 
   /**

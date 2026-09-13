@@ -3,17 +3,20 @@ import {
   CheckCircle2,
   Clock,
   Ban,
-  Activity,
-  RefreshCw,
+  Database,
+  FileText,
+  Hammer,
+  ScrollText,
+  KeyRound,
   MapPin,
+  RefreshCw,
 } from "lucide-react";
 import { getAdminStats } from "../../services/adminService";
-import type { RecentActivity } from "../../types/admin";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
 import { StatCard } from "../../components/admin/StatCard";
-import { StatusBadge, riskTone } from "../../components/admin/StatusBadge";
 import { MiniLineChart, DonutChart } from "../../components/admin/AdminCharts";
-import { faNumber, formatDateTime, RISK_LABEL } from "../../lib/adminFormat";
+import { LiveActivityPanel } from "../../components/admin/LiveActivityPanel";
+import { faNumber } from "../../lib/adminFormat";
 
 const DISTRIBUTION_LABEL: Record<string, string> = {
   post: "پست",
@@ -47,7 +50,7 @@ export function DashboardAdmin() {
   }
 
   const stats = data!;
-  const { overview, growth, distribution, topCities, recentActivity } = stats;
+  const { overview, growth, distribution, topCities, dbTotals } = stats;
 
   return (
     <div className="space-y-6">
@@ -88,6 +91,28 @@ export function DashboardAdmin() {
           value={faNumber(overview.blockedUsers)}
           icon={<Ban className="h-5 w-5" />}
         />
+      </div>
+
+      <div>
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
+          <Database className="h-4 w-4 text-[var(--color-primary)]" />
+          آمار دیتابیس
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard label="کاربران" value={faNumber(dbTotals.users)} icon={<Users className="h-5 w-5" />} />
+          <StatCard label="محتواها" value={faNumber(dbTotals.listings)} icon={<FileText className="h-5 w-5" />} />
+          <StatCard label="صنایع دستی" value={faNumber(dbTotals.crafts)} icon={<Hammer className="h-5 w-5" />} />
+          <StatCard
+            label="گزارش عملیات"
+            value={faNumber(dbTotals.auditLogs)}
+            icon={<ScrollText className="h-5 w-5" />}
+          />
+          <StatCard
+            label="نشست‌های فعال"
+            value={faNumber(dbTotals.refreshTokens)}
+            icon={<KeyRound className="h-5 w-5" />}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -131,43 +156,11 @@ export function DashboardAdmin() {
           </ul>
         </div>
 
-        <div className="rounded-2xl border border-[var(--color-border)] bg-white p-5 shadow-sm xl:col-span-2">
-          <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
-            <Activity className="h-4 w-4 text-[var(--color-primary)]" />
-            آخرین فعالیت‌ها
-          </h3>
-          <ActivityTable items={recentActivity} />
+        <div className="xl:col-span-2">
+          <LiveActivityPanel />
         </div>
       </div>
     </div>
-  );
-}
-
-function ActivityTable({ items }: { items: RecentActivity[] }) {
-  return (
-    <ul className="mt-4 divide-y divide-[var(--color-border)]">
-      {items.length === 0 ? (
-        <li className="py-6 text-center text-sm text-[var(--color-muted)]">فعالیتی ثبت نشده است</li>
-      ) : (
-        items.map((item) => (
-          <li key={item.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)]/10 text-xs font-bold text-[var(--color-primary)]">
-                {item.actorName.charAt(0)}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate font-medium text-[var(--color-text)]">
-                  {item.actorName}
-                  <span className="text-[var(--color-muted)]"> — {item.action}</span>
-                </p>
-                <p className="text-xs text-[var(--color-muted)]">{formatDateTime(item.createdAt)}</p>
-              </div>
-            </div>
-            <StatusBadge label={RISK_LABEL[item.riskLevel] ?? item.riskLevel} tone={riskTone(item.riskLevel)} />
-          </li>
-        ))
-      )}
-    </ul>
   );
 }
 

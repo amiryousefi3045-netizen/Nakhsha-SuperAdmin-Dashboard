@@ -12,8 +12,10 @@ vi.mock("../../lib/apiClient", () => ({
     patch: vi.fn(),
     delete: vi.fn(),
     put: vi.fn(),
+    rawGet: vi.fn(),
   },
   TokenManager: { get: vi.fn(), set: vi.fn(), clear: vi.fn() },
+  API_BASE_URL: "/api",
 }));
 
 import {
@@ -23,6 +25,8 @@ import {
   updateUserPermissions,
   toggleUserBlock,
   deleteAdminUser,
+  getUserSessions,
+  revokeUserSession,
   getAdminListings,
   updateListingContent,
   updateListingStatus,
@@ -31,6 +35,11 @@ import {
   getAdminProviders,
   updateProviderStatus,
   getAdminAuditLogs,
+  getAdminAuditLogDetail,
+  exportAdminAuditLogs,
+  getAdminComments,
+  deleteAdminComment,
+  parseAdminLiveEvent,
   getAdminSettings,
   adminLogoutAll,
 } from "../adminService";
@@ -54,6 +63,7 @@ describe("getAdminStats", () => {
       distribution: [{ type: "post", count: 3 }],
       topCities: [{ city: "تهران", count: 4 }],
       recentActivity: [],
+      dbTotals: { users: 10, listings: 30, crafts: 4, auditLogs: 90, refreshTokens: 12 },
     };
     vi.mocked(apiClient.get).mockResolvedValueOnce(ok(payload));
 
@@ -224,6 +234,118 @@ describe("providers", () => {
       "/admin/providers/p1/status",
       { status: "suspended", reason: "بدون فعالیت" },
     );
+  });
+});
+
+describe("comment moderation", () => {
+  it("getAdminComments forwards search + rating filters", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [], total: 0, page: 1, limit: 15 }),
+    );
+    await getAdminComments({ q: "گلیم", rating: 5 });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/comments", {
+      params: { q: "گلیم", rating: 5 },
+    });
+  });
+
+  it("deleteAdminComment calls DELETE with both ids", async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce(
+      ok({ id: "c1", craft: { id: "craft1" } }),
+    );
+    const result = await deleteAdminComment("craft1", "c1");
+    expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith(
+      "/admin/comments/craft1/c1",
+    );
+    expect(result.craft.id).toBe("craft1");
+  });
+});
+
+describe("audit log detail & export", () => {
+  it("getAdminAuditLogDetail fetches /audit-logs/:id and unwraps the log", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        log: {
+          id: "a1",
+          action: "ADMIN_CONTENT_REMOVED",
+          riskLevel: "HIGH" as const,
+          requestContext: { ip: "10.0.0.5", userAgent: null, referer: null, endpoint: "/x", method: "DELETE", statusCode: 200 },
+          metadata: { reason: "گزارش" },
+          error: null,
+          compliance: { gdprRelevant: false, dataCategories: [] },
+        },
+      }),
+    );
+    const log = await getAdminAuditLogDetail("a1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/audit-logs/a1");
+    expect(log.requestContext?.ip).toBe("10.0.0.5");
+  });
+
+  it("exportAdminAuditLogs downloads a blob with the server filename", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["\uFEFFcreatedAt,action\r\n"], { type: "text/csv" }),
+      headers: { "content-disposition": 'attachment; filename="audit-logs-2026-09-13.csv"' },
+    } as never);
+    const file = await exportAdminAuditLogs({ action: "LOGIN" });
+    expect(vi.mocked(apiClient.rawGet)).toHaveBeenCalledWith("/admin/audit-logs/export", {
+      params: { action: "LOGIN" },
+      responseType: "blob",
+    });
+    expect(file.filename).toBe("audit-logs-2026-09-13.csv");
+    expect(file.blob.type).toBe("text/csv");
+  });
+
+  it("exportAdminAuditLogs falls back to a default filename", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["x"], { type: "text/csv" }),
+      headers: {},
+    } as never);
+    const file = await exportAdminAuditLogs();
+    expect(file.filename).toMatch(/^audit-logs-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+});
+
+describe("user sessions", () => {
+  it("getUserSessions fetches the sessions list", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ user: { id: "u1", name: "علی", handle: "ali" }, total: 1, sessions: [] }),
+    );
+    const result = await getUserSessions("u1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/users/u1/sessions");
+    expect(result.total).toBe(1);
+  });
+
+  it("revokeUserSession deletes a single session", async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce(
+      ok({ message: "نشست بسته شد", sessionId: "s1" }),
+    );
+    const result = await revokeUserSession("u1", "s1");
+    expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith(
+      "/admin/users/u1/sessions/s1",
+    );
+    expect(result.sessionId).toBe("s1");
+  });
+});
+
+describe("admin live events parser", () => {
+  it("parses an audit SSE block", () => {
+    const block = 'event: audit\ndata: {"id":"a1","action":"USER_VERIFIED","riskLevel":"HIGH"}';
+    const event = parseAdminLiveEvent(block);
+    expect(event?.type).toBe("audit");
+    expect(event?.payload?.action).toBe("USER_VERIFIED");
+  });
+
+  it("parses initial/heartbeat blocks", () => {
+    const initial = parseAdminLiveEvent('event: initial\ndata: {"at":"2026-09-13T10:00:00.000Z"}');
+    expect(initial?.type).toBe("initial");
+    expect(initial?.at).toMatch(/^2026/);
+
+    const heartbeat = parseAdminLiveEvent('event: heartbeat\ndata: {"at":"2026-09-13T10:00:00.000Z"}');
+    expect(heartbeat?.type).toBe("heartbeat");
+  });
+
+  it("returns null for malformed data", () => {
+    expect(parseAdminLiveEvent("event: audit\ndata: not-json")).toBeNull();
+    expect(parseAdminLiveEvent("")).toBeNull();
   });
 });
 

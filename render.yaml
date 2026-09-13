@@ -54,6 +54,11 @@ services:
       # Generate with: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
       - key: JWT_SECRET
         sync: false
+      # Separate secret for the admin settings readiness check (distinct from
+      # JWT_SECRET). Set a value during Blueprint creation / in the dashboard,
+      # otherwise the admin "تنظیمات" page reports it as unconfigured.
+      - key: REFRESH_TOKEN_SECRET
+        sync: false
       # Staging super-admin phone (a test number, different from production
       # so a staging account can never touch production data).
       - key: SUPER_ADMIN_PHONE

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Search, Ban, ShieldCheck, Trash2, KeyRound, RefreshCw, UserCheck, UserX } from "lucide-react";
+import { Search, Ban, ShieldCheck, Trash2, KeyRound, RefreshCw, UserCheck, UserX, Laptop } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
 import {
@@ -15,6 +15,7 @@ import { DataTable, type Column } from "../../components/admin/DataTable";
 import { Pagination } from "../../components/admin/Pagination";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { PermissionsModal } from "../../components/admin/PermissionsModal";
+import { UserSessionsModal } from "../../components/admin/UserSessionsModal";
 import { faNumber, formatDate } from "../../lib/adminFormat";
 
 const PERMISSION_LABEL: Record<AdminPermission, string> = {
@@ -49,6 +50,7 @@ export function UsersAdmin() {
   const [confirm, setConfirm] = useState<{ type: "block" | "delete"; user: AdminUser } | null>(null);
   const [permUser, setPermUser] = useState<AdminUser | null>(null);
   const [permBusy, setPermBusy] = useState(false);
+  const [sessionUser, setSessionUser] = useState<AdminUser | null>(null);
 
   const fetcher = useCallback(
     () => getAdminUsers({ page, limit: 15, q: search || undefined, role: role || undefined }),
@@ -215,6 +217,16 @@ export function UsersAdmin() {
             <button
               type="button"
               disabled={!canMutate(u) || busy}
+              onClick={() => setSessionUser(u)}
+              title="نشست‌های فعال"
+              className="rounded-lg border border-[var(--color-border)] p-1.5 text-[var(--color-text)] hover:bg-[var(--color-primary)]/5 disabled:opacity-40"
+            >
+              <Laptop className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              disabled={!canMutate(u) || busy}
               onClick={() => setConfirm({ type: "block", user: u })}
               title={u.isBlocked ? "رفع مسدودی" : "مسدودسازی"}
               className="rounded-lg border border-[var(--color-border)] p-1.5 text-[var(--color-text)] hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40"
@@ -347,6 +359,12 @@ export function UsersAdmin() {
         busy={permBusy}
         onCancel={() => setPermUser(null)}
         onSave={handleSavePermissions}
+      />
+
+      <UserSessionsModal
+        userId={sessionUser?.id ?? null}
+        userName={sessionUser?.name || ""}
+        onClose={() => setSessionUser(null)}
       />
     </div>
   );

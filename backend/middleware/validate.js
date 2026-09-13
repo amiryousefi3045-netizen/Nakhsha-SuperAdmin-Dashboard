@@ -12,8 +12,24 @@ const validate = (schema, source = "body") => {
     const result = schema.safeParse(data);
 
     if (result.success) {
-      // Replace the request data with parsed results
-      req[source] = result.data;
+      // Replace the request data with parsed results.
+      //
+      // NOTE: In Express 5 `req.query` (and `req.params`) is exposed through a
+      // prototype getter WITHOUT a setter, so a plain `req[source] = ...`
+      // assignment silently no-ops. That silently dropped zod defaults and
+      // type coercions for every validated query (e.g. pagination `limit`
+      // fell back to 1). Defining an own data property guarantees the parsed
+      // value is actually consumable by the controller.
+      if (source === "query" || source === "params") {
+        Object.defineProperty(req, source, {
+          value: result.data,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+      } else {
+        req[source] = result.data;
+      }
       next();
     } else {
       // Extract the first issue for the main message

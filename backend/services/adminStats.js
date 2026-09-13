@@ -12,6 +12,7 @@ const User = require("../models/User");
 const Craft = require("../models/Craft");
 const { Listing } = require("../models/Listing");
 const AuditLog = require("../models/AuditLog");
+const RefreshToken = require("../models/RefreshToken");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -181,6 +182,23 @@ async function getTopCities(limit = 10) {
 }
 
 /**
+ * Raw collection totals for the "database" dashboard card.
+ * Uses estimated counts (O(1) via collection metadata) for speed.
+ * @returns {Promise<{ users: number, listings: number, crafts: number, auditLogs: number, refreshTokens: number }>}
+ */
+async function getDbTotals() {
+  const [users, listings, crafts, auditLogs, refreshTokens] = await Promise.all([
+    User.estimatedDocumentCount(),
+    Listing.estimatedDocumentCount(),
+    Craft.estimatedDocumentCount(),
+    AuditLog.estimatedDocumentCount(),
+    RefreshToken.estimatedDocumentCount(),
+  ]);
+
+  return { users, listings, crafts, auditLogs, refreshTokens };
+}
+
+/**
  * Latest admin/sensitive activity from the audit log.
  * @param {number} [limit=20]
  * @returns {Promise<Array<{
@@ -235,5 +253,6 @@ module.exports = {
   getContentDistribution,
   getTopCities,
   getRecentActivity,
+  getDbTotals,
   isValidObjectId,
 };

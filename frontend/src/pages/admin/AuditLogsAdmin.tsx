@@ -1,10 +1,15 @@
 import { useCallback, useState } from "react";
+import { Download, Eye, RefreshCw } from "lucide-react";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
-import { getAdminAuditLogs } from "../../services/adminService";
-import type { AuditLogEntry } from "../../types/admin";
+import {
+  getAdminAuditLogs,
+  exportAdminAuditLogs,
+} from "../../services/adminService";
+import type { AuditLogEntry, ListAuditLogsParams } from "../../types/admin";
 import { StatusBadge, riskTone } from "../../components/admin/StatusBadge";
 import { DataTable, type Column } from "../../components/admin/DataTable";
 import { Pagination } from "../../components/admin/Pagination";
+import { AuditLogDetailModal } from "../../components/admin/AuditLogDetailModal";
 import { faNumber, formatDateTime, RISK_LABEL } from "../../lib/adminFormat";
 
 const TARGET_TYPE_FILTERS: Array<{ value: "" | string; label: string }> = [
@@ -23,12 +28,26 @@ const RESULT_CELL: Record<string, string> = {
   PARTIAL: "جزئی",
 };
 
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function AuditLogsAdmin() {
   const [action, setAction] = useState("");
   const [targetType, setTargetType] = useState<"" | string>("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const fetcher = useCallback(
     () =>
@@ -49,6 +68,26 @@ export function AuditLogsAdmin() {
   const totalPages = data ? Math.max(1, Math.ceil(data.meta.total / data.meta.limit)) : 1;
 
   const resetPage = () => setPage(1);
+
+  const exportParams = (): Omit<ListAuditLogsParams, "page" | "limit"> => ({
+    action: action.trim() || undefined,
+    targetType: targetType || undefined,
+    from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
+    to: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
+  });
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const file = await exportAdminAuditLogs(exportParams());
+      downloadBlob(file.blob, file.filename);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "دانلود فایل ناموفق بود");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const columns: Column<AuditLogEntry>[] = [
     {
@@ -103,16 +142,53 @@ export function AuditLogsAdmin() {
       header: "زمان",
       render: (l) => <span className="text-xs text-[var(--color-muted)]">{formatDateTime(l.createdAt)}</span>,
     },
+    {
+      key: "actions",
+      header: "جزئیات",
+      className: "text-end",
+      render: (l) => (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setSelectedId(l.id)}
+            title="مشاهده جزئیات"
+            className="rounded-lg border border-[var(--color-border)] p-1.5 text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+    },
   ];
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-[var(--color-text)]">گزارش عملیات</h2>
-        <p className="text-sm text-[var(--color-muted)]">
-          {data ? faNumber(data.meta.total) : "—"} رکورد
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-[var(--color-text)]">گزارش عملیات</h2>
+          <p className="text-sm text-[var(--color-muted)]">
+            {data ? faNumber(data.meta.total) : "—"} رکورد
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-primary)]/5 disabled:opacity-50"
+          title="دانلود گزارش‌های فیلترشده به صورت CSV"
+        >
+          {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          خروجی CSV
+        </button>
       </div>
+
+      {exportError ? (
+        <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {exportError}
+          <button type="button" className="ms-3 underline" onClick={() => setExportError(null)}>بستن</button>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--color-border)] bg-white p-4">
         <label className="block">
@@ -170,6 +246,8 @@ export function AuditLogsAdmin() {
       />
 
       <Pagination page={page} totalPages={totalPages} onChange={(p) => { setPage(p); window.scrollTo({ top: 0 }); }} />
+
+      <AuditLogDetailModal logId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   );
 }

@@ -95,6 +95,86 @@ export interface AuditLogEntry {
 
 export type RecentActivity = AuditLogEntry;
 
+/** Extended DTO returned by GET /admin/audit-logs/:id. */
+export interface AuditLogDetail extends AuditLogEntry {
+  requestContext: {
+    ip: string | null;
+    userAgent: string | null;
+    referer: string | null;
+    endpoint: string | null;
+    method: string | null;
+    statusCode: number | null;
+  } | null;
+  metadata: Record<string, unknown> | null;
+  error: { code: string | null; message: string | null; stack?: string | null } | null;
+  compliance: {
+    gdprRelevant: boolean | null;
+    dataCategories: string[];
+    retentionRequired?: boolean | null;
+    retentionUntil?: string | null;
+  } | null;
+}
+
+/** One moderatable comment row (crafts ∧ comments). */
+export interface AdminComment {
+  id: string;
+  craft: {
+    id: string;
+    title: string;
+    isPublished: boolean;
+  };
+  author: AdminActorRef;
+  text: string;
+  rating: number | null;
+  createdAt: string;
+}
+
+/** One active device session for a user (RefreshToken doc). */
+export interface AdminSession {
+  id: string;
+  userId: string;
+  deviceId: string | null;
+  device: {
+    userAgent: string | null;
+    ipAddress: string | null;
+  } | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  expiresAt: string;
+  rotationCount: number;
+}
+
+export interface UserSessionsResult {
+  user: { id: string; name: string; handle: string | null };
+  sessions: AdminSession[];
+  total: number;
+}
+
+/** Live event pushed over the admin SSE stream. */
+export interface AdminLiveEvent {
+  type: "initial" | "heartbeat" | "audit";
+  /** Present on `audit` events. */
+  payload?: {
+    id: string;
+    action: string;
+    actorId: string | null;
+    resourceType: string | null;
+    resourceId: string | null;
+    result: string;
+    riskLevel: string;
+    ip: string | null;
+    createdAt: string;
+  };
+  /** Present on `initial`/`heartbeat` events. */
+  at?: string;
+}
+
+/** Downloaded CSV export file (blob + suggested filename). */
+export interface ExportFile {
+  blob: Blob;
+  filename: string;
+}
+
 export interface AdminStats {
   overview: {
     totalUsers: number;
@@ -106,6 +186,13 @@ export interface AdminStats {
   distribution: Array<{ type: string; count: number }>;
   topCities: Array<{ city: string; count: number }>;
   recentActivity: RecentActivity[];
+  dbTotals: {
+    users: number;
+    listings: number;
+    crafts: number;
+    auditLogs: number;
+    refreshTokens: number;
+  };
 }
 
 /** Envelope shape of every admin list endpoint. */
@@ -161,4 +248,11 @@ export interface ListAuditLogsParams {
   targetId?: string;
   from?: string;
   to?: string;
+}
+
+export interface ListCommentsParams {
+  page?: number;
+  limit?: number;
+  q?: string;
+  rating?: number;
 }

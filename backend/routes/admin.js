@@ -36,6 +36,22 @@ router.get(
   adminController.listAuditLogs,
 );
 
+// NOTE: export must be registered BEFORE "/audit-logs/:id" so "export"
+// is not captured as an :id.
+router.get(
+  "/audit-logs/export",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.exportAuditLogs,
+);
+
+router.get(
+  "/audit-logs/:id",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.getAuditLog,
+);
+
 // ---------------------------------------------------------------------------
 // Dashboard stats
 //   GET /api/admin/stats
@@ -45,6 +61,17 @@ router.get(
   requireAuth,
   requireRole("super_admin"),
   adminController.getStats,
+);
+
+// ---------------------------------------------------------------------------
+// Live events (Server-Sent Events)
+//   GET /api/admin/events/live
+// ---------------------------------------------------------------------------
+router.get(
+  "/events/live",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.streamLiveEvents,
 );
 
 // ---------------------------------------------------------------------------
@@ -121,6 +148,30 @@ router.delete(
   requireRole("super_admin"),
   validate(userIdParamsSchema, "params"),
   adminController.deleteUser,
+);
+
+// User sessions (device management)
+//   GET     /api/admin/users/:id/sessions
+//   DELETE  /api/admin/users/:id/sessions/:sessionId
+const userSessionParamsSchema = z.object({
+  id: z.string().trim().min(1),
+  sessionId: z.string().trim().min(1),
+});
+
+router.get(
+  "/users/:id/sessions",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(userIdParamsSchema, "params"),
+  adminController.getUserSessions,
+);
+
+router.delete(
+  "/users/:id/sessions/:sessionId",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(userSessionParamsSchema, "params"),
+  adminController.revokeUserSession,
 );
 
 // ---------------------------------------------------------------------------
@@ -215,6 +266,38 @@ router.patch(
   validate(craftIdParamsSchema, "params"),
   validate(setCraftPublishSchema, "body"),
   adminController.setCraftPublish,
+);
+
+// ---------------------------------------------------------------------------
+// Comment moderation (crafts)
+//   GET     /api/admin/comments
+//   DELETE  /api/admin/comments/:craftId/:commentId
+// ---------------------------------------------------------------------------
+const listCommentsQuerySchema = z.object({
+  ...paginationSchema,
+  q: z.string().trim().max(200).optional(),
+  rating: z.coerce.number().int().min(1).max(5).optional(),
+});
+
+const commentParamsSchema = z.object({
+  craftId: z.string().trim().min(1),
+  commentId: z.string().trim().min(1),
+});
+
+router.get(
+  "/comments",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(listCommentsQuerySchema, "query"),
+  adminController.listComments,
+);
+
+router.delete(
+  "/comments/:craftId/:commentId",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(commentParamsSchema, "params"),
+  adminController.removeComment,
 );
 
 // ---------------------------------------------------------------------------

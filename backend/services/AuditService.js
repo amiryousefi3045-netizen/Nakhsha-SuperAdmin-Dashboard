@@ -16,6 +16,7 @@
 
 const AuditLog = require("../models/AuditLog");
 const logger = require("../utils/logger");
+const adminEventHub = require("./AdminEventHub");
 
 class AuditService {
   /**
@@ -88,6 +89,23 @@ class AuditService {
       // Save to database
       await auditLog.save();
 
+      // Push a live snapshot to subscribed admin dashboards (best-effort).
+      try {
+        adminEventHub.publish("audit", {
+          id: String(auditLog._id),
+          action,
+          actorId: userId ? String(userId) : null,
+          resourceType: resource?.type || null,
+          resourceId: resource?.id ? String(resource.id) : null,
+          result,
+          riskLevel: assessedRiskLevel,
+          ip: context.ip,
+          createdAt: auditLog.createdAt,
+        });
+      } catch (publishError) {
+        logger.warn("Failed to publish admin live event", { error: publishError.message });
+      }
+
       // Log high-risk events immediately
       if (assessedRiskLevel === "CRITICAL" || assessedRiskLevel === "HIGH") {
         logger.warn(`🚨 HIGH-RISK AUDIT EVENT: ${action}`, {
@@ -117,7 +135,7 @@ class AuditService {
   /**
    * Assess risk level for an action
    */
-  static _assessRiskLevel(action, resource) {
+  static _assessRiskLevel(action, _resource) {
     const criticalActions = [
       "ADMIN_USER_DELETED",
       "ADMIN_USER_BANNED",
@@ -171,7 +189,7 @@ class AuditService {
   /**
    * Get data categories for compliance
    */
-  static _getDataCategories(action, resource) {
+  static _getDataCategories(action, _resource) {
     const categories = [];
 
     if (action.includes("USER") || action.includes("PAYMENT")) {

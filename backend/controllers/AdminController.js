@@ -23,6 +23,7 @@ const AuditLog = require("../models/AuditLog");
 const TokenService = require("../services/TokenService");
 const AuditService = require("../services/AuditService");
 const adminStats = require("../services/adminStats");
+const adminEventHub = require("../services/AdminEventHub");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
 const { z } = require("zod");
@@ -167,18 +168,19 @@ function safePage(raw) {
 
 async function getStats(req, res) {
   try {
-    const [overview, growth, distribution, topCities, recentActivity] =
+    const [overview, growth, distribution, topCities, recentActivity, dbTotals] =
       await Promise.all([
         adminStats.getOverviewStats(),
         adminStats.getGrowthTrend(30),
         adminStats.getContentDistribution(),
         adminStats.getTopCities(10),
         adminStats.getRecentActivity(20),
+        adminStats.getDbTotals(),
       ]);
 
     res.json(
       createSuccessResponse(
-        { overview, growth, distribution, topCities, recentActivity },
+        { overview, growth, distribution, topCities, recentActivity, dbTotals },
         req.id,
       ),
     );
@@ -500,6 +502,110 @@ async function deleteUser(req, res) {
   }
 }
 
+// ── User sessions ───────────────────────────────────────────────────────────
+
+function sessionToDTO(session) {
+  const lastUsedAt = session.deviceInfo?.lastUsedAt || session.createdAt;
+  return {
+    id: normalizeId(session._id),
+    userId: session.userId ? normalizeId(session.userId) : null,
+    deviceId: session.deviceId || null,
+    device: session.deviceInfo
+      ? {
+          userAgent: session.deviceInfo.userAgent || null,
+          ipAddress: session.deviceInfo.ipAddress || null,
+        }
+      : null,
+    lastUsedAt: lastUsedAt || null,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+    rotationCount: session.rotationCount ?? 0,
+  };
+}
+
+async function getUserSessions(req, res) {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const target = await User.findById(id).select("name handle").lean();
+    if (!target) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    const sessions = await RefreshToken.find({
+      userId: target._id,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() },
+    })
+      .sort({ "deviceInfo.lastUsedAt": -1 })
+      .limit(50)
+      .lean();
+
+    res.json(
+      createSuccessResponse(
+        { user: { id: normalizeId(target._id), name: target.name, handle: target.handle }, sessions: sessions.map(sessionToDTO), total: sessions.length },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin getUserSessions error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function revokeUserSession(req, res) {
+  try {
+    const { id, sessionId } = req.params;
+    if (!isValidObjectId(id) || !isValidObjectId(sessionId)) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "کاربر یافت نشد", null, req.id));
+    }
+
+    if (String(target._id) === String(req.user.id)) {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "شما نمی‌توانید نشست‌های خود را از اینجا ببندید", null, req.id));
+    }
+
+    if (target.role === "super_admin") {
+      return res.status(403).json(createErrorResponse("FORBIDDEN", "امکان بستن نشست‌های سوپر ادمین وجود ندارد", null, req.id));
+    }
+
+    const result = await RefreshToken.updateOne(
+      { _id: sessionId, userId: target._id, revokedAt: null },
+      { $set: { revokedAt: new Date(), revocationReason: "ADMIN_REVOKE" } },
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "نشست یافت نشد", null, req.id));
+    }
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "TOKEN_REVOKED",
+      resource: { type: "USER", id: String(target._id) },
+      changes: { before: { sessionId }, after: { revoked: true } },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      metadata: { reason: "session revoked by super admin" },
+    });
+
+    res.json(createSuccessResponse({ message: "نشست بسته شد", sessionId }, req.id));
+  } catch (e) {
+    logger.error("Admin revokeUserSession error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id, sessionId: req.params.sessionId });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 // ── Listings ────────────────────────────────────────────────────────────────
 
 async function getListings(req, res) {
@@ -797,6 +903,156 @@ async function setCraftPublish(req, res) {
     );
   } catch (e) {
     logger.error("Admin setCraftPublish error", { error: e.message, stack: e.stack, userId: req.user?.id, targetId: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Comment moderation (crafts) ─────────────────────────────────────────────
+
+async function listComments(req, res) {
+  try {
+    const { q, rating, page: pageRaw, limit: limitRaw } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+
+    // Fetch every craft that has at least one comment; row-level filtering
+    // (title OR comment text, rating) happens in JS so the semantics are exact.
+    const crafts = await Craft.find({ "comments.0": { $exists: true } })
+      .select("title isPublished comments")
+      .sort({ createdAt: -1 })
+      .limit(5000)
+      .lean();
+
+    const textQ = q ? String(q).trim().toLowerCase() : null;
+
+    // Flatten comments to rows, applying comment-level filters (text, rating).
+    const rows = [];
+    for (const c of crafts) {
+      const titleMatch = textQ && (c.title || "").toLowerCase().includes(textQ);
+      const comments = (c.comments || []).sort((a, b) =>
+        (b.createdAt || 0) - (a.createdAt || 0),
+      );
+      for (const cm of comments) {
+        const text = cm.text || "";
+        if (textQ && !titleMatch && !text.toLowerCase().includes(textQ)) continue;
+        if (rating && cm.rating !== rating) continue;
+        rows.push({ craft: c, comment: cm });
+      }
+    }
+
+    const total = rows.length;
+    const paged = rows.slice((page - 1) * limit, page * limit);
+
+    const authorIds = Array.from(
+      new Set(
+        paged
+          .map((r) => (r.comment.user ? String(r.comment.user) : null))
+          .filter(Boolean),
+      ),
+    );
+    const authors =
+      authorIds.length > 0
+        ? await User.find({ _id: { $in: authorIds } })
+            .select("name handle")
+            .lean()
+        : [];
+    const authorMap = new Map(authors.map((a) => [String(a._id), a]));
+
+    res.json(
+      createSuccessResponse(
+        {
+          items: paged.map((r) => {
+            const au = r.comment.user
+              ? authorMap.get(String(r.comment.user))
+              : null;
+            return {
+              id: normalizeId(r.comment._id),
+              text: r.comment.text || "",
+              rating: r.comment.rating ?? null,
+              createdAt: r.comment.createdAt,
+              craft: {
+                id: normalizeId(r.craft._id),
+                title: r.craft.title || "",
+                isPublished: Boolean(r.craft.isPublished),
+              },
+              author: au
+                ? {
+                    id: normalizeId(au._id),
+                    name: au.name || "",
+                    handle: au.handle || null,
+                  }
+                : null,
+            };
+          }),
+          total,
+          page,
+          limit,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin listComments error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function removeComment(req, res) {
+  try {
+    const { craftId, commentId } = req.params;
+
+    if (!isValidObjectId(craftId) || !isValidObjectId(commentId)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "craftId/commentId" }, req.id));
+    }
+
+    const craft = await Craft.findById(craftId);
+    if (!craft) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "صنعت دستی یافت نشد", null, req.id));
+    }
+
+    const comment = craft.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "دیدگاه یافت نشد", null, req.id));
+    }
+
+    const removed = {
+      text: comment.text || "",
+      rating: comment.rating ?? null,
+      user: comment.user ? normalizeId(comment.user) : null,
+      createdAt: comment.createdAt,
+    };
+
+    comment.deleteOne();
+    await craft.save();
+
+    await writeAudit(req, {
+      userId: req.user.id,
+      action: "ADMIN_CONTENT_REMOVED",
+      resource: { type: "CRAFT", id: String(craft._id) },
+      changes: { before: { comment: removed }, after: null },
+      result: "SUCCESS",
+      riskLevel: "HIGH",
+      metadata: { commentId: String(commentId), reason: "moderated by super admin" },
+    });
+
+    res.json(
+      createSuccessResponse(
+        {
+          message: "دیدگاه حذف شد",
+          id: String(commentId),
+          craft: { id: String(craft._id), title: craft.title },
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Admin removeComment error", { error: e.message, stack: e.stack, userId: req.user?.id, craftId: req.params.craftId, commentId: req.params.commentId });
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
@@ -1128,66 +1384,99 @@ async function logoutAll(req, res) {
   }
 }
 
+// ── Live events (SSE) ───────────────────────────────────────────────────────
+
+function streamLiveEvents(req, res) {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  let unsubscribed = false;
+  const unsubscribe = () => {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    clearInterval(heartbeat);
+    res.end();
+  };
+
+  let heartbeat;
+  try {
+    adminEventHub.subscribe(res, {
+      userId: req.user.id,
+      initialPayload: { at: new Date().toISOString() },
+    });
+  } catch {
+    return res
+      .status(503)
+      .json(createErrorResponse("TOO_MANY_CONNECTIONS", "تعداد اتصال‌های زنده بیش از حد مجاز است", null, req.id));
+  }
+
+  heartbeat = setInterval(() => {
+    adminEventHub.heartbeat();
+  }, 25000);
+
+  req.on("close", unsubscribe);
+}
+
 // ── Audit Logs ──────────────────────────────────────────────────────────────
+
+const EXPORT_MAX_ROWS = 10000;
+
+/**
+ * Shared filter builder for audit-log queries (list + CSV export).
+ * Returns a Mongo query object; throws nothing. Invalid ObjectId inputs are
+ * surfaced to the caller via the `errors` array.
+ */
+function buildAuditFilter(query) {
+  const { actorId, action, targetType, targetId, from, to } = query;
+  const filter = {};
+  const errors = [];
+
+  if (actorId) {
+    if (!isValidObjectId(actorId)) {
+      errors.push({ field: "actorId", message: "شناسه کاربر نامعتبر است" });
+    } else {
+      filter.userId = actorId;
+    }
+  }
+  if (action) {
+    filter.action = action;
+  }
+  if (targetType) {
+    filter["resource.type"] = targetType;
+  }
+  if (targetId) {
+    if (!isValidObjectId(targetId)) {
+      errors.push({ field: "targetId", message: "شناسه منبع نامعتبر است" });
+    } else {
+      filter["resource.id"] = targetId;
+    }
+  }
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = new Date(from);
+    if (to) filter.createdAt.$lte = new Date(to);
+  }
+
+  return { filter, errors };
+}
 
 async function listAuditLogs(req, res) {
   try {
-    const {
-      actorId,
-      action,
-      targetType,
-      targetId,
-      from,
-      to,
-      page: pageRaw,
-      limit: limitRaw,
-    } = req.query;
-    const page = safePage(pageRaw);
-    const limit = safePageSize(limitRaw);
-    const skip = (page - 1) * limit;
+    const { filter, errors } = buildAuditFilter(req.query);
+    if (errors.length > 0) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("VALIDATION_ERROR", errors[0].message, { issues: errors }, req.id),
+        );
+    }
 
-    const filter = {};
-    if (actorId) {
-      if (!isValidObjectId(actorId)) {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              "VALIDATION_ERROR",
-              "شناسه کاربر نامعتبر است",
-              { field: "actorId" },
-              req.id,
-            ),
-          );
-      }
-      filter.userId = actorId;
-    }
-    if (action) {
-      filter.action = action;
-    }
-    if (targetType) {
-      filter["resource.type"] = targetType;
-    }
-    if (targetId) {
-      if (!isValidObjectId(targetId)) {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              "VALIDATION_ERROR",
-              "شناسه منبع نامعتبر است",
-              { field: "targetId" },
-              req.id,
-            ),
-          );
-      }
-      filter["resource.id"] = targetId;
-    }
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(to);
-    }
+    const page = safePage(req.query.page);
+    const limit = safePageSize(req.query.limit);
+    const skip = (page - 1) * limit;
 
     const [logs, total] = await Promise.all([
       AuditLog.find(filter)
@@ -1210,6 +1499,128 @@ async function listAuditLogs(req, res) {
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+function auditLogDetailToDTO(log) {
+  return {
+    ...auditLogToDTO(log),
+    requestContext: log.requestContext || null,
+    metadata: log.metadata || null,
+    error: log.error || null,
+    compliance: log.compliance || null,
+  };
+}
+
+async function getAuditLog(req, res) {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const log = await AuditLog.findById(id).populate("userId", "name handle").lean();
+    if (!log) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "رکورد عملیات یافت نشد", null, req.id));
+    }
+
+    res.json(createSuccessResponse({ log: auditLogDetailToDTO(log) }, req.id));
+  } catch (e) {
+    logger.error("Admin getAuditLog error", { error: e.message, stack: e.stack, userId: req.user?.id, id: req.params.id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+function csvCell(value) {
+  if (value === null || value === undefined) return '""';
+  const str = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+async function exportAuditLogs(req, res) {
+  try {
+    const { filter, errors } = buildAuditFilter(req.query);
+    if (errors.length > 0) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("VALIDATION_ERROR", errors[0].message, { issues: errors }, req.id),
+        );
+    }
+
+    const logs = await AuditLog.find(filter)
+      .populate("userId", "name handle")
+      .sort({ createdAt: -1 })
+      .limit(EXPORT_MAX_ROWS)
+      .lean();
+
+    const header = [
+      "createdAt",
+      "action",
+      "actorName",
+      "actorId",
+      "resourceType",
+      "resourceId",
+      "result",
+      "riskLevel",
+      "ip",
+      "userAgent",
+      "endpoint",
+      "method",
+      "statusCode",
+      "changesBefore",
+      "changesAfter",
+      "metadataReason",
+      "gdprRelevant",
+      "dataCategories",
+    ];
+
+    const rows = logs.map((l) =>
+      [
+        l.createdAt ? l.createdAt.toISOString() : "",
+        l.action,
+        (l.userId && (l.userId.name || l.userId.handle)) || "سیستم",
+        l.userId ? String(l.userId._id) : "",
+        l.resource?.type || "",
+        l.resource?.id ? String(l.resource.id) : "",
+        l.result || "",
+        l.riskLevel || "",
+        l.requestContext?.ip || "",
+        l.requestContext?.userAgent || "",
+        l.requestContext?.endpoint || "",
+        l.requestContext?.method || "",
+        l.requestContext?.statusCode ?? "",
+        l.changes?.before ?? null,
+        l.changes?.after ?? null,
+        l.metadata?.reason || "",
+        l.compliance?.gdprRelevant ? "true" : "false",
+        (l.compliance?.dataCategories || []).join("|"),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="audit-logs-${date}.csv"`,
+    );
+    res.write("\uFEFF");
+    res.write(header.map(csvCell).join(",") + "\r\n");
+    res.write(rows.join("\r\n"));
+    res.end();
+  } catch (e) {
+    logger.error("Admin exportAuditLogs error", { error: e.message, stack: e.stack, userId: req.user?.id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
   }
 }
 
@@ -1258,22 +1669,28 @@ async function getSettings(req, res) {
 
 module.exports = {
   getStats,
+  streamLiveEvents,
   getUsers,
   updateUserRole,
   updateUserPermissions,
   toggleUserBlock,
   deleteUser,
+  getUserSessions,
+  revokeUserSession,
   getListings,
   updateListingStatus,
   updateListingContent,
   getCrafts,
   setCraftPublish,
+  listComments,
+  removeComment,
   listProviders,
   getProvider,
   updateProviderStatus,
   updateProfile,
   logoutAll,
   listAuditLogs,
-  getAuditLogs: listAuditLogs,
+  getAuditLog,
+  exportAuditLogs,
   getSettings,
 };

@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   FileText,
   Hammer,
+  MessageSquare,
   ScrollText,
   Settings,
   LogOut,
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: "/admin/providers", label: "ارائه‌دهندگان", icon: BadgeCheck },
   { to: "/admin/listings", label: "محتواها", icon: FileText },
   { to: "/admin/crafts", label: "صنایع دستی", icon: Hammer },
+  { to: "/admin/comments", label: "دیدگاه‌ها", icon: MessageSquare },
   { to: "/admin/audit-logs", label: "گزارش عملیات", icon: ScrollText },
   { to: "/admin/settings", label: "تنظیمات", icon: Settings },
 ];
