@@ -22,7 +22,10 @@ function withTimeout(promiseFactory, ms, timeoutLabel) {
 const MELIPAYAMAK_USERNAME = process.env.SMS_USERNAME;
 const MELIPAYAMAK_PASSWORD = process.env.SMS_PASSWORD;
 const MELIPAYAMAK_FROM = process.env.SMS_FROM || "50004001854432";
-const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "09";
+// Recipients are Iranian mobiles: apply the Iran country code (+98 → 98xxxxxxxxx)
+// by default so the provider can deliver. '09' keeps the national format, '+98'
+// produces the plus-prefixed international form.
+const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "98";
 const SMS_TIMEOUT_MS = parseInt(process.env.SMS_TIMEOUT_MS || "4000", 10); // 3-5s recommended
 
 /**
@@ -37,7 +40,8 @@ async function sendOtpSms(phone, code) {
     throw new Error("Phone number and code are required");
   }
 
-  // Format phone number for provider
+  // Format phone number for provider, applying the configured country-code
+  // format (defaults to Iran +98) so SMS reaches the user's entered number.
   let formattedPhone;
   try {
     formattedPhone = formatForProvider(phone, MELIPAYAMAK_TO_FORMAT);
@@ -45,6 +49,12 @@ async function sendOtpSms(phone, code) {
     logger.error("Phone formatting error", { phone, error: err.message });
     throw new Error("Invalid phone number format");
   }
+
+  logger.info("SMS recipient prepared", {
+    input: phone,
+    recipient: formattedPhone,
+    format: MELIPAYAMAK_TO_FORMAT,
+  });
 
   // Persian OTP message
   const message = `کد تایید نخشا:
@@ -77,6 +87,9 @@ Code: ${code}
   }
 
   const api = new MelipayamakApi(MELIPAYAMAK_USERNAME, MELIPAYAMAK_PASSWORD);
+  // `api.sms()` in melipayamak@1.0.5 returns the promise-based async client
+  // (RestAsync). Its send() resolves with the provider JSON response, so we
+  // await it directly instead of using a callback that the client never calls.
   const sms = api.sms();
 
   logger.info("Attempting to send SMS", {
@@ -87,27 +100,23 @@ Code: ${code}
     hasPassword: !!MELIPAYAMAK_PASSWORD,
   });
 
+  // Provider reports a delivered SMS when RetStatus === 1 (or a non-zero Value).
+  const isSuccess = (res) => {
+    if (!res) return false;
+    if (Number(res.RetStatus) === 1) return true;
+    if (res.Value && String(res.Value) !== "0") return true;
+    return false;
+  };
+
   try {
-    // Try REST API first with timeout
+    // Try REST API first (promise-based client) with timeout
     const restResult = await withTimeout(
-      () =>
-        new Promise((resolve, reject) => {
-          sms.send(
-            formattedPhone,
-            MELIPAYAMAK_FROM,
-            message,
-            (response, error) => {
-              if (error) return reject(new Error(`REST API error: ${error}`));
-              resolve(response);
-            }
-          );
-        }),
+      () => sms.send(formattedPhone, MELIPAYAMAK_FROM, message),
       SMS_TIMEOUT_MS,
-      "REST API"
+      "REST API",
     );
 
-    // Only log success if provider indicates success
-    if (restResult && String(restResult).trim()) {
+    if (isSuccess(restResult)) {
       logger.info("SMS sent successfully via REST", {
         phone: formattedPhone,
         result: restResult,
@@ -115,8 +124,7 @@ Code: ${code}
       return;
     }
 
-    // If result is falsy/empty, treat as failure and try fallback
-    throw new Error("REST API returned empty result");
+    throw new Error(`MeliPayamak REST error: ${JSON.stringify(restResult)}`);
   } catch (restError) {
     logger.warn("REST API failed, trying SOAP fallback", {
       error: restError.message,
@@ -124,38 +132,23 @@ Code: ${code}
     });
 
     try {
-      // Fallback to SOAP API if available with timeout
-      if (typeof sms.sendByBaseNumber === "function") {
-        const soapResult = await withTimeout(
-          () =>
-            new Promise((resolve, reject) => {
-              sms.sendByBaseNumber(
-                message,
-                formattedPhone,
-                MELIPAYAMAK_FROM,
-                (response, error) => {
-                  if (error)
-                    return reject(new Error(`SOAP API error: ${error}`));
-                  resolve(response);
-                }
-              );
-            }),
-          SMS_TIMEOUT_MS,
-          "SOAP API"
-        );
+      // Fallback to SOAP API (promise-based) with timeout
+      const soap = api.sms("soap", "async");
+      const soapResult = await withTimeout(
+        () => soap.send(formattedPhone, MELIPAYAMAK_FROM, message),
+        SMS_TIMEOUT_MS,
+        "SOAP API",
+      );
 
-        if (soapResult && String(soapResult).trim()) {
-          logger.info("SMS sent successfully via SOAP", {
-            phone: formattedPhone,
-            result: soapResult,
-          });
-          return;
-        }
-
-        throw new Error("SOAP API returned empty result");
-      } else {
-        throw new Error("SOAP method not available");
+      if (isSuccess(soapResult)) {
+        logger.info("SMS sent successfully via SOAP", {
+          phone: formattedPhone,
+          result: soapResult,
+        });
+        return;
       }
+
+      throw new Error(`MeliPayamak SOAP error: ${JSON.stringify(soapResult)}`);
     } catch (soapError) {
       logger.error("Both REST and SOAP APIs failed", {
         phone: formattedPhone,
@@ -207,7 +200,7 @@ async function testConfiguration() {
 
     // Test with dummy data (won't actually send)
     const api = new MelipayamakApi(MELIPAYAMAK_USERNAME, MELIPAYAMAK_PASSWORD);
-    const sms = api.sms();
+    api.sms();
 
     logger.info("MeliPayamak service configured", {
       username: MELIPAYAMAK_USERNAME,
