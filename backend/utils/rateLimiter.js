@@ -119,6 +119,13 @@ function checkRateLimit(identifier, type = "ip") {
  * Rate limiting middleware for OTP endpoints
  */
 function otpRateLimit(req, res, next) {
+  // Skip rate limiting in development so local logins and automated dev
+  // tests never trip the anti-brute-force budget. Mirrors the behavior of
+  // middleware/rateLimiter.js. Production keeps full protection.
+  if (process.env.NODE_ENV === "development") {
+    return next();
+  }
+
   const clientIP = req.ip || req.connection.remoteAddress || "unknown";
   const phone = req.body?.phone;
 
@@ -198,6 +205,13 @@ function otpRateLimit(req, res, next) {
  * Detects potential brute-force attacks and bot activity
  */
 function detectSuspiciousActivity(req, phone) {
+  // Skip suspicious-activity heuristics in development (same rationale as the
+  // otpRateLimit bypass): automated dev tests / rapid local logins must not be
+  // falsely flagged as bots. Production keeps full detection.
+  if (process.env.NODE_ENV === "development") {
+    return [];
+  }
+
   const clientIP = req.ip || req.connection.remoteAddress;
   const userAgent = req.get("User-Agent") || "unknown";
 
