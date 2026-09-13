@@ -22,10 +22,9 @@ function withTimeout(promiseFactory, ms, timeoutLabel) {
 const MELIPAYAMAK_USERNAME = process.env.SMS_USERNAME;
 const MELIPAYAMAK_PASSWORD = process.env.SMS_PASSWORD;
 const MELIPAYAMAK_FROM = process.env.SMS_FROM || "50004001854432";
-// Recipients are Iranian mobiles: apply the Iran country code (+98 → 98xxxxxxxxx)
-// by default so the provider can deliver. '09' keeps the national format, '+98'
-// produces the plus-prefixed international form.
-const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "98";
+// Recipients are Iranian mobiles: national format 09xxxxxxxxx by default so the
+// provider delivers to the user's entered number. '98' produces 989xxxxxxxxx.
+const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "09";
 const SMS_TIMEOUT_MS = parseInt(process.env.SMS_TIMEOUT_MS || "4000", 10); // 3-5s recommended
 
 /**
@@ -100,12 +99,27 @@ Code: ${code}
     hasPassword: !!MELIPAYAMAK_PASSWORD,
   });
 
-  // Provider reports a delivered SMS when RetStatus === 1 (or a non-zero Value).
+  // Provider reports a delivered SMS only when RetStatus === 1 on the JSON REST
+  // response. The SOAP API returns a numeric recId (here 10-digit, e.g.
+  // 2474231322) on success and a small error code ("2", "-1", "-4", ...)
+  // otherwise, so only a >=4-digit positive integer counts as delivered.
   const isSuccess = (res) => {
-    if (!res) return false;
-    if (Number(res.RetStatus) === 1) return true;
-    if (res.Value && String(res.Value) !== "0") return true;
-    return false;
+    if (res === null || res === undefined) return false;
+    if (typeof res === "object") {
+      return Number(res.RetStatus) === 1;
+    }
+    const n = Number(String(res).trim());
+    return Number.isInteger(n) && n >= 1000;
+  };
+
+  // Format a provider failure, flagging the most common cause: the panel
+  // returns RetStatus 35 (InvalidData) or SOAP "2" when its credit is empty.
+  const describeFailure = (api, res) => {
+    const raw = typeof res === "object" ? JSON.stringify(res) : String(res);
+    if (/^2$/.test(String(res).trim()) || /"RetStatus":\s*35/.test(raw)) {
+      return `${api} API rejected (${String(res).trim() || raw}); the MeliPayamak panel usually returns this when its credit is exhausted`;
+    }
+    return `${api} API error: ${raw}`;
   };
 
   try {
@@ -124,7 +138,7 @@ Code: ${code}
       return;
     }
 
-    throw new Error(`MeliPayamak REST error: ${JSON.stringify(restResult)}`);
+    throw new Error(describeFailure("REST", restResult));
   } catch (restError) {
     logger.warn("REST API failed, trying SOAP fallback", {
       error: restError.message,
@@ -148,7 +162,7 @@ Code: ${code}
         return;
       }
 
-      throw new Error(`MeliPayamak SOAP error: ${JSON.stringify(soapResult)}`);
+      throw new Error(describeFailure("SOAP", soapResult));
     } catch (soapError) {
       logger.error("Both REST and SOAP APIs failed", {
         phone: formattedPhone,

@@ -83,7 +83,7 @@ function isValidIranianPhone(phone) {
  * Formats phone number for SMS provider based on configuration.
  * Accepts any input variant (0912…, 912…, 9812…, +9812…) through normalizePhone.
  * @param {string} phone - Normalized phone number (09xxxxxxxxx)
- * @param {string} format - Format type: '09' = national, '98' = 98xxxxxxxxx, '+98' = +98xxxxxxxxx
+ * @param {string} format - Format type: '09' = national, '98' = 98xxxxxxxxx (for providers that require it)
  * @returns {string} Formatted phone number
  */
 function formatForProvider(phone, format = "09") {
@@ -95,29 +95,10 @@ function formatForProvider(phone, format = "09") {
 
   if (format === "98") {
     return "98" + normalized.substring(1); // 09xxxxxxxxx -> 989xxxxxxxxx
-  } else if (format === "+98") {
-    return "+98" + normalized.substring(1); // 09xxxxxxxxx -> +989xxxxxxxxx
   } else {
     // Keep as 09xxxxxxxxx (default)
     return normalized;
   }
-}
-
-/**
- * Formats an Iranian mobile number to canonical international form.
- * Applies the Iran country code (+98) to whatever variant the user entered
- * (09xxxxxxxxx, 9xxxxxxxxx, 989xxxxxxxxx, +989xxxxxxxxx, or Persian digits).
- * @param {string} phone - Phone number as entered by the user
- * @returns {string} Number in '+989xxxxxxxxx' form
- * @throws {Error} If the number is not a valid Iranian mobile number
- */
-function toIranInternational(phone) {
-  if (typeof phone !== "string") throw new Error("Invalid phone number");
-  const normalized = normalizePhone(phone);
-  if (!isValidIranianPhone(normalized)) {
-    throw new Error("Invalid Iranian phone number");
-  }
-  return "+98" + normalized.substring(1);
 }
 
 module.exports = {
@@ -125,5 +106,4 @@ module.exports = {
   normalizePhone,
   isValidIranianPhone,
   formatForProvider,
-  toIranInternational,
 };
