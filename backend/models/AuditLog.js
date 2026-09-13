@@ -1,6 +1,23 @@
 const mongoose = require("mongoose");
 
 /**
+ * Resource sub-schema.
+ * Standalone schema object (not inline) so `resource` stays optional:
+ * an embedded subdocument only validates its children when actually provided.
+ */
+const resourceSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["USER", "LISTING", "CRAFT", "POST", "ARTISAN", "TRANSACTION"],
+      required: true,
+    },
+    id: mongoose.Schema.Types.ObjectId, // Resource ID
+  },
+  { _id: false },
+);
+
+/**
  * Audit Log Schema
  * Records all sensitive operations for security compliance and investigation
  *
@@ -96,14 +113,7 @@ const auditLogSchema = new mongoose.Schema(
     },
 
     // What resource was affected
-    resource: {
-      type: {
-        type: String,
-        enum: ["USER", "LISTING", "CRAFT", "POST", "ARTISAN", "TRANSACTION"],
-        required: true,
-      },
-      id: mongoose.Schema.Types.ObjectId, // Resource ID
-    },
+    resource: resourceSchema,
 
     // State before/after for comparison
     changes: {
