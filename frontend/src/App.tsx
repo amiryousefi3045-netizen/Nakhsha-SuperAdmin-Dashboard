@@ -118,7 +118,7 @@ function App() {
             <Route
               path="create"
               element={
-                <RequireAuth roles={["admin", "user"]}>
+                <RequireAuth>
                   <CreateListingTypePage />
                 </RequireAuth>
               }
@@ -127,7 +127,7 @@ function App() {
             <Route
               path="create/new"
               element={
-                <RequireAuth roles={["admin", "user"]}>
+                <RequireAuth>
                   <CreateListingWizardPage />
                 </RequireAuth>
               }

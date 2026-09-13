@@ -1197,7 +1197,10 @@ const WizardContent: FC = () => {
           "برای انتشار آگهی باید ابتدا وارد حساب کاربری خود شوید.",
         );
       } else if (code === "FORBIDDEN" || status === 403) {
-        setPublishError("برای انتشار آگهی باید پروفایل صنعتگر داشته باشید.");
+        setPublishError(
+          apiErr?.message ||
+            "برای انتشار آگهی باید پروفایل صنعتگر داشته باشید.",
+        );
       } else if (
         code === "VALIDATION_ERROR" ||
         status === 400 ||
