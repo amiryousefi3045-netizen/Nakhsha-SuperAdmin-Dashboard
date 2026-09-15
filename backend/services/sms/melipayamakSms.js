@@ -231,7 +231,73 @@ async function testConfiguration() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Service status / credit probe
+// ---------------------------------------------------------------------------
+
+// Short-lived cache so /api/health and the admin panel do not hammer the
+// provider's GetCredit endpoint on every poll.  Keyed on wall-clock time.
+let creditCache = null;
+const CREDIT_CACHE_TTL_MS = 60 * 1000;
+
+/**
+ * Non-intrusive status of the SMS pipeline.  Never throws.
+ *
+ * - `configured` – credentials present.
+ * - `mock`       – SMS_MOCK=true (or dev-without-credentials).
+ * - `mode`       – "mock" | "live" | "disabled".
+ * - `credit`     – provider balance when reachable and configured; null when
+ *                  disabled/mocked/probe-failed (credit is cached 60s).
+ *
+ * The provider is never dialed from the test environment.
+ *
+ * @returns {Promise<object>}
+ */
+async function getSmsStatus() {
+  const configured = Boolean(MELIPAYAMAK_USERNAME && MELIPAYAMAK_PASSWORD);
+  const mock =
+    process.env.SMS_MOCK === "true" ||
+    (process.env.NODE_ENV === "development" && !configured);
+
+  const base = {
+    configured,
+    mock,
+    mode: mock ? "mock" : configured ? "live" : "disabled",
+    from: MELIPAYAMAK_FROM,
+    toFormat: MELIPAYAMAK_TO_FORMAT,
+    hasUsername: Boolean(MELIPAYAMAK_USERNAME),
+    hasPassword: Boolean(MELIPAYAMAK_PASSWORD),
+    lastCheckAt: null,
+    credit: null,
+  };
+
+  if (!configured || mock || process.env.NODE_ENV === "test") return base;
+
+  const now = Date.now();
+  if (creditCache && now - creditCache.at < CREDIT_CACHE_TTL_MS) {
+    return { ...base, credit: creditCache.value, lastCheckAt: creditCache.at };
+  }
+
+  try {
+    const api = new MelipayamakApi(MELIPAYAMAK_USERNAME, MELIPAYAMAK_PASSWORD);
+    const sms = api.sms();
+    const credit = await withTimeout(
+      () => sms.getCredit(),
+      2000,
+      "GetCredit probe",
+    );
+    const value =
+      credit && typeof credit === "object" ? credit.Value : credit ?? null;
+    creditCache = { at: Date.now(), value };
+    return { ...base, credit: value, lastCheckAt: Date.now() };
+  } catch (err) {
+    logger.warn("SMS credit probe failed", { error: err.message });
+    return { ...base, credit: null, lastCheckAt: Date.now() };
+  }
+}
+
 module.exports = {
   sendOtpSms,
   testConfiguration,
+  getSmsStatus,
 };

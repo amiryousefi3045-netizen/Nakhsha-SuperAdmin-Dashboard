@@ -64,6 +64,17 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// SMS service status
+//   GET /api/admin/sms-status
+// ---------------------------------------------------------------------------
+router.get(
+  "/sms-status",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.getSmsStatus,
+);
+
+// ---------------------------------------------------------------------------
 // Live events (Server-Sent Events)
 //   GET /api/admin/events/live
 // ---------------------------------------------------------------------------
@@ -85,7 +96,7 @@ router.get(
 const listUsersQuerySchema = z.object({
   ...paginationSchema,
   q: z.string().trim().max(100).optional(),
-  role: z.enum(["user", "tour_leader", "admin", "super_admin"]).optional(),
+  role: z.enum(["user", "creator", "seller", "admin", "super_admin"]).optional(),
 });
 
 const userIdParamsSchema = z.object({
@@ -93,7 +104,7 @@ const userIdParamsSchema = z.object({
 });
 
 const updateUserRoleSchema = z.object({
-  role: z.enum(["user", "tour_leader", "admin"]),
+  role: z.enum(["user", "creator", "seller", "admin"]),
 });
 
 const updateUserPermissionsSchema = z.object({
@@ -166,7 +177,7 @@ const bulkUserBlockSchema = z.object({
 
 const bulkUserRoleSchema = z.object({
   ...batchIdsSchema,
-  role: z.enum(["user", "tour_leader", "admin"]),
+  role: z.enum(["user", "creator", "seller", "admin"]),
 });
 
 const bulkUserDeleteSchema = z.object(batchIdsSchema);
@@ -383,7 +394,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// Provider (admins & tour guides) management
+// Provider (admins & creators) management
 //   GET     /api/admin/providers
 //   GET     /api/admin/providers/:providerId
 //   PATCH   /api/admin/providers/:providerId/status
@@ -391,7 +402,7 @@ router.get(
 const listProvidersQuerySchema = z.object({
   ...paginationSchema,
   status: z.enum(["active", "suspended", "pending"]).optional(),
-  role: z.enum(["admin", "tour_leader"]).default("tour_leader"),
+  role: z.enum(["admin", "creator"]).default("creator"),
 });
 
 router.get(

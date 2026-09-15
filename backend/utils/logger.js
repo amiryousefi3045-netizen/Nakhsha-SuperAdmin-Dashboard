@@ -54,16 +54,22 @@ const transports = [
   new winston.transports.Console({
     format: consoleFormat,
   }),
-  // فایل برای همه لاگ‌ها
+  // فایل برای همه لاگ‌ها (چرخش بر اساس سایز — از رشد بی‌منتها جلوگیری می‌کند)
   new winston.transports.File({
     filename: "logs/all.log",
     format: fileFormat,
+    maxsize: 5 * 1024 * 1024, // 5MB per file
+    maxFiles: 7, // keep one week of rotated files
+    zippedArchive: true,
   }),
   // فایل جداگانه برای خطاها
   new winston.transports.File({
     filename: "logs/error.log",
     level: "error",
     format: fileFormat,
+    maxsize: 5 * 1024 * 1024,
+    maxFiles: 14,
+    zippedArchive: true,
   }),
 ];
 
@@ -77,12 +83,12 @@ const logger = winston.createLogger({
 
 // Handle uncaught exceptions
 logger.exceptions.handle(
-  new winston.transports.File({ filename: "logs/exceptions.log" }),
+  new winston.transports.File({ filename: "logs/exceptions.log", maxsize: 5 * 1024 * 1024, maxFiles: 7, zippedArchive: true }),
 );
 
 // Handle unhandled promise rejections
 logger.rejections.handle(
-  new winston.transports.File({ filename: "logs/rejections.log" }),
+  new winston.transports.File({ filename: "logs/rejections.log", maxsize: 5 * 1024 * 1024, maxFiles: 7, zippedArchive: true }),
 );
 
 module.exports = logger;

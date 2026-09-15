@@ -25,6 +25,7 @@ const TokenService = require("../services/TokenService");
 const AuditService = require("../services/AuditService");
 const adminStats = require("../services/adminStats");
 const adminEventHub = require("../services/AdminEventHub");
+const smsService = require("../services/sms/melipayamakSms");
 const securityAudit = require("../services/securityAudit");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
@@ -32,7 +33,7 @@ const { z } = require("zod");
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const ALLOWED_USER_ROLES = ["user", "tour_leader", "admin"];
+const ALLOWED_USER_ROLES = ["user", "creator", "seller", "admin"];
 const ALLOWED_PERMISSIONS = [
   "DELETE_USERS",
   "APPROVE_CONTENT",
@@ -195,6 +196,20 @@ async function getStats(req, res) {
   }
 }
 
+// ── SMS service status ──────────────────────────────────────────────────────
+
+async function getSmsStatus(_req, res) {
+  try {
+    const status = await smsService.getSmsStatus();
+    res.json(createSuccessResponse(status));
+  } catch (e) {
+    logger.error("Admin SMS status error", { error: e.message, stack: e.stack });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, _req.id));
+  }
+}
+
 // ── Users ───────────────────────────────────────────────────────────────────
 
 async function getUsers(req, res) {
@@ -207,7 +222,7 @@ async function getUsers(req, res) {
     const filter = {};
 
     if (role) {
-      if (!["user", "tour_leader", "admin", "super_admin"].includes(role)) {
+      if (!["user", "creator", "seller", "admin", "super_admin"].includes(role)) {
         return res
           .status(400)
           .json(createErrorResponse("VALIDATION_ERROR", "نقش نامعتبر است", { field: "role" }, req.id));
@@ -1416,9 +1431,9 @@ async function removeComment(req, res) {
   }
 }
 
-// ── Providers (admins & tour guides) ────────────────────────────────────────
+// ── Providers (admins & creators) ───────────────────────────────────────────
 
-const PROVIDER_ROLES = ["admin", "tour_leader"];
+const PROVIDER_ROLES = ["admin", "creator"];
 const PROVIDER_STATUSES = ["active", "suspended", "pending"];
 
 function providerStatusOf(user) {
@@ -2045,6 +2060,7 @@ async function runSecurityAudit(req, res) {
 
 module.exports = {
   getStats,
+  getSmsStatus,
   streamLiveEvents,
   getUsers,
   updateUserRole,
