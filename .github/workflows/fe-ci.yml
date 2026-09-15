@@ -47,3 +47,9 @@ jobs:
 
       - name: Smoke tests
         run: npm run smoke
+
+      - name: Audit dependencies (high severity)
+        # TODO: flip to blocking (remove continue-on-error) once outstanding
+        # high-severity advisories are resolved.
+        continue-on-error: true
+        run: npm audit --audit-level=high

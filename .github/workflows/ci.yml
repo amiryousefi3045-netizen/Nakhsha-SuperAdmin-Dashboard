@@ -46,12 +46,19 @@ jobs:
       - name: Lint (ESLint)
         run: npm run lint
 
-      - name: Run tests (Jest)
-        run: npm test
+      - name: Run tests (Jest + coverage gate)
+        run: npm run test:coverage
         env:
           NODE_ENV: test
           JWT_SECRET: ci-test-secret-for-jest-only
           MONGO_URI: mongodb://localhost:27017/nakhsha_test
+
+      - name: Audit dependencies (high severity)
+        # TODO: flip continue-on-error to false once outstanding high-severity
+        # advisories have been resolved. Kept non-blocking for now so registry
+        # availability issues cannot silently break the pipeline.
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
   # ─────────────────────────────────────────────
   # Frontend: lint → typecheck → build (Vite)
