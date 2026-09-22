@@ -38,6 +38,7 @@ const ListingsAdmin = lazy(() => import("./pages/admin/ListingsAdmin"));
 const CraftsAdmin = lazy(() => import("./pages/admin/CraftsAdmin"));
 const CommentsAdmin = lazy(() => import("./pages/admin/CommentsAdmin"));
 const AuditLogsAdmin = lazy(() => import("./pages/admin/AuditLogsAdmin"));
+const AdminPayouts = lazy(() => import("./pages/admin/AdminPayouts"));
 const SettingsAdmin = lazy(() => import("./pages/admin/SettingsAdmin"));
 
 const DashboardSeller = lazy(() => import("./pages/seller/DashboardSeller"));
@@ -263,6 +264,14 @@ function App() {
               element={
                 <AdminPageSuspense>
                   <AuditLogsAdmin />
+                </AdminPageSuspense>
+              }
+            />
+            <Route
+              path="payouts"
+              element={
+                <AdminPageSuspense>
+                  <AdminPayouts />
                 </AdminPageSuspense>
               }
             />

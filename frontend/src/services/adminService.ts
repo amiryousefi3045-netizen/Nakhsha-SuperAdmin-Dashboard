@@ -14,6 +14,8 @@ import type {
   AdminListing,
   AdminLiveEvent,
   AdminPage,
+  AdminPayout,
+  AdminPayoutOverview,
   AdminPermission,
   AdminProvider,
   AdminSettings,
@@ -27,12 +29,14 @@ import type {
   BatchResponse,
   ExportFile,
   ListingStatus,
+  ListAdminPayoutsParams,
   ListAuditLogsParams,
   ListCommentsParams,
   ListCraftsParams,
   ListListingsParams,
   ListProvidersParams,
   ListUsersParams,
+  UpdateAdminPayoutStatusInput,
   UserSessionsResult,
 } from "../types/admin";
 
@@ -277,6 +281,45 @@ export async function deleteAdminComment(
     `/admin/comments/${encodeURIComponent(craftId)}/${encodeURIComponent(commentId)}`,
   );
   return unwrap(res);
+}
+
+// ── Payout settlement queue ────────────────────────────────────────────────
+
+/** GET /admin/payouts */
+export async function getAdminPayouts(params: ListAdminPayoutsParams = {}): Promise<AdminPaged<AdminPayout>> {
+  const res = await apiClient.get<AdminPage<AdminPayout>>("/admin/payouts", { params });
+  return paged(res);
+}
+
+/** GET /admin/payouts/overview */
+export async function getAdminPayoutOverview(): Promise<AdminPayoutOverview> {
+  const res = await apiClient.get<{ overview: AdminPayoutOverview }>("/admin/payouts/overview");
+  return unwrap(res).overview;
+}
+
+/** GET /admin/payouts/:id — payout + the seller's live balance snapshot. */
+export async function getAdminPayoutDetail(id: string): Promise<{
+  payout: AdminPayout;
+  balance: {
+    currency: string;
+    net: { earned: number; available: number };
+    gross: { delivered: number; shipped: number; held: number };
+    outlaid: { requested: number; processing: number; paid: number };
+  };
+}> {
+  const res = await apiClient.get<{
+    payout: AdminPayout;
+    balance: { currency: string; net: { earned: number; available: number }; gross: { delivered: number; shipped: number; held: number }; outlaid: { requested: number; processing: number; paid: number } };
+  }>(`/admin/payouts/${encodeURIComponent(id)}`);
+  return unwrap(res);
+}
+
+type AdminPayoutStatusEnvelope = { payout: AdminPayout };
+
+/** PATCH /admin/payouts/:id/status */
+export async function updateAdminPayoutStatus(id: string, input: UpdateAdminPayoutStatusInput): Promise<AdminPayout> {
+  const res = await apiClient.patch<AdminPayoutStatusEnvelope>(`/admin/payouts/${encodeURIComponent(id)}/status`, input);
+  return unwrap(res).payout;
 }
 
 // ── Live events (SSE) ──────────────────────────────────────────────────────

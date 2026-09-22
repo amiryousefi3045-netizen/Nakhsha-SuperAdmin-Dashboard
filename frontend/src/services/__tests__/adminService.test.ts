@@ -42,6 +42,10 @@ import {
   parseAdminLiveEvent,
   getAdminSettings,
   adminLogoutAll,
+  getAdminPayouts,
+  getAdminPayoutOverview,
+  getAdminPayoutDetail,
+  updateAdminPayoutStatus,
 } from "../adminService";
 import { apiClient } from "../../lib/apiClient";
 
@@ -382,5 +386,92 @@ describe("audit logs, settings, account", () => {
     const result = await adminLogoutAll();
     expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/admin/logout-all");
     expect(result.message).toContain("نشست");
+  });
+});
+
+describe("payout settlement queue", () => {
+  const payout = {
+    id: "p1",
+    sellerId: "s1",
+    amount: 400000,
+    currency: "IRR",
+    status: "requested",
+    method: "bank_transfer",
+    note: "",
+    decisionNote: "",
+    reference: "",
+    timeline: [{ status: "requested", at: "2026-09-01T10:00:00.000Z", by: "s1", note: "" }],
+    createdAt: "2026-09-01T10:00:00.000Z",
+    updatedAt: "2026-09-01T10:00:00.000Z",
+    seller: { id: "s1", storeName: "فروشگاه نخشا", slug: "nakhsha-store" },
+  };
+
+  it("getAdminPayouts fetches the queue with filters and pagination metadata", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [payout], total: 1, page: 1, limit: 15 }),
+    );
+    const result = await getAdminPayouts({ page: 1, status: "requested", seller: "نخشا" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/payouts", {
+      params: { page: 1, status: "requested", seller: "نخشا" },
+    });
+    expect(result.items[0].seller?.storeName).toBe("فروشگاه نخشا");
+    expect(result.meta).toEqual({ page: 1, limit: 15, total: 1, totalPages: 1 });
+  });
+
+  it("getAdminPayoutOverview unwraps the overview envelope", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        overview: {
+          items: [
+            { status: "requested", count: 2, amount: 800000 },
+            { status: "paid", count: 1, amount: 500000 },
+          ],
+          totalCount: 3,
+          totalAmount: 1300000,
+        },
+      }),
+    );
+    const ov = await getAdminPayoutOverview();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/payouts/overview");
+    expect(ov.totalCount).toBe(3);
+    expect(ov.items.find((r) => r.status === "requested")?.amount).toBe(800000);
+  });
+
+  it("getAdminPayoutDetail returns the payout with its seller", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        payout,
+        balance: { currency: "IRR", net: { earned: 600000, available: 200000 } },
+      }),
+    );
+    const detail = await getAdminPayoutDetail("p1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/payouts/p1");
+    expect(detail.payout.seller?.slug).toBe("nakhsha-store");
+    expect(detail.balance.net.available).toBe(200000);
+  });
+
+  it("updateAdminPayoutStatus patches the status endpoint with reference/note", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ payout: { ...payout, status: "paid", reference: "PAY-2026-0001" } }),
+    );
+    const updated = await updateAdminPayoutStatus("p1", {
+      status: "paid",
+      reference: "PAY-2026-0001",
+      note: "واریز شد",
+    });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/admin/payouts/p1/status", {
+      status: "paid",
+      reference: "PAY-2026-0001",
+      note: "واریز شد",
+    });
+    expect(updated.status).toBe("paid");
+    expect(updated.reference).toBe("PAY-2026-0001");
+  });
+
+  it("updateAdminPayoutStatus surfaces the server error", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(fail());
+    await expect(
+      updateAdminPayoutStatus("p1", { status: "rejected" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

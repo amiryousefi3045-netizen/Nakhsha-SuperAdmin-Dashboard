@@ -8,6 +8,7 @@ import {
   Hammer,
   MessageSquare,
   ScrollText,
+  Wallet,
   Settings,
   LogOut,
   ExternalLink,
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { to: "/admin/crafts", label: "صنایع دستی", icon: Hammer },
   { to: "/admin/comments", label: "دیدگاه‌ها", icon: MessageSquare },
   { to: "/admin/audit-logs", label: "گزارش عملیات", icon: ScrollText },
+  { to: "/admin/payouts", label: "تسویه فروشندگان", icon: Wallet },
   { to: "/admin/settings", label: "تنظیمات", icon: Settings },
 ];
 

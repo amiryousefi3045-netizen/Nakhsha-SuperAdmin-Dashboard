@@ -372,6 +372,65 @@ router.delete(
 );
 
 // ---------------------------------------------------------------------------
+// Payout settlement queue
+//   GET    /api/admin/payouts/overview
+//   GET    /api/admin/payouts
+//   GET    /api/admin/payouts/:id
+//   PATCH  /api/admin/payouts/:id/status
+// ---------------------------------------------------------------------------
+const listPayoutsQuerySchema = z.object({
+  ...paginationSchema,
+  status: z
+    .enum(["requested", "processing", "paid", "cancelled", "rejected"])
+    .optional(),
+  method: z.enum(["bank_transfer", "card", "wallet", "other"]).optional(),
+  seller: z.string().trim().max(100).optional(),
+});
+
+const payoutIdParamsSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
+const updatePayoutStatusSchema = z.object({
+  status: z.enum(["processing", "paid", "rejected"]),
+  note: z.string().trim().max(500).optional(),
+  reference: z.string().trim().max(200).optional(),
+});
+
+// NOTE: "/payouts/overview" is static — registered BEFORE "/payouts/:id".
+router.get(
+  "/payouts/overview",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.getPayoutOverview,
+);
+
+router.get(
+  "/payouts",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(listPayoutsQuerySchema, "query"),
+  adminController.listPayouts,
+);
+
+router.get(
+  "/payouts/:id",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(payoutIdParamsSchema, "params"),
+  adminController.getPayoutDetail,
+);
+
+router.patch(
+  "/payouts/:id/status",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(payoutIdParamsSchema, "params"),
+  validate(updatePayoutStatusSchema, "body"),
+  adminController.updatePayoutStatus,
+);
+
+// ---------------------------------------------------------------------------
 // Settings / Health
 //   GET /api/admin/settings
 // ---------------------------------------------------------------------------

@@ -50,6 +50,7 @@ function payoutToDTO(payout) {
     status: p.status,
     method: p.method || "bank_transfer",
     note: p.note || "",
+    decisionNote: p.decisionNote || "",
     reference: p.reference || "",
     timeline: (p.timeline || []).map((entry) => ({
       status: entry.status,
@@ -60,6 +61,21 @@ function payoutToDTO(payout) {
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
+}
+
+/** Admin-facing payout row: base DTO + the owning seller's public context. */
+function adminPayoutToDTO(payout, seller = null) {
+  return {
+    ...payoutToDTO(payout),
+    seller: seller
+      ? { id: String(seller._id), storeName: seller.storeName, slug: seller.slug }
+      : null,
+  };
+}
+
+/** Regex-escape user input before embedding in a query (re DOS). */
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ── Balance computation (single source of truth) ────────────────────────────
@@ -277,15 +293,170 @@ async function cancelPayout({ sellerId, payoutId, sellerUserId, note }) {
   return payout;
 }
 
+// ── Admin / settlement-queue service ────────────────────────────────────────
+
+/**
+ * Admin view over every seller's payouts. Optional filter by status, method or
+ * seller store-name/slug/id. Attaches each row's seller context. Throws nothing:
+ * an unknown seller just yields an empty page.
+ */
+async function listAllPayouts({ page = 1, limit = 25, status, method, seller } = {}) {
+  const filter = {};
+  if (status && Payout.PAYOUT_STATUSES.includes(status)) {
+    filter.status = status;
+  }
+  if (method && Payout.PAYOUT_METHODS.includes(method)) {
+    filter.method = method;
+  }
+
+  if (seller && String(seller).trim()) {
+    const query = String(seller).trim();
+    const profileMatch = {
+      $or: [
+        { storeName: { $regex: escapeRegex(query), $options: "i" } },
+        { slug: { $regex: escapeRegex(query), $options: "i" } },
+      ],
+    };
+    if (query.match(/^[a-fA-F0-9]{24}$/)) {
+      profileMatch.$or.push({ _id: query });
+    }
+    const profiles = await SellerProfile.find(profileMatch).select("_id").lean();
+    if (profiles.length === 0) {
+      return { items: [], total: 0, page, limit };
+    }
+    filter.sellerId = { $in: profiles.map((p) => p._id) };
+  }
+
+  const skip = (page - 1) * limit;
+  const [items, total] = await Promise.all([
+    Payout.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Payout.countDocuments(filter),
+  ]);
+
+  const sellerIdsOnPage = [...new Set(items.map((p) => String(p.sellerId)))];
+  const sellers = sellerIdsOnPage.length
+    ? await SellerProfile.find({ _id: { $in: sellerIdsOnPage } }).select("storeName slug").lean()
+    : [];
+  const sellersById = new Map(sellers.map((s) => [String(s._id), s]));
+
+  return {
+    items: items.map((p) => adminPayoutToDTO(p, sellersById.get(String(p.sellerId)) || null)),
+    total,
+    page,
+    limit,
+  };
+}
+
+/** Per-status counts and totals across the whole settlement queue. */
+async function adminOverview() {
+  const rows = await Payout.aggregate([
+    { $group: { _id: "$status", count: { $sum: 1 }, amount: { $sum: "$amount" } } },
+  ]);
+  const byStatus = {};
+  for (const row of rows) {
+    byStatus[row._id] = { count: row.count, amount: row.amount };
+  }
+  const items = Payout.PAYOUT_STATUSES.map((status) => ({
+    status,
+    count: byStatus[status]?.count || 0,
+    amount: byStatus[status]?.amount || 0,
+  }));
+  return {
+    items,
+    totalCount: rows.reduce((sum, r) => sum + r.count, 0),
+    totalAmount: rows.reduce((sum, r) => sum + r.amount, 0),
+  };
+}
+
+/**
+ * Admin detail view: the payout + its seller + the seller's financial snapshot
+ * (useful as a sanity check before authorizing payment).
+ */
+async function getPayoutDetail(payoutId) {
+  const payout = await Payout.findById(payoutId).catch(() => null);
+  if (!payout) {
+    throw new PayoutDomainError("PAYOUT_NOT_FOUND", "درخواست تسویه یافت نشد", { field: "id" });
+  }
+  const seller = await SellerProfile.findById(payout.sellerId).select("storeName slug").lean();
+  const balance = await computeBalance(payout.sellerId);
+  return { payout: adminPayoutToDTO(payout, seller || null), balance };
+}
+
+/**
+ * Admin advances the settlement queue. Returns `{ payout, from }` so the
+ * controller can audit the exact transition.
+ *
+ * Matrix:
+ *   requested  -> processing | rejected   (start settlement / decline)
+ *   processing -> paid (reference req.) | rejected
+ *   paid/cancelled/rejected are terminal.
+ */
+async function updatePayoutStatus({ payoutId, adminUserId, to, note, reference }) {
+  const payout = await Payout.findById(payoutId).catch(() => null);
+  if (!payout) {
+    throw new PayoutDomainError("PAYOUT_NOT_FOUND", "درخواست تسویه یافت نشد", { field: "id" });
+  }
+
+  const allowedTargets = ["processing", "paid", "rejected"];
+  if (!allowedTargets.includes(to)) {
+    throw new PayoutDomainError("VALIDATION_ERROR", "وضعیت مقصد نامعتبر است", { field: "status" });
+  }
+
+  const from = payout.status;
+  const transitions = {
+    requested: ["processing", "rejected"],
+    processing: ["paid", "rejected"],
+  };
+  if (!(transitions[from] || []).includes(to)) {
+    throw new PayoutDomainError(
+      "INVALID_PAYOUT_TRANSITION",
+      `تغییر وضعیت تسویه از «${from}» به «${to}» مجاز نیست`,
+      { from, to },
+    );
+  }
+
+  if (to === "paid" && !(reference && String(reference).trim())) {
+    throw new PayoutDomainError(
+      "VALIDATION_ERROR",
+      "برای ثبت پرداخت، کد مرجع (رسید پرداخت) الزامی است",
+      { field: "reference" },
+    );
+  }
+
+  const trimmedNote = typeof note === "string" ? note.trim() : "";
+
+  payout.status = to;
+  if (trimmedNote) {
+    payout.decisionNote = trimmedNote;
+  }
+  if (to === "paid" && String(reference).trim()) {
+    payout.reference = String(reference).trim();
+  }
+  payout.timeline.push({
+    status: to,
+    at: new Date(),
+    by: adminUserId || null,
+    note: trimmedNote,
+  });
+  await payout.save();
+
+  return { payout, from };
+}
+
 module.exports = {
   PayoutDomainError,
   PAYOUT_STATUSES: Payout.PAYOUT_STATUSES,
   PAYOUT_METHODS: Payout.PAYOUT_METHODS,
   payoutToDTO,
+  adminPayoutToDTO,
   computeBalance,
   enforceBudgetLimit,
   summary,
   listPayouts,
   requestPayout,
   cancelPayout,
+  listAllPayouts,
+  adminOverview,
+  getPayoutDetail,
+  updatePayoutStatus,
 };

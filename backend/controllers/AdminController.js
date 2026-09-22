@@ -28,6 +28,7 @@ const adminEventHub = require("../services/AdminEventHub");
 const smsService = require("../services/sms/melipayamakSms");
 const TotpCredential = require("../models/TotpCredential");
 const TotpService = require("../services/TotpService");
+const FinanceService = require("../services/FinanceService");
 const securityAudit = require("../services/securityAudit");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
@@ -2141,6 +2142,123 @@ async function runSecurityAudit(req, res) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Payout settlement queue (super_admin only)
+//   GET   /api/admin/payouts/overview
+//   GET   /api/admin/payouts
+//   GET   /api/admin/payouts/:id
+//   PATCH /api/admin/payouts/:id/status
+// ════════════════════════════════════════════════════════════════════════════
+
+async function listPayouts(req, res) {
+  try {
+    const { status, method, seller, page: pageRaw, limit: limitRaw } = req.query;
+    const result = await FinanceService.listAllPayouts({
+      page: safePage(pageRaw),
+      limit: safePageSize(limitRaw),
+      status,
+      method,
+      seller,
+    });
+    res.json(createSuccessResponse(result, req.id));
+  } catch (e) {
+    logger.error("Admin listPayouts error", { error: e.message });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function getPayoutOverview(req, res) {
+  try {
+    const overview = await FinanceService.adminOverview();
+    res.json(createSuccessResponse({ overview }, req.id));
+  } catch (e) {
+    logger.error("Admin getPayoutOverview error", { error: e.message });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function getPayoutDetail(req, res) {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه درخواست تسویه نامعتبر است", { field: "id" }, req.id));
+    }
+    const detail = await FinanceService.getPayoutDetail(id);
+    res.json(createSuccessResponse(detail, req.id));
+  } catch (e) {
+    if (e instanceof FinanceService.PayoutDomainError) {
+      const statusMap = { PAYOUT_NOT_FOUND: 404 };
+      return res
+        .status(statusMap[e.code] || 404)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Admin getPayoutDetail error", { error: e.message });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updatePayoutStatus(req, res) {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه درخواست تسویه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const { status, note, reference } = req.body || {};
+    const { payout, from } = await FinanceService.updatePayoutStatus({
+      payoutId: id,
+      adminUserId: req.user.id,
+      to: status,
+      note: typeof note === "string" ? note : "",
+      reference: typeof reference === "string" ? reference : "",
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "PAYOUT_STATUS_CHANGED",
+      resource: { type: "TRANSACTION", id: String(payout._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        from,
+        to: payout.status,
+        amount: payout.amount,
+        method: payout.method,
+        ...(payout.reference ? { reference: payout.reference } : {}),
+        ...(payout.decisionNote ? { note: payout.decisionNote } : {}),
+      },
+    });
+
+    res.json(createSuccessResponse({ payout: FinanceService.payoutToDTO(payout) }, req.id));
+  } catch (e) {
+    if (e instanceof FinanceService.PayoutDomainError) {
+      const statusMap = {
+        VALIDATION_ERROR: 400,
+        INVALID_PAYOUT_TRANSITION: 409,
+        PAYOUT_NOT_FOUND: 404,
+      };
+      return res
+        .status(statusMap[e.code] || 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Admin updatePayoutStatus error", { error: e.message });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 module.exports = {
   getStats,
   getSmsStatus,
@@ -2177,4 +2295,8 @@ module.exports = {
   provisionTotp,
   enableTotp,
   disableTotp,
+  listPayouts,
+  getPayoutOverview,
+  getPayoutDetail,
+  updatePayoutStatus,
 };

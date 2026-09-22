@@ -283,3 +283,62 @@ export interface ListCommentsParams {
   q?: string;
   rating?: number;
 }
+
+// ── Payout settlement queue ────────────────────────────────────────────────
+
+export type AdminPayoutStatus = "requested" | "processing" | "paid" | "cancelled" | "rejected";
+export type AdminPayoutMethod = "bank_transfer" | "card" | "wallet" | "other";
+export type AdminPayoutTransition = "processing" | "paid" | "rejected";
+
+/** One payout timeline entry (who moved it and when). */
+export interface AdminPayoutTimelineEntry {
+  status: string;
+  at: string;
+  by: string | null;
+  note: string;
+}
+
+/** Payout row in the admin settlement queue. */
+export interface AdminPayout {
+  id: string;
+  sellerId: string;
+  amount: number;
+  currency: string;
+  status: AdminPayoutStatus;
+  method: AdminPayoutMethod;
+  note: string;
+  decisionNote: string;
+  reference: string;
+  timeline: AdminPayoutTimelineEntry[];
+  createdAt: string;
+  updatedAt: string;
+  seller: { id: string; storeName: string; slug: string } | null;
+}
+
+/** One status bucket of GET /admin/payouts/overview. */
+export interface AdminPayoutOverviewRow {
+  status: AdminPayoutStatus;
+  count: number;
+  amount: number;
+}
+
+export interface AdminPayoutOverview {
+  items: AdminPayoutOverviewRow[];
+  totalCount: number;
+  totalAmount: number;
+}
+
+export interface ListAdminPayoutsParams {
+  page?: number;
+  limit?: number;
+  status?: AdminPayoutStatus;
+  method?: AdminPayoutMethod;
+  seller?: string;
+}
+
+/** Payload of PATCH /admin/payouts/:id/status. */
+export interface UpdateAdminPayoutStatusInput {
+  status: AdminPayoutTransition;
+  note?: string;
+  reference?: string;
+}
