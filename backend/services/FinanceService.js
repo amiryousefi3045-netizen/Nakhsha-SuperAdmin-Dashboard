@@ -229,7 +229,7 @@ async function requestPayout({ sellerId, sellerUserId, amount, method, note }) {
     });
   }
 
-  const profile = await SellerProfile.findById(sellerId).select("finance").lean();
+  const profile = await SellerProfile.findById(sellerId).select("finance settings").lean();
   const terms = profile?.finance || {};
   const balance = await computeBalance(sellerId, profile);
 
@@ -248,13 +248,21 @@ async function requestPayout({ sellerId, sellerUserId, amount, method, note }) {
     );
   }
 
+  // Fall back to the store's configured default method when the seller omits
+  // (or sends an unsupported) method on this request.
+  const defaultMethod =
+    profile?.settings?.defaultPayoutMethod &&
+    Payout.PAYOUT_METHODS.includes(profile.settings.defaultPayoutMethod)
+      ? profile.settings.defaultPayoutMethod
+      : "bank_transfer";
+
   const payout = await Payout.create({
     sellerId,
     sellerUserId,
     amount,
     currency: balance.currency,
     status: "requested",
-    method: Payout.PAYOUT_METHODS.includes(method) ? method : "bank_transfer",
+    method: Payout.PAYOUT_METHODS.includes(method) ? method : defaultMethod,
     note: note || "",
     timeline: [{ status: "requested", at: new Date(), by: sellerUserId }],
   });

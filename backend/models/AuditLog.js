@@ -9,7 +9,16 @@ const resourceSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["USER", "LISTING", "CRAFT", "POST", "ARTISAN", "TRANSACTION"],
+      enum: [
+        "USER",
+        "LISTING",
+        "CRAFT",
+        "POST",
+        "ARTISAN",
+        "TRANSACTION",
+        "SELLER_PROFILE",
+        "TEAM_MEMBER",
+      ],
       required: true,
     },
     id: mongoose.Schema.Types.ObjectId, // Resource ID
@@ -123,6 +132,12 @@ const auditLogSchema = new mongoose.Schema(
         "PAYOUT_REQUESTED",
         "PAYOUT_CANCELLED",
         "PAYOUT_STATUS_CHANGED",
+
+        // Seller settings & team domain
+        "SELLER_SETTINGS_UPDATED",
+        "TEAM_MEMBER_INVITED",
+        "TEAM_MEMBER_ROLE_CHANGED",
+        "TEAM_MEMBER_REMOVED",
 
         // Security events
         "SUSPICIOUS_ACTIVITY_DETECTED",

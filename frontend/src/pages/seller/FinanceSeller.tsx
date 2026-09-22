@@ -17,6 +17,7 @@ import {
   cancelSellerPayout,
   getSellerFinance,
   getSellerPayouts,
+  getSellerSettings,
   requestSellerPayout,
 } from "../../services/sellerService";
 import type { PayoutMethod, SellerPayout } from "../../types/seller";
@@ -82,6 +83,13 @@ export function FinanceSeller() {
   useEffect(() => {
     void loadPayouts(page, statusFilter);
   }, [loadPayouts, page, statusFilter]);
+
+  // Prefill the payout method with the store's configured default.
+  useEffect(() => {
+    void getSellerSettings()
+      .then((s) => setMethod(s.defaultPayoutMethod))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {

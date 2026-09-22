@@ -53,7 +53,7 @@ const OrdersSeller = lazy(() => import("./pages/seller/OrdersSeller"));
 const OrderDetailSeller = lazy(() => import("./pages/seller/OrderDetailSeller"));
 const FulfillmentSeller = lazy(() => import("./pages/seller/FulfillmentSeller"));
 const FinanceSeller = lazy(() => import("./pages/seller/FinanceSeller"));
-const PlannedDomainPage = lazy(() => import("./pages/seller/PlannedDomainPage"));
+const SettingsSeller = lazy(() => import("./pages/seller/SettingsSeller"));
 
 const SellerPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense
@@ -403,11 +403,7 @@ function App() {
               path="settings"
               element={
                 <SellerPageSuspense>
-                  <PlannedDomainPage
-                    fetcher={() => Promise.resolve({ status: "planned", domain: "تنظیمات", message: "تنظیمات فروشنده هنوز در پلتفرم پیاده‌سازی نشده است؛ مدیریت پروفایل فروشگاه هم‌اکنون در بخش «پروفایل فروشگاه» در دسترس است." })}
-                    title="تنظیمات"
-                    staticMessage="تنظیمات فروشنده هنوز در پلتفرم پیاده‌سازی نشده است."
-                  />
+                  <SettingsSeller />
                 </SellerPageSuspense>
               }
             />

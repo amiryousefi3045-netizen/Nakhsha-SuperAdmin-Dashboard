@@ -14,7 +14,11 @@
  */
 const { Router } = require("express");
 const { requireAuth, requireRole } = require("../middleware/auth");
-const { requireSellerProfile } = require("../middleware/seller");
+const {
+  requireSellerProfile,
+  requireOwnerOnly,
+  requireManagerOrOwner,
+} = require("../middleware/seller");
 const { sellerWriteLimiter } = require("../middleware/rateLimiter");
 const sellerController = require("../controllers/SellerController");
 
@@ -105,6 +109,7 @@ router.get(
 router.patch(
   "/orders/:id/status",
   write,
+  requireManagerOrOwner,
   sellerController.changeOrderStatus,
 );
 router.get(
@@ -123,6 +128,7 @@ router.get(
   requireAuth,
   requireRole("seller"),
   requireSellerProfile,
+  requireOwnerOnly,
   sellerController.getFinance,
 );
 router.get(
@@ -130,10 +136,54 @@ router.get(
   requireAuth,
   requireRole("seller"),
   requireSellerProfile,
+  requireOwnerOnly,
   sellerController.getPayouts,
 );
-router.post("/payouts", write, sellerController.requestPayout);
-router.patch("/payouts/:id/cancel", write, sellerController.cancelPayout);
+router.post("/payouts", write, requireOwnerOnly, sellerController.requestPayout);
+router.patch(
+  "/payouts/:id/cancel",
+  write,
+  requireOwnerOnly,
+  sellerController.cancelPayout,
+);
+
+// ── Settings & team ─────────────────────────────────────────────────────────
+// Settings writes and the entire team roster are owner-only. Settings reads
+// stay open to members so the dashboard can render store prefs read-only.
+router.get(
+  "/settings",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.getSettings,
+);
+router.patch(
+  "/settings",
+  write,
+  requireOwnerOnly,
+  sellerController.updateSettings,
+);
+router.get(
+  "/team",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireOwnerOnly,
+  sellerController.listTeam,
+);
+router.post("/team", write, requireOwnerOnly, sellerController.inviteTeam);
+router.patch(
+  "/team/:id/role",
+  write,
+  requireOwnerOnly,
+  sellerController.changeTeamRole,
+);
+router.delete(
+  "/team/:id",
+  write,
+  requireOwnerOnly,
+  sellerController.removeTeamMember,
+);
 
 // ── Analytics ───────────────────────────────────────────────────────────────
 router.get(
@@ -141,6 +191,7 @@ router.get(
   requireAuth,
   requireRole("seller"),
   requireSellerProfile,
+  requireManagerOrOwner,
   sellerController.getAnalytics,
 );
 

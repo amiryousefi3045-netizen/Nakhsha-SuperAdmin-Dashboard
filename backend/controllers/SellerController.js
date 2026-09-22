@@ -7,6 +7,7 @@ const Order = require("../models/Order");
 const OrderService = require("../services/OrderService");
 const FinanceService = require("../services/FinanceService");
 const AuditService = require("../services/AuditService");
+const SettingsService = require("../services/SettingsService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
 
@@ -1092,6 +1093,161 @@ async function cancelPayout(req, res) {
   }
 }
 
+// ── Settings & team ─────────────────────────────────────────────────────────
+
+const SETTINGS_ERROR_STATUS = {
+  VALIDATION_ERROR: 400,
+  TEAM_MEMBER_USER_NOT_FOUND: 404,
+  TEAM_MEMBER_SELF_INVITE: 400,
+  TEAM_MEMBER_INVALID_USER: 400,
+  TEAM_MEMBER_IS_OWNER: 400,
+  TEAM_MEMBER_ALREADY_EXISTS: 409,
+  TEAM_MEMBER_NOT_FOUND: 404,
+};
+
+function settingsError(res, e, req) {
+  if (e instanceof SettingsService.SettingsDomainError) {
+    return res
+      .status(SETTINGS_ERROR_STATUS[e.code] || 400)
+      .json(createErrorResponse(e.code, e.message, e.details, req.id));
+  }
+  logger.error("Seller settings/team error", {
+    error: e.message,
+    sellerId: req.seller?._id,
+  });
+  return res
+    .status(500)
+    .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+}
+
+async function getSettings(req, res) {
+  try {
+    const settings = await SettingsService.getSettings(req.seller._id);
+    res.json(createSuccessResponse({ settings }, req.id));
+  } catch (e) {
+    settingsError(res, e, req);
+  }
+}
+
+async function updateSettings(req, res) {
+  try {
+    const updates = req.body || {};
+    const settings = await SettingsService.updateSettings(req.seller._id, updates);
+
+    const updatedFields = SettingsService.SETTINGS_KEYS.filter((k) => updates[k] !== undefined);
+    await AuditService.log({
+      userId: req.user.id,
+      action: "SELLER_SETTINGS_UPDATED",
+      resource: { type: "SELLER_PROFILE", id: String(req.seller._id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { updatedFields },
+    });
+
+    res.json(createSuccessResponse({ settings }, req.id));
+  } catch (e) {
+    settingsError(res, e, req);
+  }
+}
+
+async function listTeam(req, res) {
+  try {
+    const team = await SettingsService.listTeam(req.seller._id);
+    res.json(createSuccessResponse(team, req.id));
+  } catch (e) {
+    settingsError(res, e, req);
+  }
+}
+
+async function inviteTeam(req, res) {
+  try {
+    const { phone, role, note } = req.body || {};
+    const result = await SettingsService.inviteTeam({
+      sellerId: req.seller._id,
+      ownerUserId: req.user.id,
+      phone: typeof phone === "string" ? phone : "",
+      role,
+      note,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "TEAM_MEMBER_INVITED",
+      resource: { type: "SELLER_PROFILE", id: String(req.seller._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        userId: result.member.userId,
+        name: result.member.name,
+        role: result.member.role,
+        roleChanged: result.roleChanged,
+      },
+    });
+
+    res.json(createSuccessResponse({ member: result.member }, req.id));
+  } catch (e) {
+    settingsError(res, e, req);
+  }
+}
+
+async function changeTeamRole(req, res) {
+  try {
+    const { id } = req.params;
+    const { role } = req.body || {};
+    const result = await SettingsService.changeTeamRole({
+      sellerId: req.seller._id,
+      memberId: id,
+      role,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "TEAM_MEMBER_ROLE_CHANGED",
+      resource: { type: "SELLER_PROFILE", id: String(req.seller._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        userId: result.member.userId,
+        from: result.from,
+        to: result.member.role,
+      },
+    });
+
+    res.json(createSuccessResponse({ member: result.member }, req.id));
+  } catch (e) {
+    settingsError(res, e, req);
+  }
+}
+
+async function removeTeamMember(req, res) {
+  try {
+    const { id } = req.params;
+    const removed = await SettingsService.removeTeamMember({
+      sellerId: req.seller._id,
+      memberId: id,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "TEAM_MEMBER_REMOVED",
+      resource: { type: "SELLER_PROFILE", id: String(req.seller._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: { userId: removed.userId, role: removed.role },
+    });
+
+    res.json(
+      createSuccessResponse({ id: removed.id, message: "عضو تیم حذف شد" }, req.id),
+    );
+  } catch (e) {
+    settingsError(res, e, req);
+  }
+}
+
 module.exports = {
   getDashboard,
   getProfile,
@@ -1114,4 +1270,10 @@ module.exports = {
   getPayouts,
   requestPayout,
   cancelPayout,
+  getSettings,
+  updateSettings,
+  listTeam,
+  inviteTeam,
+  changeTeamRole,
+  removeTeamMember,
 };

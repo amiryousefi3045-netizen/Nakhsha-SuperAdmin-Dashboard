@@ -113,6 +113,20 @@ const SellerProfileSchema = new mongoose.Schema(
       payoutMinimum: { type: Number, default: 0, min: 0 },
       holdDays: { type: Number, default: 0, min: 0, max: 365 },
     },
+    // Seller-operated store settings (owner-only writes). `defaultPayoutMethod`
+    // is honored by FinanceService when a payout request omits the method;
+    // the notification toggles and storefront flag are stored preferences
+    // consumed by their respective surfaces.
+    settings: {
+      storefrontPublished: { type: Boolean, default: false },
+      notificationEmail: { type: Boolean, default: true },
+      notificationSms: { type: Boolean, default: false },
+      defaultPayoutMethod: {
+        type: String,
+        enum: ["bank_transfer", "card", "wallet", "other"],
+        default: "bank_transfer",
+      },
+    },
     stats: {
       totalProducts: { type: Number, default: 0 },
       totalOrders: { type: Number, default: 0 },

@@ -25,8 +25,6 @@ interface NavItem {
   label: string;
   icon: typeof LayoutDashboard;
   end?: boolean;
-  /** Domain not implemented on the backend yet — shown with a clear badge. */
-  planned?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -38,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/seller/finance", label: "مالی و تسویه", icon: Wallet },
   { to: "/seller/analytics", label: "تحلیل عملکرد", icon: BarChart3 },
   { to: "/seller/profile", label: "پروفایل فروشگاه", icon: Store },
-  { to: "/seller/settings", label: "تنظیمات", icon: Settings, planned: true },
+  { to: "/seller/settings", label: "تنظیمات", icon: Settings },
 ];
 
 function SidebarContent({ profile }: { profile?: import("../../types/seller").SellerProfile | null }) {
@@ -69,22 +67,10 @@ function SidebarContent({ profile }: { profile?: import("../../types/seller").Se
               )
             }
           >
-            {({ isActive }) => (
+            {() => (
               <>
                 <item.icon className="h-4 w-4 shrink-0" />
                 <span className="flex-1 truncate">{item.label}</span>
-                {item.planned ? (
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                      isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-amber-100 text-amber-700",
-                    )}
-                  >
-                    برنامه‌ریزی
-                  </span>
-                ) : null}
               </>
             )}
           </NavLink>

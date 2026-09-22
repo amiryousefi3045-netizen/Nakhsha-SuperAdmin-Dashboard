@@ -82,4 +82,16 @@ export const PAYOUT_METHOD_LABEL: Record<string, string> = {
   other: "سایر",
 };
 
+// ── Team roles ──────────────────────────────────────────────────────────────
+
+export const TEAM_ROLE_LABEL: Record<string, string> = {
+  manager: "مدیر",
+  staff: "کارمند",
+};
+
+export const TEAM_ROLE_TONE: Record<string, "blue" | "gray"> = {
+  manager: "blue",
+  staff: "gray",
+};
+
 export { faNumber };

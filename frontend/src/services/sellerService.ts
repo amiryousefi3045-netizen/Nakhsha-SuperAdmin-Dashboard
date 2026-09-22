@@ -22,8 +22,14 @@ import type {
   SellerPayoutListParams,
   SellerProduct,
   SellerProfile,
+  SellerSettings,
+  SellerSettingsUpdate,
+  SellerTeam,
   StockAdjustmentHistory,
+  InviteTeamMemberInput,
   RequestSellerPayoutInput,
+  TeamMember,
+  TeamMemberRole,
 } from "../types/seller";
 
 /** Throws the normalized ApiError when a request failed. */
@@ -277,4 +283,51 @@ export async function cancelSellerPayout(id: string, note?: string): Promise<Sel
     note ? { note } : {},
   );
   return unwrap(res, { payout: {} as SellerPayout }).payout;
+}
+
+// ── Settings & team ─────────────────────────────────────────────────────────
+
+/** GET /seller/settings — store operating preferences (owner + members). */
+export async function getSellerSettings(): Promise<SellerSettings> {
+  const res = await apiClient.get<{ settings: SellerSettings }>("/seller/settings");
+  return unwrap(res, { settings: {} as SellerSettings }).settings;
+}
+
+/** PATCH /seller/settings — owner-only partial settings update. */
+export async function updateSellerSettings(
+  payload: SellerSettingsUpdate,
+): Promise<SellerSettings> {
+  const res = await apiClient.patch<{ settings: SellerSettings }>("/seller/settings", payload);
+  return unwrap(res, { settings: {} as SellerSettings }).settings;
+}
+
+/** GET /seller/team — owner-only roster (items + owner card). */
+export async function getSellerTeam(): Promise<SellerTeam> {
+  const res = await apiClient.get<SellerTeam>("/seller/team");
+  return unwrap(res, { items: [], total: 0, owner: null });
+}
+
+/** POST /seller/team — owner-only invite by phone. */
+export async function inviteSellerTeamMember(
+  input: InviteTeamMemberInput,
+): Promise<TeamMember> {
+  const res = await apiClient.post<{ member: TeamMember }>("/seller/team", input);
+  return unwrap(res, { member: {} as TeamMember }).member;
+}
+
+/** PATCH /seller/team/:id/role — owner-only role change. */
+export async function changeSellerTeamMemberRole(
+  id: string,
+  role: TeamMemberRole,
+): Promise<TeamMember> {
+  const res = await apiClient.patch<{ member: TeamMember }>(`/seller/team/${id}/role`, { role });
+  return unwrap(res, { member: {} as TeamMember }).member;
+}
+
+/** DELETE /seller/team/:id — owner-only removal. */
+export async function removeSellerTeamMember(
+  id: string,
+): Promise<{ id: string }> {
+  const res = await apiClient.delete<{ id: string }>(`/seller/team/${id}`);
+  return unwrap(res, { id: "" });
 }

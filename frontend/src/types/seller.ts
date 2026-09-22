@@ -290,6 +290,47 @@ export interface RequestSellerPayoutInput {
   note?: string;
 }
 
+// ── Settings & team ─────────────────────────────────────────────────────────
+
+export interface SellerSettings {
+  storefrontPublished: boolean;
+  notificationEmail: boolean;
+  notificationSms: boolean;
+  defaultPayoutMethod: PayoutMethod;
+}
+
+export interface SellerSettingsUpdate {
+  storefrontPublished?: boolean;
+  notificationEmail?: boolean;
+  notificationSms?: boolean;
+  defaultPayoutMethod?: PayoutMethod;
+}
+
+export type TeamMemberRole = "manager" | "staff";
+
+export interface TeamMember {
+  id: string;
+  userId: string;
+  role: TeamMemberRole;
+  note: string;
+  name: string;
+  phone: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerTeam {
+  items: TeamMember[];
+  total: number;
+  owner: { userId: string; name: string; phone: string } | null;
+}
+
+export interface InviteTeamMemberInput {
+  phone: string;
+  role: TeamMemberRole;
+  note?: string;
+}
+
 /**
  * Honest response for domains that are planned but not yet implemented on the
  * backend (e.g. settings screens). Never fabricated data.

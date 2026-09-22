@@ -40,6 +40,12 @@ import {
   getSellerPayouts,
   requestSellerPayout,
   cancelSellerPayout,
+  getSellerSettings,
+  updateSellerSettings,
+  getSellerTeam,
+  inviteSellerTeamMember,
+  changeSellerTeamMemberRole,
+  removeSellerTeamMember,
 } from "../sellerService";
 import { apiClient } from "../../lib/apiClient";
 
@@ -134,6 +140,30 @@ const PAYOUT = {
   timeline: [{ status: "requested", at: "2026-09-22T00:00:00.000Z", by: "u1" }],
   createdAt: "2026-09-22T00:00:00.000Z",
   updatedAt: "2026-09-22T00:00:00.000Z",
+};
+
+const SETTINGS = {
+  storefrontPublished: true,
+  notificationEmail: true,
+  notificationSms: false,
+  defaultPayoutMethod: "card" as const,
+};
+
+const TEAM = {
+  items: [
+    {
+      id: "tm1",
+      userId: "u2",
+      role: "manager" as const,
+      note: "مدیر فروش",
+      name: "سعید رضایی",
+      phone: "09123334444",
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z",
+    },
+  ],
+  total: 1,
+  owner: { userId: "u1", name: "نگار احمدی", phone: "09121111111" },
 };
 
 beforeEach(() => {
@@ -432,5 +462,77 @@ describe("seller finance & payouts (live backend)", () => {
     );
     await cancelSellerPayout("po1");
     expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/payouts/po1/cancel", {});
+  });
+});
+
+describe("seller settings & team (live backend)", () => {
+  it("getSellerSettings GETs /seller/settings and unwraps preferences", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ settings: SETTINGS }));
+    const settings = await getSellerSettings();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/settings");
+    expect(settings.defaultPayoutMethod).toBe("card");
+    expect(settings.notificationSms).toBe(false);
+  });
+
+  it("updateSellerSettings PATCHes the partial payload", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ settings: { ...SETTINGS, storefrontPublished: true } }),
+    );
+    const settings = await updateSellerSettings({ defaultPayoutMethod: "wallet" });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/settings", {
+      defaultPayoutMethod: "wallet",
+    });
+    expect(settings.storefrontPublished).toBe(true);
+  });
+
+  it("getSellerTeam GETs /seller/team with items/owner", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok(TEAM));
+    const team = await getSellerTeam();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/team");
+    expect(team.total).toBe(1);
+    expect(team.items[0].role).toBe("manager");
+    expect(team.owner?.name).toBe("نگار احمدی");
+  });
+
+  it("inviteSellerTeamMember POSTs phone/role/note", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ member: TEAM.items[0] }));
+    const member = await inviteSellerTeamMember({
+      phone: "09123334444",
+      role: "manager",
+      note: "مدیر فروش",
+    });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/team", {
+      phone: "09123334444",
+      role: "manager",
+      note: "مدیر فروش",
+    });
+    expect(member.id).toBe("tm1");
+  });
+
+  it("inviteSellerTeamMember omits the note when absent", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ member: TEAM.items[0] }));
+    await inviteSellerTeamMember({ phone: "09123334444", role: "staff" });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/team", {
+      phone: "09123334444",
+      role: "staff",
+    });
+  });
+
+  it("changeSellerTeamMemberRole PATCHes the role endpoint", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ member: { ...TEAM.items[0], role: "staff" } }),
+    );
+    const member = await changeSellerTeamMemberRole("tm1", "staff");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/team/tm1/role", {
+      role: "staff",
+    });
+    expect(member.role).toBe("staff");
+  });
+
+  it("removeSellerTeamMember DELETEs the member and returns the id", async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce(ok({ id: "tm1", message: "عضو تیم حذف شد" }));
+    const result = await removeSellerTeamMember("tm1");
+    expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith("/seller/team/tm1");
+    expect(result.id).toBe("tm1");
   });
 });
