@@ -5,6 +5,7 @@ const StockAdjustment = require("../models/StockAdjustment");
 const Craft = require("../models/Craft");
 const Order = require("../models/Order");
 const OrderService = require("../services/OrderService");
+const FinanceService = require("../services/FinanceService");
 const AuditService = require("../services/AuditService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
@@ -77,6 +78,7 @@ function sellerProfileToDTO(profile) {
     policies: profile.policies || {},
     status: profile.status,
     stats: profile.stats || {},
+    finance: profile.finance || { commissionPercent: 0, payoutMinimum: 0, holdDays: 0 },
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
   };
@@ -974,28 +976,120 @@ async function getSellerFulfillment(req, res) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// DOMAIN GAPS — intentionally NOT fabricated (still planned)
+// FINANCE & PAYOUTS
 // ════════════════════════════════════════════════════════════════════════════
 
-function domainGapResponse(req, res, domain) {
-  return res.status(501).json(
-    createSuccessResponse(
-      {
-        status: "planned",
-        domain,
-        message: `دامنه ${domain} هنوز در پلتفرم پیاده‌سازی نشده است. این بخش پس از راه‌اندازی دامنه واقعی فعال می‌شود.`,
-      },
-      req.id,
-    ),
-  );
-}
-
 async function getFinance(req, res) {
-  domainGapResponse(req, res, "مالی و تسویه");
+  try {
+    const summary = await FinanceService.summary(req.seller._id);
+    res.json(createSuccessResponse({ finance: summary }, req.id));
+  } catch (e) {
+    logger.error("Seller getFinance error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
 }
 
 async function getPayouts(req, res) {
-  domainGapResponse(req, res, "مالی و تسویه");
+  try {
+    const page = safePage(req.query.page);
+    const limit = safePageSize(req.query.limit);
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const result = await FinanceService.listPayouts(req.seller._id, { page, limit, status });
+    res.json(createSuccessResponse(result, req.id));
+  } catch (e) {
+    logger.error("Seller getPayouts error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function requestPayout(req, res) {
+  try {
+    const { amount, method, note } = req.body || {};
+    const payout = await FinanceService.requestPayout({
+      sellerId: req.seller._id,
+      sellerUserId: req.user.id,
+      amount,
+      method,
+      note: typeof note === "string" ? note : "",
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "PAYOUT_REQUESTED",
+      resource: { type: "TRANSACTION", id: String(payout._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: { amount: payout.amount, method: payout.method },
+    });
+
+    res.json(createSuccessResponse({ payout: FinanceService.payoutToDTO(payout) }, req.id));
+  } catch (e) {
+    if (e instanceof FinanceService.PayoutDomainError) {
+      const statusMap = {
+        INSUFFICIENT_PAYOUT_BALANCE: 400,
+        PAYOUT_BELOW_MINIMUM: 400,
+        PAYOUT_BALANCE_EXCEEDED: 409,
+        VALIDATION_ERROR: 400,
+      };
+      return res
+        .status(statusMap[e.code] || 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller requestPayout error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function cancelPayout(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه درخواست تسویه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const payout = await FinanceService.cancelPayout({
+      sellerId: req.seller._id,
+      payoutId: id,
+      sellerUserId: req.user.id,
+      note: typeof req.body?.note === "string" ? req.body.note : "",
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "PAYOUT_CANCELLED",
+      resource: { type: "TRANSACTION", id: String(payout._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: { amount: payout.amount },
+    });
+
+    res.json(createSuccessResponse({ payout: FinanceService.payoutToDTO(payout) }, req.id));
+  } catch (e) {
+    if (e instanceof FinanceService.PayoutDomainError) {
+      const statusMap = {
+        PAYOUT_NOT_FOUND: 404,
+        INVALID_PAYOUT_TRANSITION: 409,
+        VALIDATION_ERROR: 400,
+      };
+      return res
+        .status(statusMap[e.code] || 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller cancelPayout error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
 }
 
 module.exports = {
@@ -1018,4 +1112,6 @@ module.exports = {
   getSellerFulfillment,
   getFinance,
   getPayouts,
+  requestPayout,
+  cancelPayout,
 };

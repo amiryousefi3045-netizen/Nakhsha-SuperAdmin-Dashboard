@@ -28,7 +28,6 @@ import { SellerGuard } from "./components/seller/SellerGuard";
 import { SellerLayout } from "./components/seller/SellerLayout";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
-import { getSellerFinance } from "./services/sellerService";
 import "./App.css";
 
 const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
@@ -52,6 +51,7 @@ const StockHistorySeller = lazy(() => import("./pages/seller/StockHistorySeller"
 const OrdersSeller = lazy(() => import("./pages/seller/OrdersSeller"));
 const OrderDetailSeller = lazy(() => import("./pages/seller/OrderDetailSeller"));
 const FulfillmentSeller = lazy(() => import("./pages/seller/FulfillmentSeller"));
+const FinanceSeller = lazy(() => import("./pages/seller/FinanceSeller"));
 const PlannedDomainPage = lazy(() => import("./pages/seller/PlannedDomainPage"));
 
 const SellerPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
@@ -386,11 +386,7 @@ function App() {
               path="finance"
               element={
                 <SellerPageSuspense>
-                  <PlannedDomainPage
-                    fetcher={getSellerFinance}
-                    title="مالی و تسویه"
-                    staticMessage="دامنه مالی و تسویه هنوز در پلتفرم پیاده‌سازی نشده است."
-                  />
+                  <FinanceSeller />
                 </SellerPageSuspense>
               }
             />

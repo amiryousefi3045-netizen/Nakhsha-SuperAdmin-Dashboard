@@ -116,6 +116,8 @@ router.get(
 );
 
 // ── Finance ─────────────────────────────────────────────────────────────────
+// Finance reads stay unthrottled; payout mutations are part of the seller
+// write surface (rate-limited like the other mutations).
 router.get(
   "/finance",
   requireAuth,
@@ -130,6 +132,8 @@ router.get(
   requireSellerProfile,
   sellerController.getPayouts,
 );
+router.post("/payouts", write, sellerController.requestPayout);
+router.patch("/payouts/:id/cancel", write, sellerController.cancelPayout);
 
 // ── Analytics ───────────────────────────────────────────────────────────────
 router.get(

@@ -37,6 +37,9 @@ import {
   updateSellerOrderStatus,
   getSellerFulfillment,
   getSellerFinance,
+  getSellerPayouts,
+  requestSellerPayout,
+  cancelSellerPayout,
 } from "../sellerService";
 import { apiClient } from "../../lib/apiClient";
 
@@ -107,6 +110,30 @@ const ORDER = {
   sellerNote: "",
   createdAt: "2026-09-15T00:00:00.000Z",
   updatedAt: "2026-09-15T00:00:00.000Z",
+};
+
+const FINANCE = {
+  currency: "IRR",
+  gross: { delivered: 4500000, held: 1000000, awaiting: 3500000 },
+  commission: { percent: 5, amount: 225000 },
+  net: { earned: 4275000, available: 3000000 },
+  outlaid: { requested: 775000, processing: 0, paid: 500000, total: 1275000 },
+  cancelledPayouts: 1,
+  hold: { days: 7, amount: 1000000 },
+  asOf: "2026-09-22T00:00:00.000Z",
+};
+
+const PAYOUT = {
+  id: "po1",
+  sellerId: "sp1",
+  amount: 3000000,
+  currency: "IRR",
+  status: "requested",
+  method: "bank_transfer",
+  note: "تسویهٔ شهریور",
+  timeline: [{ status: "requested", at: "2026-09-22T00:00:00.000Z", by: "u1" }],
+  createdAt: "2026-09-22T00:00:00.000Z",
+  updatedAt: "2026-09-22T00:00:00.000Z",
 };
 
 beforeEach(() => {
@@ -316,22 +343,94 @@ describe("seller orders & fulfillment (real domains)", () => {
   });
 });
 
-describe("seller finance still an honest domain gap", () => {
-  it("getSellerFinance surfaces the 501 planned response", async () => {
-    vi.mocked(apiClient.get).mockResolvedValueOnce({
-      success: false as const,
-      error: { code: "SERVER_ERROR", message: "دامنه مالی و تسویه هنوز پیاده‌سازی نشده است.", status: 501 },
-    });
-    const gap = await getSellerFinance();
-    expect(gap.status).toBe("planned");
-    expect(gap.domain).toBe("مالی و تسویه");
+describe("seller finance & payouts (live backend)", () => {
+  it("getSellerFinance unwraps the live settlement summary", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ finance: FINANCE }));
+    const summary = await getSellerFinance();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/finance");
+    expect(summary.net.available).toBe(3000000);
+    expect(summary.commission.percent).toBe(5);
+    expect(summary.gross.delivered).toBe(4500000);
   });
 
-  it("throws when a planned fetch fails for another reason", async () => {
+  it("getSellerFinance throws the normalized ApiError on failure", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       success: false as const,
       error: { code: "UNAUTHORIZED", message: "لطفاً وارد شوید", status: 401 },
     });
     await expect(getSellerFinance()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("getSellerPayouts passes filter params and unwraps the page", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [PAYOUT], total: 1, page: 2, limit: 10 }),
+    );
+    const pageRes = await getSellerPayouts({ page: 2, limit: 10, status: "requested" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/payouts", {
+      params: { page: 2, limit: 10, status: "requested" },
+    });
+    expect(pageRes.total).toBe(1);
+    expect(pageRes.items[0].id).toBe("po1");
+    expect(pageRes.items[0].status).toBe("requested");
+  });
+
+  it("getSellerPayouts works without params", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [], total: 0, page: 1, limit: 20 }),
+    );
+    const pageRes = await getSellerPayouts();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/payouts", { params: {} });
+    expect(pageRes.items).toEqual([]);
+  });
+
+  it("requestSellerPayout POSTs the payload and unwraps the payout", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ payout: PAYOUT }));
+    const payout = await requestSellerPayout({
+      amount: 3000000,
+      method: "bank_transfer",
+      note: "تسویهٔ شهریور",
+    });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/payouts", {
+      amount: 3000000,
+      method: "bank_transfer",
+      note: "تسویهٔ شهریور",
+    });
+    expect(payout.id).toBe("po1");
+    expect(payout.status).toBe("requested");
+  });
+
+  it("requestSellerPayout omits absent method/note", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ payout: PAYOUT }));
+    await requestSellerPayout({ amount: 100000 });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/payouts", { amount: 100000 });
+  });
+
+  it("requestSellerPayout surfaces backend domain errors", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      success: false as const,
+      error: { code: "INSUFFICIENT_PAYOUT_BALANCE", message: "موجودی قابل تسویه کافی نیست", status: 400 },
+    });
+    await expect(requestSellerPayout({ amount: 999999999 })).rejects.toMatchObject({
+      code: "INSUFFICIENT_PAYOUT_BALANCE",
+    });
+  });
+
+  it("cancelSellerPayout PATCHes the cancel endpoint", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ payout: { ...PAYOUT, status: "cancelled" } }),
+    );
+    const payout = await cancelSellerPayout("po1", "انصراف");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/payouts/po1/cancel", {
+      note: "انصراف",
+    });
+    expect(payout.status).toBe("cancelled");
+  });
+
+  it("cancelSellerPayout sends an empty body without a note", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ payout: { ...PAYOUT, status: "cancelled" } }),
+    );
+    await cancelSellerPayout("po1");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/payouts/po1/cancel", {});
   });
 });

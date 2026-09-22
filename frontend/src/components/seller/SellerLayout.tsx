@@ -35,7 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/seller/inventory", label: "موجودی", icon: Boxes },
   { to: "/seller/orders", label: "سفارش‌ها", icon: ShoppingCart },
   { to: "/seller/fulfillment", label: "ارسال / تحویل", icon: Truck },
-  { to: "/seller/finance", label: "مالی و تسویه", icon: Wallet, planned: true },
+  { to: "/seller/finance", label: "مالی و تسویه", icon: Wallet },
   { to: "/seller/analytics", label: "تحلیل عملکرد", icon: BarChart3 },
   { to: "/seller/profile", label: "پروفایل فروشگاه", icon: Store },
   { to: "/seller/settings", label: "تنظیمات", icon: Settings, planned: true },

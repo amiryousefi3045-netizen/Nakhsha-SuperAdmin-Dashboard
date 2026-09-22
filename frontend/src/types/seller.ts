@@ -64,6 +64,12 @@ export interface SellerProfile {
   policies?: SellerPolicies;
   status: SellerProfileStatus;
   stats?: Record<string, unknown>;
+  /** Settlement terms (read-only from the seller dashboard). */
+  finance?: {
+    commissionPercent: number;
+    payoutMinimum: number;
+    holdDays: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -238,9 +244,55 @@ export interface FulfillmentSummary {
   recent: SellerOrder[];
 }
 
+// ── Finance & payouts ────────────────────────────────────────────────────────
+
+export type PayoutStatus = "requested" | "processing" | "paid" | "cancelled" | "rejected";
+export type PayoutMethod = "bank_transfer" | "card" | "wallet" | "other";
+
+export interface SellerPayout {
+  id: string;
+  sellerId: string;
+  amount: number;
+  currency: string;
+  status: PayoutStatus;
+  method: PayoutMethod;
+  note?: string;
+  reference?: string;
+  timeline: OrderTimelineEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerFinanceSummary {
+  currency: string;
+  gross: {
+    delivered: number;
+    held: number;
+    awaiting: number;
+  };
+  commission: { percent: number; amount: number };
+  net: { earned: number; available: number };
+  outlaid: { requested: number; processing: number; paid: number; total: number };
+  cancelledPayouts: number;
+  hold: { days: number; amount: number };
+  asOf: string;
+}
+
+export interface SellerPayoutListParams {
+  page?: number;
+  limit?: number;
+  status?: PayoutStatus;
+}
+
+export interface RequestSellerPayoutInput {
+  amount: number;
+  method?: PayoutMethod;
+  note?: string;
+}
+
 /**
  * Honest response for domains that are planned but not yet implemented on the
- * backend (orders, fulfillment, finance, payouts). Never fabricated data.
+ * backend (e.g. settings screens). Never fabricated data.
  */
 export interface DomainGap {
   status: "planned";

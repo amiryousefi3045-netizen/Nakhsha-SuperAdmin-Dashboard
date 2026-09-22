@@ -119,6 +119,11 @@ const auditLogSchema = new mongoose.Schema(
         "ORDER_CREATED",
         "ORDER_STATUS_CHANGED",
 
+        // Seller finance & settlement domain
+        "PAYOUT_REQUESTED",
+        "PAYOUT_CANCELLED",
+        "PAYOUT_STATUS_CHANGED",
+
         // Security events
         "SUSPICIOUS_ACTIVITY_DETECTED",
         "BRUTE_FORCE_ATTEMPT",

@@ -4,26 +4,26 @@
  * Every function targets `/api/seller/*` (the apiClient base URL already
  * includes `/api`). All routes require `seller` + a SellerProfile on the
  * backend; the token is injected automatically by the apiClient interceptor.
- *
- * Domains that are not implemented on the backend yet (finance, payouts)
- * return an honest `DomainGap` — never fake data.
  */
 
 import { apiClient } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
-  DomainGap,
   FulfillmentSummary,
   OrderCounts,
   OrderStatus,
   ProductStatus,
   SellerAnalytics,
   SellerDashboardData,
+  SellerFinanceSummary,
   SellerOrder,
   SellerPage,
+  SellerPayout,
+  SellerPayoutListParams,
   SellerProduct,
   SellerProfile,
   StockAdjustmentHistory,
+  RequestSellerPayoutInput,
 } from "../types/seller";
 
 /** Throws the normalized ApiError when a request failed. */
@@ -32,17 +32,6 @@ function unwrap<T>(res: ApiResult<T>, expected: T): T {
     throw (res.error as ApiError) ?? new Error("پاسخ سرور نامعتبر است");
   }
   return res.data ?? expected;
-}
-
-/** Reads a DomainGap from a 501 "planned" envelope (server never lies). */
-function toDomainGap(res: ApiResult<DomainGap>, domain: string): DomainGap {
-  if (res.success && res.data?.status === "planned" && res.data?.message) {
-    return res.data;
-  }
-  if (res.error?.status === 501 && res.error.message) {
-    return { status: "planned", domain, message: res.error.message };
-  }
-  throw (res.error as ApiError) ?? new Error("پاسخ سرور نامعتبر است");
 }
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
@@ -255,16 +244,37 @@ export async function getSellerFulfillment(): Promise<FulfillmentSummary> {
   });
 }
 
-// ── Planned domains (honest DomainGap, never fabricated) ────────────────────
+// ── Finance & payouts ───────────────────────────────────────────────────────
 
-/** GET /seller/finance */
-export async function getSellerFinance(): Promise<DomainGap> {
-  const res = await apiClient.get<DomainGap>("/seller/finance");
-  return toDomainGap(res, "مالی و تسویه");
+/** GET /seller/finance — live settlement summary (real backend, no DomainGap). */
+export async function getSellerFinance(): Promise<SellerFinanceSummary> {
+  const res = await apiClient.get<{ finance: SellerFinanceSummary }>("/seller/finance");
+  return unwrap(res, { finance: {} as SellerFinanceSummary }).finance;
 }
 
-/** GET /seller/payouts */
-export async function getSellerPayouts(): Promise<DomainGap> {
-  const res = await apiClient.get<DomainGap>("/seller/payouts");
-  return toDomainGap(res, "مالی و تسویه");
+/** GET /seller/payouts — paginated payout history (optional status filter). */
+export async function getSellerPayouts(
+  params: SellerPayoutListParams = {},
+): Promise<SellerPage<SellerPayout>> {
+  const res = await apiClient.get<SellerPage<SellerPayout>>("/seller/payouts", { params });
+  return unwrap(res, { items: [], total: 0, page: params.page ?? 1, limit: params.limit ?? 20 });
+}
+
+/** POST /seller/payouts — request a settlement (deducts from available balance). */
+export async function requestSellerPayout(input: RequestSellerPayoutInput): Promise<SellerPayout> {
+  const res = await apiClient.post<{ payout: SellerPayout }>("/seller/payouts", {
+    amount: input.amount,
+    ...(input.method ? { method: input.method } : {}),
+    ...(input.note ? { note: input.note } : {}),
+  });
+  return unwrap(res, { payout: {} as SellerPayout }).payout;
+}
+
+/** PATCH /seller/payouts/:id/cancel — retract a still-requested payout. */
+export async function cancelSellerPayout(id: string, note?: string): Promise<SellerPayout> {
+  const res = await apiClient.patch<{ payout: SellerPayout }>(
+    `/seller/payouts/${id}/cancel`,
+    note ? { note } : {},
+  );
+  return unwrap(res, { payout: {} as SellerPayout }).payout;
 }

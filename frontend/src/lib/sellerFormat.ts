@@ -57,4 +57,29 @@ export const ORDER_STATUS_TONE: Record<string, "gray" | "amber" | "green" | "blu
   returned: "red",
 };
 
+// ── Payout status & method ──────────────────────────────────────────────────
+
+export const PAYOUT_STATUS_LABEL: Record<string, string> = {
+  requested: "درخواست‌شده",
+  processing: "در حال پردازش",
+  paid: "پرداخت‌شده",
+  cancelled: "لغوشده",
+  rejected: "ردشده",
+};
+
+export const PAYOUT_STATUS_TONE: Record<string, "gray" | "amber" | "green" | "blue" | "red"> = {
+  requested: "amber",
+  processing: "blue",
+  paid: "green",
+  cancelled: "gray",
+  rejected: "red",
+};
+
+export const PAYOUT_METHOD_LABEL: Record<string, string> = {
+  bank_transfer: "انتقال بانکی",
+  card: "کارت به کارت",
+  wallet: "کیف پول",
+  other: "سایر",
+};
+
 export { faNumber };

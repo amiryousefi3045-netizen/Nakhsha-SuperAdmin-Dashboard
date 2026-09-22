@@ -399,22 +399,3 @@ describe("GET /api/seller/fulfillment", () => {
     expect(res.body.recent.length).toBe(0);
   });
 });
-
-// ── Finance remains an honest gap (regression) ──────────────────────────────
-
-describe("Finance stays planned", () => {
-  it("GET /api/seller/finance still returns 501 planned", async () => {
-    const res = await request(app)
-      .get("/api/seller/finance")
-      .set("Authorization", AUTH(sellerToken))
-      .expect(501);
-    expect(res.body.status).toBe("planned");
-  });
-
-  it("GET /api/seller/payouts still returns 501 planned", async () => {
-    await request(app)
-      .get("/api/seller/payouts")
-      .set("Authorization", AUTH(sellerToken))
-      .expect(501);
-  });
-});

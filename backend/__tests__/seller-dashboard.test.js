@@ -541,11 +541,14 @@ describe("Seller Dashboard - analytics & planned domains", () => {
     expect(typeof res.body.total).toBe("number");
   });
 
-  it("GET /api/seller/finance returns a planned/domain-gap response (no fake data)", async () => {
+  it("GET /api/seller/finance is live and returns a real finance summary", async () => {
     const res = await request(app)
       .get("/api/seller/finance")
       .set("Authorization", AUTH(sellerToken))
-      .expect(501);
-    expect(res.body.status).toBe("planned");
+      .expect(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.finance.gross).toBeDefined();
+    expect(typeof res.body.finance.net.available).toBe("number");
+    expect(res.body.finance.currency).toBe("IRR");
   });
 });

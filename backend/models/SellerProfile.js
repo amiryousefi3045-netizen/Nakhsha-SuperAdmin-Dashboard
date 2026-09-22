@@ -106,6 +106,13 @@ const SellerProfileSchema = new mongoose.Schema(
       enum: ["active", "suspended", "deactivated"],
       default: "active",
     },
+    // Settlement terms. Set by the platform (admin); read-only from the seller
+    // dashboard. Defaults keep cash-flow honest: no commission, no minimum.
+    finance: {
+      commissionPercent: { type: Number, default: 0, min: 0, max: 100 },
+      payoutMinimum: { type: Number, default: 0, min: 0 },
+      holdDays: { type: Number, default: 0, min: 0, max: 365 },
+    },
     stats: {
       totalProducts: { type: Number, default: 0 },
       totalOrders: { type: Number, default: 0 },

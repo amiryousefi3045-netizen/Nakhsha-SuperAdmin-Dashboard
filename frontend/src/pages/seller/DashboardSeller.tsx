@@ -198,7 +198,7 @@ export function DashboardSeller() {
         </div>
       </div>
 
-      {/* Quick links — live domains + honest planned card for finance */}
+      {/* Quick links — live domains */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <RealCard
           to="/seller/orders"
@@ -206,11 +206,11 @@ export function DashboardSeller() {
           title="سفارش‌ها"
           desc={`${faNumber(orders.needAction)} سفارش نیازمند اقدام · ${faNumber(openInTransit)} در حال جریان`}
         />
-        <PlannedCard
+        <RealCard
           to="/seller/finance"
           icon={<Wallet className="h-5 w-5" />}
           title="مالی و تسویه"
-          desc="گزارش درآمد و تسویه پس از راه‌اندازی دامنه مالی فعال می‌شود."
+          desc="گزارش درآمد، کمیسیون، موجودی قابل تسویه و درخواست تسویه."
         />
         <RealCard
           to="/seller/analytics"
@@ -281,40 +281,6 @@ function NeedsAttentionRow({
         <span className="font-bold text-[var(--color-text)]">{faNumber(value)}</span>
       </Link>
     </li>
-  );
-}
-
-function PlannedCard({
-  to,
-  icon,
-  title,
-  desc,
-}: {
-  to: string;
-  icon: ReactNode;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="rounded-2xl border border-dashed border-[var(--color-border)] bg-white p-5 shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-50/30"
-    >
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
-            {title}
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-              در برنامه
-            </span>
-          </p>
-          <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">{desc}</p>
-        </div>
-      </div>
-    </Link>
   );
 }
 
