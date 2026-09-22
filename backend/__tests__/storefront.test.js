@@ -70,6 +70,7 @@ beforeAll(async () => {
     verification: { status: "verified" },
     settings: { ...PUBLIC_SETTINGS },
     finance: { ...FINANCE_TERMS },
+    stats: { totalProducts: 2, averageRating: 4.5, ratingCount: 12 },
   });
 
   const makeProduct = (title, over = {}) =>
@@ -153,6 +154,79 @@ beforeAll(async () => {
 afterAll(async () => {
   await wipeStorefrontData();
   await mongoose.connection.close();
+});
+
+// ── Storefront profile ───────────────────────────────────────────────────────
+
+describe("GET /api/storefronts", () => {
+  it("lists published + active stores as public DTOs", async () => {
+    const res = await request(app).get("/api/storefronts");
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.total).toBe(2);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(25);
+    const names = res.body.items.map((s) => s.storeName);
+    expect(names).toEqual(expect.arrayContaining(["ویترین نخشا", "فروشگاه فردوسی"]));
+    res.body.items.forEach((s) => {
+      expect(s.settings).toBeUndefined();
+      expect(s.finance).toBeUndefined();
+      expect(s.verification).toBeUndefined();
+      expect(s.userId).toBeUndefined();
+    });
+  });
+
+  it("never lists unpublished or suspended stores", async () => {
+    const res = await request(app).get("/api/storefronts");
+    const slugs = res.body.items.map((s) => s.slug);
+    expect(slugs).not.toContain("secret-vitrin");
+    expect(slugs).not.toContain("closed-vitrin");
+  });
+
+  it("searches store name and description", async () => {
+    const byName = await request(app).get("/api/storefronts?q=نخشا");
+    expect(byName.body.total).toBe(1);
+    expect(byName.body.items[0].slug).toBe("nakhsha-vitrin");
+
+    const byDescription = await request(app).get("/api/storefronts?q=گلیم");
+    expect(byDescription.body.total).toBe(1);
+
+    const miss = await request(app).get("/api/storefronts?q=چیزی که نیست");
+    expect(miss.body.total).toBe(0);
+    expect(miss.body.items).toEqual([]);
+  });
+
+  it("sorts by rating and by product count", async () => {
+    const byRating = await request(app).get("/api/storefronts?sort=rating");
+    expect(byRating.body.items[0].slug).toBe("nakhsha-vitrin");
+    expect(byRating.body.items[0].stats.averageRating).toBe(4.5);
+
+    const byProducts = await request(app).get("/api/storefronts?sort=products");
+    expect(byProducts.body.items[0].slug).toBe("nakhsha-vitrin");
+    expect(byProducts.body.items[0].stats.totalProducts).toBe(2);
+  });
+
+  it("paginates with page + limit", async () => {
+    const res = await request(app).get("/api/storefronts?page=2&limit=1&sort=newest");
+    expect(res.body.total).toBe(2);
+    expect(res.body.page).toBe(2);
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it("rejects invalid query values", async () => {
+    const badSort = await request(app).get("/api/storefronts?sort=random");
+    expect(badSort.status).toBe(400);
+    expect(badSort.body.error.code).toBe("VALIDATION_ERROR");
+
+    const badLimit = await request(app).get("/api/storefronts?limit=0");
+    expect(badLimit.status).toBe(400);
+
+    const hugeLimit = await request(app).get("/api/storefronts?limit=999");
+    expect(hugeLimit.status).toBe(400);
+
+    const badPage = await request(app).get("/api/storefronts?page=0");
+    expect(badPage.status).toBe(400);
+  });
 });
 
 // ── Storefront profile ───────────────────────────────────────────────────────

@@ -434,6 +434,11 @@ app.use("/api/storefront", storefrontReviewRoutes);
 const storefrontRoutes = require("./routes/storefront");
 app.use("/api/storefront", storefrontRoutes);
 
+// Public storefront directory (Phase 15) — mounted at /api/storefronts (plural)
+// so it never collides with the catalog's /api/storefront/:slug namespace.
+const storefrontDirectoryRoutes = require("./routes/storefront-directory");
+app.use("/api/storefronts", storefrontDirectoryRoutes);
+
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(
   "/api-docs",

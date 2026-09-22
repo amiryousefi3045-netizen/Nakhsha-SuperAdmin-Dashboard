@@ -29,6 +29,7 @@ import {
   getStorefrontProductReviews,
   submitStorefrontReview,
   getMyStorefrontReview,
+  listStorefronts,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -334,6 +335,56 @@ describe("storefrontService", () => {
     it("throws when the success envelope is missing", async () => {
       vi.mocked(apiClient.get).mockResolvedValue({ success: true, data: undefined });
       await expect(listStorefrontOrders()).rejects.toThrow();
+    });
+  });
+
+  describe("listStorefronts", () => {
+    const DIR = {
+      success: true,
+      reqId: "r7",
+      items: [
+        {
+          id: "p1",
+          storeName: "فروشگاه نخشا",
+          slug: "nakhsha-vitrin",
+          description: "گالری دست‌سازه‌های ایرانی",
+          location: { city: "تهران", neighborhood: "باغ‌فرمان" },
+          stats: { totalProducts: 2, averageRating: 4.5, ratingCount: 12 },
+        },
+        {
+          id: "p2",
+          storeName: "فروشگاه فردوسی",
+          slug: "فروشگاه-فردوسی",
+          description: "",
+          location: { city: "مشهد", neighborhood: "" },
+          stats: { totalProducts: 0, averageRating: 0, ratingCount: 0 },
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 25,
+    };
+
+    it("fetches the public directory with q and sort", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok(DIR));
+      const result = await listStorefronts({ page: 1, limit: 25, q: "نخشا", sort: "rating" });
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.items[0].stats.averageRating).toBe(4.5);
+      expect(apiClient.get).toHaveBeenCalledWith("/storefronts", {
+        params: { page: 1, limit: 25, q: "نخشا", sort: "rating" },
+      });
+    });
+
+    it("defaults pagination when omitted", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok(DIR));
+      await listStorefronts();
+      expect(apiClient.get).toHaveBeenCalledWith("/storefronts", { params: {} });
+    });
+
+    it("throws when the success envelope is missing", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue({ success: true, data: undefined });
+      await expect(listStorefronts()).rejects.toThrow();
     });
   });
 

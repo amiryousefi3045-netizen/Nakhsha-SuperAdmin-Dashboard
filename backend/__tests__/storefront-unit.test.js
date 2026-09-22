@@ -278,6 +278,78 @@ describe("StorefrontService.getStorefrontProduct", () => {
   });
 });
 
+// ── Directory ────────────────────────────────────────────────────────────────
+
+describe("StorefrontService.listStorefronts", () => {
+  it("lists only published + active stores with the public DTO", async () => {
+    await makeSeller({ slug: "dir-a", storeName: "گالری آ" });
+    await makeSeller({ slug: "dir-b", storeName: "گالری ب" });
+    await makeSeller({ slug: "dir-hidden", settings: { storefrontPublished: false } });
+    await makeSeller({ slug: "dir-closed", status: "suspended" });
+
+    const result = await StorefrontService.listStorefronts({ page: 1, limit: 25 });
+    const slugs = result.items.map((s) => s.slug).sort();
+    expect(result.total).toBe(2);
+    expect(slugs).toEqual(["dir-a", "dir-b"]);
+    // privacy: internal fields never leak from directory cards
+    result.items.forEach((s) => {
+      expect(s.settings).toBeUndefined();
+      expect(s.finance).toBeUndefined();
+      expect(s.userId).toBeUndefined();
+    });
+  });
+
+  it("returns an empty directory when nothing is published", async () => {
+    await makeSeller({ slug: "dir-only-hidden", settings: { storefrontPublished: false } });
+    const result = await StorefrontService.listStorefronts({});
+    expect(result.total).toBe(0);
+    expect(result.items).toEqual([]);
+  });
+
+  it("searches store name, description and slug", async () => {
+    await makeSeller({ slug: "dir-q", storeName: "فروشگاه نخشا", description: "گلیم دستباف" });
+    const byName = await StorefrontService.listStorefronts({ q: "نخشا" });
+    expect(byName.total).toBe(1);
+    expect(byName.items[0].storeName).toBe("فروشگاه نخشا");
+    const byDescription = await StorefrontService.listStorefronts({ q: "گلیم" });
+    expect(byDescription.total).toBe(1);
+    const bySlug = await StorefrontService.listStorefronts({ q: "dir-q" });
+    expect(bySlug.total).toBe(1);
+    const miss = await StorefrontService.listStorefronts({ q: "چیزی که نیست" });
+    expect(miss.total).toBe(0);
+  });
+
+  it("sorts by rating and by product count", async () => {
+    await makeSeller({
+      slug: "dir-rate-top",
+      storeName: "پرتعداد",
+      stats: { totalProducts: 9, averageRating: 4.8, ratingCount: 30 },
+    });
+    await makeSeller({
+      slug: "dir-rate-low",
+      storeName: "کمتعداد",
+      stats: { totalProducts: 2, averageRating: 3.2, ratingCount: 4 },
+    });
+
+    const byRating = await StorefrontService.listStorefronts({ sort: "rating" });
+    expect(byRating.items[0].slug).toBe("dir-rate-top");
+
+    const byProducts = await StorefrontService.listStorefronts({ sort: "products" });
+    expect(byProducts.items[0].slug).toBe("dir-rate-top");
+  });
+
+  it("paginates with page/limit", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await makeSeller({ slug: `dir-page-${i}` });
+    }
+    const first = await StorefrontService.listStorefronts({ page: 1, limit: 2 });
+    expect(first.total).toBe(5);
+    expect(first.items).toHaveLength(2);
+    const last = await StorefrontService.listStorefronts({ page: 3, limit: 2 });
+    expect(last.items).toHaveLength(1);
+  });
+});
+
 // ── DTO helper contracts ─────────────────────────────────────────────────────
 
 describe("storefront DTO helpers", () => {

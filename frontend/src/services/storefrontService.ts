@@ -15,6 +15,7 @@ import type {
   CheckoutResponse,
   ListBuyerOrdersParams,
   ListStorefrontProductsParams,
+  ListStorefrontsParams,
   MyStorefrontReview,
   PaymentCallbackResult,
   PaymentCallbackResultPayload,
@@ -24,6 +25,7 @@ import type {
   StorefrontProductsPage,
   StorefrontProfile,
   StorefrontReviewsPage,
+  StorefrontsPage,
   SubmitReviewInput,
 } from "../types/storefront";
 
@@ -40,6 +42,19 @@ export async function getStorefront(slug: string): Promise<StorefrontProfile> {
     `/storefront/${encodeURIComponent(slug)}`,
   );
   return unwrap(res, { storefront: {} as StorefrontProfile }).storefront;
+}
+
+/** GET /storefronts — public directory of every published + active store. */
+export async function listStorefronts(
+  params: ListStorefrontsParams = {},
+): Promise<StorefrontsPage> {
+  const res = await apiClient.get<StorefrontsPage>("/storefronts", { params });
+  return unwrap(res, {
+    items: [],
+    total: 0,
+    page: params.page ?? 1,
+    limit: params.limit ?? 25,
+  });
 }
 
 /** GET /storefront/:slug/products — paginated catalog of ACTIVE products. */

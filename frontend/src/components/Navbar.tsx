@@ -22,6 +22,13 @@ const Navbar: FC = () => {
                 نخشا
               </span>
             </Link>
+            <Link
+              to="/storefronts"
+              className="hidden md:inline-block text-sm text-nakhsha-text/70 hover:text-primary-700 px-3 py-2 rounded-lg focus-visible:ring-2 focus-visible:ring-primary-500 transition-all duration-200"
+              aria-label="فروشگاهها"
+            >
+              فروشگاهها
+            </Link>
           </div>
 
           {/* Search & City Controls - Desktop */}

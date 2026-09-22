@@ -59,6 +59,9 @@ const StorefrontPage = lazy(() => import("./pages/storefront/StorefrontPage"));
 const StorefrontProductPage = lazy(
   () => import("./pages/storefront/StorefrontProductPage"),
 );
+const StorefrontDirectoryPage = lazy(
+  () => import("./pages/storefront/StorefrontDirectoryPage"),
+);
 const BuyerOrderPage = lazy(() => import("./pages/storefront/BuyerOrderPage"));
 const BuyerOrdersPage = lazy(() => import("./pages/storefront/BuyerOrdersPage"));
 
@@ -216,6 +219,17 @@ function App() {
                     <BuyerOrderPage />
                   </Suspense>
                 </RequireAuth>
+              }
+            />
+            {/* Public storefront directory — Phase 15 */}
+            <Route
+              path="storefronts"
+              element={
+                <Suspense
+                  fallback={<div className="p-8 text-center text-sm text-[var(--color-muted)]">در حال بارگذاری فروشگاه‌ها...</div>}
+                >
+                  <StorefrontDirectoryPage />
+                </Suspense>
               }
             />
             {/* Public storefront — Phase 11 */}

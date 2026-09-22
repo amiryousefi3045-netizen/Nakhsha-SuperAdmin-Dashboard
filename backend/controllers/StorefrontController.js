@@ -6,6 +6,28 @@ const logger = require("../utils/logger");
 // Public (unauthenticated) storefront surface. Only the service decides what
 // is visible: published + active stores, active products, privacy-safe DTOs.
 
+async function listStorefronts(req, res) {
+  try {
+    const result = await StorefrontService.listStorefronts({
+      page: req.query.page,
+      limit: req.query.limit,
+      q: req.query.q,
+      sort: req.query.sort,
+    });
+    res.json(
+      createSuccessResponse(
+        { items: result.items, total: result.total, page: result.page, limit: result.limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Storefront listStorefronts error", { error: e.message });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 async function getStorefront(req, res) {
   try {
     const storefront = await StorefrontService.getStorefront(req.params.slug);
@@ -77,6 +99,7 @@ async function getStorefrontProduct(req, res) {
 }
 
 module.exports = {
+  listStorefronts,
   getStorefront,
   getStorefrontProducts,
   getStorefrontProduct,

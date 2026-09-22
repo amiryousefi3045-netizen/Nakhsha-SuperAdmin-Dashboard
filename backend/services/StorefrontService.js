@@ -100,6 +100,50 @@ const StorefrontService = {
     return publicStorefrontToDTO(profile);
   },
 
+  /**
+   * Public storefront directory — every published + active store, paginated.
+   * Same visibility gate as a single storefront: unpublished and suspended
+   * profiles never appear in the directory (no existence leak).
+   */
+  async listStorefronts({ page, limit, q, sort }) {
+    const filter = {
+      status: "active",
+      "settings.storefrontPublished": true,
+    };
+    if (q && String(q).trim()) {
+      const safe = escapeRegex(String(q).trim());
+      filter.$or = [
+        { storeName: { $regex: safe, $options: "i" } },
+        { description: { $regex: safe, $options: "i" } },
+        { slug: { $regex: safe, $options: "i" } },
+      ];
+    }
+
+    let sortSpec;
+    if (sort === "rating") sortSpec = { "stats.averageRating": -1, "stats.ratingCount": -1, createdAt: -1 };
+    else if (sort === "products") sortSpec = { "stats.totalProducts": -1, createdAt: -1 };
+    else sortSpec = { createdAt: -1 };
+
+    const skip = Math.max(0, ((page || 1) - 1) * (limit || 25));
+
+    const [items, total] = await Promise.all([
+      SellerProfile.find(filter)
+        .select(PUBLISHED_PROFILE_SELECT)
+        .sort(sortSpec)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      SellerProfile.countDocuments(filter),
+    ]);
+
+    return {
+      items: items.map(publicStorefrontToDTO),
+      total,
+      page: page || 1,
+      limit: limit || 25,
+    };
+  },
+
   async listStorefrontProducts({ slug, page, limit, category, q, sort }) {
     const profile = await this.findPublishedStorefront(slug);
     if (!profile) return null;

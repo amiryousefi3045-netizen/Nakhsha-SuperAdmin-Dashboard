@@ -57,6 +57,23 @@ export interface StorefrontProduct {
 
 export type StorefrontSort = "newest" | "priceAsc" | "priceDesc";
 
+/** Directory sort options (Phase 15): newest, best rated, most products. */
+export type StorefrontDirectorySort = "newest" | "rating" | "products";
+
+export interface ListStorefrontsParams {
+  page?: number;
+  limit?: number;
+  q?: string;
+  sort?: StorefrontDirectorySort;
+}
+
+export interface StorefrontsPage {
+  items: StorefrontProfile[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ListStorefrontProductsParams {
   page?: number;
   limit?: number;
