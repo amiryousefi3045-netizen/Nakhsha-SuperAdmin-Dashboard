@@ -145,7 +145,7 @@ export interface BuyerOrder {
   discount: number;
   total: number;
   currency: string;
-  status: string;
+  status: BuyerOrderStatus;
   itemCount: number;
   timeline: BuyerOrderTimelineEntry[];
   payment: StorefrontPayment;
@@ -153,6 +153,39 @@ export interface BuyerOrder {
   sellerNote: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type BuyerOrderStatus =
+  | "pending"
+  | "confirmed"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled"
+  | "returned";
+
+/** Order status enum values as served by the storefront order receipt. */
+export const BUYER_ORDER_STATUSES: BuyerOrderStatus[] = [
+  "pending",
+  "confirmed",
+  "processing",
+  "shipped",
+  "delivered",
+  "cancelled",
+  "returned",
+];
+
+export interface ListBuyerOrdersParams {
+  page?: number;
+  limit?: number;
+  status?: BuyerOrderStatus;
+}
+
+export interface BuyerOrdersPage {
+  items: BuyerOrder[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export interface PaymentIntent {

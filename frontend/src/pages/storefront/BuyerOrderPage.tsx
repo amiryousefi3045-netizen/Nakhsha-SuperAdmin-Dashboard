@@ -5,29 +5,11 @@ import { faNumber } from "../../lib/adminFormat";
 import { formatSellerPrice } from "../../lib/sellerFormat";
 import { getStorefrontOrder } from "../../services/storefrontService";
 import type { BuyerOrder } from "../../types/storefront";
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "در انتظار پرداخت",
-  confirmed: "تأیید شده",
-  processing: "در حال آماده‌سازی",
-  shipped: "ارسال شده",
-  delivered: "تحویل شده",
-  cancelled: "لغو شده",
-  returned: "مرجوعی",
-};
-
-const PAYMENT_LABELS: Record<string, string> = {
-  unpaid: "پرداخت نشده",
-  paid: "پرداخت شده",
-  refunded: "مسترد شده",
-};
-
-function statusColor(status: string): string {
-  if (status === "cancelled" || status === "returned") return "bg-red-50 text-red-600";
-  if (status === "paid" || status === "delivered") return "bg-green-50 text-green-600";
-  if (status === "pending") return "bg-amber-50 text-amber-600";
-  return "bg-blue-50 text-blue-600";
-}
+import {
+  PAYMENT_LABELS,
+  statusColorClass,
+  statusLabel,
+} from "./orderLabels";
 
 function Receipt({ order }: { order: BuyerOrder }) {
   return (
@@ -38,10 +20,17 @@ function Receipt({ order }: { order: BuyerOrder }) {
           رسید سفارش
         </h1>
         <span
-          className={`rounded-full px-4 py-1.5 text-xs font-medium ${statusColor(order.status)}`}
+          className={`rounded-full px-4 py-1.5 text-xs font-medium ${statusColorClass(order.status)}`}
         >
-          {STATUS_LABELS[order.status] ?? order.status}
+          {statusLabel(order.status)}
         </span>
+        <Link
+          to="/store/orders"
+          className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-bg)]"
+        >
+          <ArrowRight className="h-4 w-4" />
+          سفارش‌های من
+        </Link>
       </div>
 
       <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-white p-6">
@@ -148,7 +137,7 @@ function Receipt({ order }: { order: BuyerOrder }) {
                   />
                   <div>
                     <p className="text-[var(--color-text)]">
-                      {STATUS_LABELS[entry.status] ?? entry.status}
+                      {statusLabel(entry.status)}
                     </p>
                     <p className="text-xs text-[var(--color-muted)]" dir="ltr">
                       {new Date(entry.at).toLocaleString("fa-IR")}

@@ -416,15 +416,17 @@ app.use("/api/admin", adminRoutes);
 const sellerRoutes = require("./routes/seller");
 app.use("/api/seller", sellerRoutes);
 
+// Buyer storefront checkout — mounted BEFORE the catalog router so the
+// one-segment GET `/orders` (and two-segment GET `/orders/:orderId`) are never
+// shadowed by the catalog's GET `/:slug` (which would otherwise match
+// "orders" as a store slug and 404 on it). The order router has no GET /:slug
+// of its own, so the catalog still handles every other slug path.
+const storefrontOrderRoutes = require("./routes/storefront-order");
+app.use("/api/storefront", storefrontOrderRoutes);
+
 // Public storefront — no auth; visibility gated by the seller's publish setting
 const storefrontRoutes = require("./routes/storefront");
 app.use("/api/storefront", storefrontRoutes);
-
-// Buyer storefront checkout — same base, mounted AFTER the catalog router is
-// fine here: the receipt GET has two segments while the catalog's `/:slug`
-// takes exactly one, so there is no shadowing between them.
-const storefrontOrderRoutes = require("./routes/storefront-order");
-app.use("/api/storefront", storefrontOrderRoutes);
 
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(

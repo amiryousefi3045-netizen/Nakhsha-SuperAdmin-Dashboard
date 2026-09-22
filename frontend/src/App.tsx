@@ -60,6 +60,7 @@ const StorefrontProductPage = lazy(
   () => import("./pages/storefront/StorefrontProductPage"),
 );
 const BuyerOrderPage = lazy(() => import("./pages/storefront/BuyerOrderPage"));
+const BuyerOrdersPage = lazy(() => import("./pages/storefront/BuyerOrdersPage"));
 
 const SellerPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense
@@ -191,6 +192,19 @@ function App() {
             <Route path="p/:id" element={<PostDetailPage />} />
             <Route path="tour/:id" element={<TourDetailPage />} />
             <Route path="learn/:id" element={<TutorialDetailPage />} />
+            {/* Buyer "my orders" — Phase 13 (must precede /store/:slug) */}
+            <Route
+              path="store/orders"
+              element={
+                <RequireAuth>
+                  <Suspense
+                    fallback={<div className="p-8 text-center text-sm text-[var(--color-muted)]">در حال بارگذاری سفارش‌ها...</div>}
+                  >
+                    <BuyerOrdersPage />
+                  </Suspense>
+                </RequireAuth>
+              }
+            />
             {/* Buyer receipt — Phase 12 (must precede /store/:slug) */}
             <Route
               path="store/orders/:orderId"

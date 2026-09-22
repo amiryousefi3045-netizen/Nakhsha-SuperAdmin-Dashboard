@@ -3,9 +3,11 @@ const { z } = require("zod");
 const { requireAuth } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 const { heavyLimiter } = require("../middleware/rateLimiter");
+const { ORDER_STATUSES } = require("../models/Order");
 const {
   checkout,
   paymentCallback,
+  listBuyerOrders,
   getBuyerOrder,
 } = require("../controllers/StorefrontOrderController");
 
@@ -40,6 +42,23 @@ const orderParamsSchema = z.object({
   orderId: z
     .string({ required_error: "شناسه سفارش الزامی است" })
     .regex(REF_ID_PATTERN, "شناسه سفارش نامعتبر است"),
+});
+
+const listOrdersQuerySchema = z.object({
+  page: z
+    .coerce.number()
+    .int("صفحه باید عدد صحیح مثبت باشد")
+    .min(1, "صفحه باید عدد صحیح مثبت باشد")
+    .default(1),
+  limit: z
+    .coerce.number()
+    .int("تعداد در هر صفحه باید بین ۱ تا ۵۰ باشد")
+    .min(1, "تعداد در هر صفحه باید بین ۱ تا ۵۰ باشد")
+    .max(50, "تعداد در هر صفحه باید بین ۱ تا ۵۰ باشد")
+    .default(10),
+  status: z
+    .enum(ORDER_STATUSES, { errorMap: () => ({ message: "وضعیت سفارش نامعتبر است" }) })
+    .optional(),
 });
 
 const checkoutBodySchema = z.object({
@@ -112,6 +131,13 @@ router.post(
   validate(callbackParamsSchema, "params"),
   validate(callbackBodySchema, "body"),
   paymentCallback,
+);
+
+router.get(
+  "/orders",
+  requireAuth,
+  validate(listOrdersQuerySchema, "query"),
+  listBuyerOrders,
 );
 
 router.get(

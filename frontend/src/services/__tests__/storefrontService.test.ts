@@ -25,6 +25,7 @@ import {
   checkoutStorefront,
   submitStorefrontPayment,
   getStorefrontOrder,
+  listStorefrontOrders,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -298,6 +299,38 @@ describe("storefrontService", () => {
       await expect(getStorefrontOrder("ord-other")).rejects.toMatchObject({
         code: "NOT_FOUND",
       });
+    });
+  });
+
+  describe("listStorefrontOrders", () => {
+    const PAGE = {
+      success: true,
+      reqId: "r5",
+      items: [BUYER_ORDER],
+      total: 1,
+      page: 2,
+      limit: 10,
+    };
+
+    it("fetches the buyer's own order page with params", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok(PAGE));
+      const result = await listStorefrontOrders({ page: 2, limit: 10, status: "pending" });
+      expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(apiClient.get).toHaveBeenCalledWith("/storefront/orders", {
+        params: { page: 2, limit: 10, status: "pending" },
+      });
+    });
+
+    it("defaults page/limit when omitted", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok(PAGE));
+      await listStorefrontOrders();
+      expect(apiClient.get).toHaveBeenCalledWith("/storefront/orders", { params: {} });
+    });
+
+    it("throws when the success envelope is missing", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue({ success: true, data: undefined });
+      await expect(listStorefrontOrders()).rejects.toThrow();
     });
   });
 });

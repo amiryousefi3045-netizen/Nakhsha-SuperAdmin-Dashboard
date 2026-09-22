@@ -7,6 +7,7 @@ const AuditLog = require("../models/AuditLog");
 const {
   createBuyerOrder,
   submitPaymentResult,
+  listBuyerOrders,
   getBuyerOrder,
   PAYMENT_PROVIDER,
 } = require("../services/StorefrontOrderService");
@@ -407,5 +408,125 @@ describe("getBuyerOrder", () => {
       payment: { status: "unpaid" },
     });
     expect(await getBuyerOrder({ buyerUserId: String(viewerUserId), orderId: String(order._id) })).toBeNull();
+  });
+});
+
+describe("listBuyerOrders", () => {
+  async function makeStoreOrderFor(buyer, storeCount = 1) {
+    const orders = [];
+    for (let i = 0; i < storeCount; i += 1) {
+      const profile = await makeSeller();
+      const product = await makeProduct(profile);
+      const { order } = await createBuyerOrder({
+        slug: profile.slug,
+        buyerUserId: buyer,
+        customer: CUSTOMER,
+        items: [{ productId: String(product._id), qty: 1 }],
+      });
+      orders.push(order);
+    }
+    return orders;
+  }
+
+  it("returns only the caller's own storefront orders, newest first", async () => {
+    await makeStoreOrderFor(viewerUserId, 3);
+
+    const { items, total } = await listBuyerOrders({
+      buyerUserId: String(viewerUserId),
+      page: 1,
+      limit: 10,
+    });
+
+    expect(total).toBe(3);
+    expect(items).toHaveLength(3);
+    for (const item of items) {
+      expect(item.buyerUserId).toBe(String(viewerUserId));
+      expect(item.origin).toBe("storefront");
+    }
+    const createdAts = items.map((o) => new Date(o.createdAt).getTime());
+    expect([...createdAts].sort((a, b) => b - a)).toEqual(createdAts);
+  });
+
+  it("never lists another buyer's orders", async () => {
+    const otherBuyer = new mongoose.Types.ObjectId();
+    await makeStoreOrderFor(viewerUserId, 2);
+    await makeStoreOrderFor(otherBuyer, 2);
+
+    const result = await listBuyerOrders({ buyerUserId: String(otherBuyer), page: 1, limit: 10 });
+    expect(result.total).toBe(2);
+    for (const item of result.items) {
+      expect(item.buyerUserId).toBe(String(otherBuyer));
+    }
+  });
+
+  it("never lists seller-entered (origin seller) orders", async () => {
+    const store = await makeSeller();
+    await Order.create({
+      sellerId: store._id,
+      sellerUserId: store.userId,
+      buyerUserId: null,
+      orderNumber: 11,
+      customer: CUSTOMER,
+      items: [{ productId: new mongoose.Types.ObjectId(), title: "قلم", price: 1000, qty: 1 }],
+      subtotal: 1000,
+      total: 1000,
+      payment: { status: "unpaid" },
+    });
+    await makeStoreOrderFor(viewerUserId, 1);
+
+    const result = await listBuyerOrders({ buyerUserId: String(viewerUserId), page: 1, limit: 10 });
+    expect(result.total).toBe(1);
+    expect(result.items[0].origin).toBe("storefront");
+  });
+
+  it("filters by status", async () => {
+    const orders = await makeStoreOrderFor(viewerUserId, 3);
+    const cancelled = orders[0];
+    await submitPaymentResult({ refId: String(cancelled._id), result: "FAIL" });
+
+    const pendingList = await listBuyerOrders({
+      buyerUserId: String(viewerUserId),
+      page: 1,
+      limit: 10,
+      status: "pending",
+    });
+    expect(pendingList.total).toBe(2);
+
+    const cancelledList = await listBuyerOrders({
+      buyerUserId: String(viewerUserId),
+      page: 1,
+      limit: 10,
+      status: "cancelled",
+    });
+    expect(cancelledList.total).toBe(1);
+    expect(cancelledList.items[0].id).toBe(String(cancelled._id));
+  });
+
+  it("paginates with limit/page", async () => {
+    await makeStoreOrderFor(viewerUserId, 5);
+
+    const firstPage = await listBuyerOrders({ buyerUserId: String(viewerUserId), page: 1, limit: 2 });
+    expect(firstPage.items).toHaveLength(2);
+    expect(firstPage.total).toBe(5);
+
+    const secondPage = await listBuyerOrders({ buyerUserId: String(viewerUserId), page: 2, limit: 2 });
+    expect(secondPage.items).toHaveLength(2);
+
+    const firstIds = new Set(firstPage.items.map((o) => o.id));
+    for (const item of secondPage.items) {
+      expect(firstIds.has(item.id)).toBe(false);
+    }
+  });
+
+  it("rejects an invalid status filter", async () => {
+    await expect(
+      listBuyerOrders({ buyerUserId: String(viewerUserId), page: 1, limit: 10, status: "bogus" }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("rejects a missing buyer", async () => {
+    await expect(
+      listBuyerOrders({ buyerUserId: "", page: 1, limit: 10 }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 });

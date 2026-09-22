@@ -3,6 +3,7 @@ const {
   StorefrontOrderError,
   createBuyerOrder,
   submitPaymentResult,
+  listBuyerOrders,
   getBuyerOrder,
 } = require("../services/StorefrontOrderService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
@@ -12,6 +13,7 @@ const logger = require("../utils/logger");
 //   POST /api/storefront/:slug/checkout            (authenticated)
 //   POST /api/storefront/payments/:refId/callback  (public — the mock gateway
 //                                                   webhook/redirect target)
+//   GET  /api/storefront/orders                    (authenticated, own list)
 //   GET  /api/storefront/orders/:orderId           (authenticated, own order only)
 
 function storefrontOrderErrorStatus(code) {
@@ -107,6 +109,31 @@ async function paymentCallback(req, res) {
   }
 }
 
+async function listBuyerOrdersHandler(req, res) {
+  try {
+    const result = await listBuyerOrders({
+      buyerUserId: req.user.id,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 10,
+      status: req.query.status,
+    });
+    res.json(createSuccessResponse(result, req.id));
+  } catch (e) {
+    if (e instanceof StorefrontOrderError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Storefront listBuyerOrders error", {
+      error: e.message,
+      buyer: req.user?.id,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 async function getBuyerOrderHandler(req, res) {
   try {
     const order = await getBuyerOrder({
@@ -134,5 +161,6 @@ async function getBuyerOrderHandler(req, res) {
 module.exports = {
   checkout,
   paymentCallback,
+  listBuyerOrders: listBuyerOrdersHandler,
   getBuyerOrder: getBuyerOrderHandler,
 };

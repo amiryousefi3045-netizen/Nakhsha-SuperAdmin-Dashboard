@@ -403,6 +403,82 @@ describe("GET /api/storefront/orders/:orderId", () => {
   });
 });
 
+describe("GET /api/storefront/orders", () => {
+  async function checkoutOne() {
+    const res = await request(app)
+      .post("/api/storefront/buy-store/checkout")
+      .set("Authorization", AUTH(buyerToken))
+      .send({ ...CHECKOUT_BODY, items: [{ productId: trackedProductId, qty: 1 }] });
+    expect(res.status).toBe(200);
+    return res.body.order;
+  }
+
+  it("lists only the caller's own storefront orders, newest first", async () => {
+    const first = await checkoutOne();
+    const second = await checkoutOne();
+
+    const res = await request(app)
+      .get("/api/storefront/orders")
+      .set("Authorization", AUTH(buyerToken));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(2);
+    for (const item of res.body.items) {
+      expect(item.origin).toBe("storefront");
+      expect(item.buyerUserId).toBe(buyerUserId);
+    }
+    expect(res.body.items[0].id).toBe(second.id);
+    expect(res.body.items[1].id).toBe(first.id);
+  });
+
+  it("is empty for a buyer with no storefront orders (no leak)", async () => {
+    const res = await request(app)
+      .get("/api/storefront/orders")
+      .set("Authorization", AUTH(otherBuyerToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+    expect(res.body.total).toBe(0);
+  });
+
+  it("supports pagination", async () => {
+    const res = await request(app)
+      .get("/api/storefront/orders?page=1&limit=1")
+      .set("Authorization", AUTH(buyerToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.total).toBeGreaterThan(1);
+    expect(res.body.limit).toBe(1);
+  });
+
+  it("filters by status via the payment callback state", async () => {
+    const order = await checkoutOne();
+    await request(app)
+      .post(`/api/storefront/payments/${order.id}/callback`)
+      .send({ result: "FAIL", reason: "کاربر انصراف داد" });
+
+    const cancelled = await request(app)
+      .get("/api/storefront/orders?status=cancelled")
+      .set("Authorization", AUTH(buyerToken));
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.items.map((i) => i.id)).toContain(order.id);
+    for (const item of cancelled.body.items) {
+      expect(item.status).toBe("cancelled");
+    }
+  });
+
+  it("rejects an unknown status value", async () => {
+    const res = await request(app)
+      .get("/api/storefront/orders?status=bogus")
+      .set("Authorization", AUTH(buyerToken));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/storefront/orders");
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("seam: storefront orders flow into the seller dashboard", () => {
   it("lists the buyer order in the seller's order catalog", async () => {
     const res = await request(app)

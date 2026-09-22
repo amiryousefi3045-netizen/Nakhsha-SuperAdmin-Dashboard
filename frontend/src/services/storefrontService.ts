@@ -10,8 +10,10 @@ import { apiClient } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
   BuyerOrder,
+  BuyerOrdersPage,
   CheckoutInput,
   CheckoutResponse,
+  ListBuyerOrdersParams,
   ListStorefrontProductsParams,
   PaymentCallbackResult,
   PaymentCallbackResultPayload,
@@ -106,4 +108,17 @@ export async function getStorefrontOrder(orderId: string): Promise<BuyerOrder> {
     `/storefront/orders/${orderId}`,
   );
   return unwrap(res, { order: {} as BuyerOrder }).order;
+}
+
+/** GET /storefront/orders — paginated "my orders" for the signed-in buyer. */
+export async function listStorefrontOrders(
+  params: ListBuyerOrdersParams = {},
+): Promise<BuyerOrdersPage> {
+  const res = await apiClient.get<BuyerOrdersPage>("/storefront/orders", { params });
+  return unwrap(res, {
+    items: [],
+    total: 0,
+    page: params.page ?? 1,
+    limit: params.limit ?? 10,
+  });
 }

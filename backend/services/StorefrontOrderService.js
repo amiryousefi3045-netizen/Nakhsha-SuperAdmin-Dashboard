@@ -21,6 +21,7 @@ const AuditService = require("./AuditService");
 const { StorefrontService } = require("./StorefrontService");
 
 const PAYMENT_PROVIDER = "mock";
+const ORDER_STATUSES = Order.ORDER_STATUSES;
 
 class StorefrontOrderError extends Error {
   /**
@@ -222,6 +223,40 @@ async function submitPaymentResult({ refId, result, reason = "" }) {
 }
 
 /**
+ * Paginated list of a buyer's OWN storefront orders, newest first.
+ *
+ * Scoped to `{ buyerUserId, origin: "storefront" }` (index buyerUserId +
+ * createdAt), so seller-entered orders and other buyers' orders can never
+ * appear. The optional `status` filter is validated against the order enum.
+ */
+async function listBuyerOrders({ buyerUserId, page = 1, limit = 10, status }) {
+  if (!buyerUserId) {
+    throw new StorefrontOrderError("VALIDATION_ERROR", "خریدار مشخص نیست");
+  }
+  if (status && !ORDER_STATUSES.includes(status)) {
+    throw new StorefrontOrderError("VALIDATION_ERROR", "وضعیت سفارش نامعتبر است");
+  }
+
+  const filter = { buyerUserId, origin: "storefront" };
+  if (status) filter.status = status;
+
+  const [items, total] = await Promise.all([
+    Order.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+    Order.countDocuments(filter),
+  ]);
+
+  return {
+    items: items.map((o) => OrderService.orderToDTO(o)),
+    total,
+    page,
+    limit,
+  };
+}
+
+/**
  * Fetch a buyer's own storefront order (receipt). Null when the order does not
  * belong to this buyer or was not created via the storefront.
  */
@@ -239,5 +274,6 @@ module.exports = {
   PAYMENT_PROVIDER,
   createBuyerOrder,
   submitPaymentResult,
+  listBuyerOrders,
   getBuyerOrder,
 };
