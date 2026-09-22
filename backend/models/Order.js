@@ -64,6 +64,20 @@ const OrderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Where the order entered the system: a seller's manual/admin entry or a
+    // public storefront checkout. Legacy/hand-created orders default to seller.
+    origin: {
+      type: String,
+      enum: ["seller", "storefront"],
+      default: "seller",
+    },
+    // Buyer identity for storefront checkout orders; null for seller-entered.
+    buyerUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     // Human-readable store number, unique per seller (monotonic counter).
     orderNumber: { type: Number, required: true },
     customer: {
@@ -84,11 +98,16 @@ const OrderSchema = new mongoose.Schema(
       carrier: { type: String, default: "", maxlength: 100 },
       trackingCode: { type: String, default: "", maxlength: 200 },
     },
-    // Payment is a snapshot for now — the gateway integration is a later
-    // phase. Never assume a paid state beyond what the snapshot says.
+    // Payment snapshot. For storefront orders the gateway is simulated
+    // (`provider: "mock"`, `refId` = order id) so the flow is fully hermetic;
+    // real gateways can later reuse the same shape. Never assume a paid state
+    // beyond what this snapshot says.
     payment: {
       method: { type: String, default: "", maxlength: 50 },
       status: { type: String, enum: ["unpaid", "paid", "refunded"], default: "unpaid" },
+      provider: { type: String, default: "", maxlength: 50 },
+      refId: { type: String, default: "", maxlength: 100 },
+      paidAt: { type: Date, default: null },
     },
     customerNote: { type: String, default: "", maxlength: 2000 },
     sellerNote: { type: String, default: "", maxlength: 2000 },
@@ -106,6 +125,7 @@ OrderSchema.index({ sellerId: 1, createdAt: -1 });
 OrderSchema.index({ sellerId: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ sellerId: 1, orderNumber: -1 }, { unique: true });
 OrderSchema.index({ "items.productId": 1 });
+OrderSchema.index({ buyerUserId: 1, createdAt: -1 });
 
 // ============================================================================
 // VIRTUALS

@@ -53,6 +53,8 @@ function orderToDTO(order) {
   return {
     id: String(o._id),
     sellerId: String(o.sellerId),
+    origin: o.origin || "seller",
+    buyerUserId: o.buyerUserId ? String(o.buyerUserId) : null,
     orderNumber: o.orderNumber,
     customer: o.customer || {},
     items: (o.items || []).map((item) => ({
@@ -183,6 +185,8 @@ async function returnToStock(productId, sellerId, qty) {
  * @param {number} [params.shippingFee]
  * @param {number} [params.discount]
  * @param {string} [params.customerNote]
+ * @param {"seller"|"storefront"} [params.origin] - entry point; defaults to seller
+ * @param {import("mongoose").Types.ObjectId|null} [params.buyerUserId] - buyer for storefront orders
  */
 async function createOrder({
   sellerId,
@@ -192,6 +196,8 @@ async function createOrder({
   shippingFee = 0,
   discount = 0,
   customerNote = "",
+  origin = "seller",
+  buyerUserId = null,
 }) {
   if (!customer || !customer.name || !customer.phone) {
     throw new OrderDomainError("VALIDATION_ERROR", "نام و شماره تماس مشتری الزامی است");
@@ -250,6 +256,8 @@ async function createOrder({
   const order = await Order.create({
     sellerId,
     sellerUserId,
+    origin,
+    buyerUserId,
     orderNumber,
     customer: {
       name: customer.name,

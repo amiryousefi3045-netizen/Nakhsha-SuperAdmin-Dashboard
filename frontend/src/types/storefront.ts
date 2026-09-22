@@ -79,3 +79,98 @@ export const STOREFRONT_CATEGORIES: Array<{ value: string; label: string }> = [
   { value: "tourism", label: "گردشگری" },
   { value: "other", label: "سایر" },
 ];
+
+/**
+ * Buyer checkout + payment types (Phase 12).
+ *
+ * These mirror the storefront-order DTOs: `BuyerOrder` is the buyer-facing
+ * order receipt derived from OrderService.orderToDTO — seller-internal fields
+ * (seller profile internals, seller notes about fulfillment) are never shown.
+ */
+
+export interface CheckoutItemInput {
+  productId: string;
+  qty: number;
+}
+
+export interface CheckoutCustomerInput {
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+}
+
+export interface CheckoutInput {
+  customer: CheckoutCustomerInput;
+  items: CheckoutItemInput[];
+  paymentMethod?: "card" | "wallet" | "other";
+  customerNote?: string;
+}
+
+export interface StorefrontPayment {
+  method: string;
+  status: "unpaid" | "paid" | "refunded";
+  provider?: string;
+  refId?: string;
+  paidAt?: string;
+}
+
+export interface BuyerOrderItem {
+  productId: string;
+  title: string;
+  sku: string;
+  image: string;
+  price: number;
+  currency: string;
+  qty: number;
+}
+
+export interface BuyerOrderTimelineEntry {
+  status: string;
+  at: string;
+  by: string | null;
+  reason: string;
+}
+
+export interface BuyerOrder {
+  id: string;
+  sellerId: string;
+  origin: "seller" | "storefront";
+  buyerUserId: string | null;
+  orderNumber: number;
+  customer: CheckoutCustomerInput;
+  items: BuyerOrderItem[];
+  subtotal: number;
+  shippingFee: number;
+  discount: number;
+  total: number;
+  currency: string;
+  status: string;
+  itemCount: number;
+  timeline: BuyerOrderTimelineEntry[];
+  payment: StorefrontPayment;
+  customerNote: string;
+  sellerNote: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaymentIntent {
+  provider: string;
+  refId: string;
+  amount: number;
+  currency: string;
+  status: string;
+}
+
+export interface CheckoutResponse {
+  order: BuyerOrder;
+  paymentIntent: PaymentIntent;
+}
+
+export interface PaymentCallbackResultPayload {
+  order: BuyerOrder;
+  applied: boolean;
+}
+
+export type PaymentCallbackResult = "SUCCESS" | "FAIL";

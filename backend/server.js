@@ -420,6 +420,12 @@ app.use("/api/seller", sellerRoutes);
 const storefrontRoutes = require("./routes/storefront");
 app.use("/api/storefront", storefrontRoutes);
 
+// Buyer storefront checkout — same base, mounted AFTER the catalog router is
+// fine here: the receipt GET has two segments while the catalog's `/:slug`
+// takes exactly one, so there is no shadowing between them.
+const storefrontOrderRoutes = require("./routes/storefront-order");
+app.use("/api/storefront", storefrontOrderRoutes);
+
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(
   "/api-docs",

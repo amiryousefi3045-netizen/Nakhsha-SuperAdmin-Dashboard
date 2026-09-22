@@ -9,7 +9,12 @@
 import { apiClient } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
+  BuyerOrder,
+  CheckoutInput,
+  CheckoutResponse,
   ListStorefrontProductsParams,
+  PaymentCallbackResult,
+  PaymentCallbackResultPayload,
   StorefrontProduct,
   StorefrontProductsPage,
   StorefrontProfile,
@@ -56,4 +61,49 @@ export async function getStorefrontProduct(
     `/storefront/${encodeURIComponent(slug)}/products/${productId}`,
   );
   return unwrap(res, { product: {} as StorefrontProduct }).product;
+}
+
+/**
+ * POST /storefront/:slug/checkout — buyer checkout.
+ *
+ * Requires authentication (the interceptor attaches the token). Reserves stock
+ * and returns a mock payment intent addressed to the (also authenticated-
+ * agnostic) callback endpoint below.
+ */
+export async function checkoutStorefront(
+  slug: string,
+  input: CheckoutInput,
+): Promise<CheckoutResponse> {
+  const res = await apiClient.post<CheckoutResponse>(
+    `/storefront/${encodeURIComponent(slug)}/checkout`,
+    input,
+  );
+  return unwrap(res, {
+    order: {} as CheckoutResponse["order"],
+    paymentIntent: {} as CheckoutResponse["paymentIntent"],
+  });
+}
+
+/**
+ * POST /storefront/payments/:refId/callback — apply the (simulated) gateway
+ * result. Public by design: the gateway calls back without a session token.
+ */
+export async function submitStorefrontPayment(
+  refId: string,
+  result: PaymentCallbackResult,
+  reason = "",
+): Promise<PaymentCallbackResultPayload> {
+  const res = await apiClient.post<PaymentCallbackResultPayload>(
+    `/storefront/payments/${refId}/callback`,
+    { result, reason: reason || undefined },
+  );
+  return unwrap(res, { order: {} as PaymentCallbackResultPayload["order"], applied: false });
+}
+
+/** GET /storefront/orders/:orderId — the buyer's own order receipt. */
+export async function getStorefrontOrder(orderId: string): Promise<BuyerOrder> {
+  const res = await apiClient.get<{ order: BuyerOrder }>(
+    `/storefront/orders/${orderId}`,
+  );
+  return unwrap(res, { order: {} as BuyerOrder }).order;
 }

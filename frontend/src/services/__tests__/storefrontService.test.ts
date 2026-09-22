@@ -22,6 +22,9 @@ import {
   getStorefront,
   getStorefrontProducts,
   getStorefrontProduct,
+  checkoutStorefront,
+  submitStorefrontPayment,
+  getStorefrontOrder,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -80,6 +83,53 @@ const PRODUCT = {
     availableStock: 10,
     isLowStock: false,
     isOutOfStock: false,
+  },
+};
+
+const BUYER_ORDER = {
+  id: "ord1",
+  sellerId: "p1",
+  origin: "storefront",
+  buyerUserId: "u1",
+  orderNumber: 7,
+  customer: { name: "خریدار محمدی", phone: "09123456789" },
+  items: [
+    {
+      productId: "c1",
+      title: "گلدان سفالی",
+      sku: "",
+      image: "",
+      price: 500000,
+      currency: "IRR",
+      qty: 2,
+    },
+  ],
+  subtotal: 1000000,
+  shippingFee: 0,
+  discount: 0,
+  total: 1000000,
+  currency: "IRR",
+  status: "pending",
+  itemCount: 2,
+  timeline: [
+    { status: "pending", at: "2026-01-01T00:00:00.000Z", by: null, reason: "" },
+  ],
+  carrierInfo: {},
+  payment: { method: "card", status: "unpaid", provider: "mock", refId: "ord1" },
+  customerNote: "",
+  sellerNote: "",
+};
+
+const CHECKOUT = {
+  success: true,
+  reqId: "r4",
+  order: BUYER_ORDER,
+  paymentIntent: {
+    provider: "mock",
+    refId: "ord1",
+    amount: 1000000,
+    currency: "IRR",
+    status: "unpaid",
   },
 };
 
@@ -163,6 +213,91 @@ describe("storefrontService", () => {
     it("throws when the response has no product field", async () => {
       vi.mocked(apiClient.get).mockResolvedValue({ success: true, data: undefined });
       await expect(getStorefrontProduct("nakhsha-vitrin", "c1")).rejects.toThrow();
+    });
+  });
+
+  describe("checkoutStorefront", () => {
+    it("posts the checkout payload and returns order + payment intent", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(ok(CHECKOUT));
+      const input = {
+        customer: { name: "خریدار محمدی", phone: "09123456789" },
+        items: [{ productId: "c1", qty: 2 }],
+        paymentMethod: "card" as const,
+      };
+      const result = await checkoutStorefront("nakhsha-vitrin", input);
+      expect(result.order.orderNumber).toBe(7);
+      expect(result.paymentIntent.refId).toBe("ord1");
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/storefront/nakhsha-vitrin/checkout",
+        input,
+      );
+    });
+
+    it("throws when stock cannot be reserved", async () => {
+      const err: ApiError = { code: "INSUFFICIENT_STOCK", message: "موجودی کافی نیست" };
+      vi.mocked(apiClient.post).mockResolvedValue({ success: false, error: err });
+      await expect(
+        checkoutStorefront("nakhsha-vitrin", {
+          customer: { name: "خریدار محمدی", phone: "09123456789" },
+          items: [{ productId: "c1", qty: 60 }],
+        }),
+      ).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
+    });
+  });
+
+  describe("submitStorefrontPayment", () => {
+    it("applies SUCCESS and returns the paid order", async () => {
+      const paid = {
+        ...BUYER_ORDER,
+        payment: { method: "card", status: "paid", provider: "mock", refId: "ord1" },
+      };
+      vi.mocked(apiClient.post).mockResolvedValue(ok({ order: paid, applied: true }));
+      const result = await submitStorefrontPayment("ord1", "SUCCESS");
+      expect(result.applied).toBe(true);
+      expect(result.order.payment.status).toBe("paid");
+      expect(apiClient.post).toHaveBeenCalledWith("/storefront/payments/ord1/callback", {
+        result: "SUCCESS",
+        reason: undefined,
+      });
+    });
+
+    it("reports FAIL without marking the order paid", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(
+        ok({ order: { ...BUYER_ORDER, status: "cancelled" }, applied: true }),
+      );
+      const result = await submitStorefrontPayment("ord1", "FAIL", "کاربر انصراف داد");
+      expect(result.applied).toBe(true);
+      expect(result.order.status).toBe("cancelled");
+      expect(apiClient.post).toHaveBeenCalledWith("/storefront/payments/ord1/callback", {
+        result: "FAIL",
+        reason: "کاربر انصراف داد",
+      });
+    });
+
+    it("throws when the refId is not a known transaction", async () => {
+      const err: ApiError = { code: "NOT_FOUND", message: "تراکنش پرداخت یافت نشد" };
+      vi.mocked(apiClient.post).mockResolvedValue({ success: false, error: err });
+      await expect(submitStorefrontPayment("deadbeef", "SUCCESS")).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+  });
+
+  describe("getStorefrontOrder", () => {
+    it("fetches the buyer's own order receipt", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok({ order: BUYER_ORDER }));
+      const result = await getStorefrontOrder("ord1");
+      expect(result.payment.status).toBe("unpaid");
+      expect(result.items).toHaveLength(1);
+      expect(apiClient.get).toHaveBeenCalledWith("/storefront/orders/ord1");
+    });
+
+    it("throws when the order belongs to another buyer", async () => {
+      const err: ApiError = { code: "NOT_FOUND", message: "سفارش پیدا نشد" };
+      vi.mocked(apiClient.get).mockResolvedValue({ success: false, error: err });
+      await expect(getStorefrontOrder("ord-other")).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
     });
   });
 });
