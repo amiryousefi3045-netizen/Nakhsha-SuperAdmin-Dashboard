@@ -32,6 +32,11 @@ export interface StorefrontProfile {
   createdAt?: string;
 }
 
+export interface ProductRating {
+  average: number;
+  count: number;
+}
+
 export interface StorefrontProduct {
   id: string;
   title: string;
@@ -45,6 +50,8 @@ export interface StorefrontProduct {
   availableStock: number;
   isLowStock: boolean;
   isOutOfStock: boolean;
+  /** Buyer rating aggregate — Phase 14 (defaults to none when empty). */
+  rating?: ProductRating;
   createdAt?: string;
 }
 
@@ -207,3 +214,38 @@ export interface PaymentCallbackResultPayload {
 }
 
 export type PaymentCallbackResult = "SUCCESS" | "FAIL";
+
+/**
+ * Product reviews (Phase 14). These mirror the storefront-review DTOs: public
+ * reviews only expose a name snapshot (`buyerName` is the generic «کاربر نخشا»
+ * for anonymous reviews); buyer PII is never present.
+ */
+
+export interface ReviewItem {
+  id: string;
+  rating: number;
+  comment: string;
+  buyerName: string;
+  isAnonymous: boolean;
+  createdAt?: string;
+}
+
+export interface StorefrontReviewsPage {
+  rating: ProductRating;
+  items: ReviewItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SubmitReviewInput {
+  rating: number;
+  comment?: string;
+  isAnonymous?: boolean;
+}
+
+export interface MyStorefrontReview {
+  canReview: boolean;
+  hasDeliveredPurchase: boolean;
+  review: ReviewItem | null;
+}

@@ -88,6 +88,13 @@ const ProductSchema = new mongoose.Schema(
       default: 3,
       min: 0,
     },
+    // Denormalized buyer rating aggregate (Phase 14). Maintained by
+    // StorefrontReviewService.refreshProductRating after every review write so
+    // the public catalog and cards can render stars without an aggregation.
+    rating: {
+      average: { type: Number, default: 0, min: 0, max: 5 },
+      count: { type: Number, default: 0, min: 0 },
+    },
     variants: [],
     shipping: {
       weight: { type: Number, min: 0 },

@@ -15,11 +15,16 @@ import type {
   CheckoutResponse,
   ListBuyerOrdersParams,
   ListStorefrontProductsParams,
+  MyStorefrontReview,
   PaymentCallbackResult,
   PaymentCallbackResultPayload,
+  ProductRating,
+  ReviewItem,
   StorefrontProduct,
   StorefrontProductsPage,
   StorefrontProfile,
+  StorefrontReviewsPage,
+  SubmitReviewInput,
 } from "../types/storefront";
 
 function unwrap<T>(res: ApiResult<T>, expected: T): T {
@@ -120,5 +125,62 @@ export async function listStorefrontOrders(
     total: 0,
     page: params.page ?? 1,
     limit: params.limit ?? 10,
+  });
+}
+
+/**
+ * GET /storefront/products/:productId/reviews — public, paginated list of the
+ * product's published reviews plus its overall rating aggregate.
+ */
+export async function getStorefrontProductReviews(
+  productId: string,
+  params: { page?: number; limit?: number } = {},
+): Promise<StorefrontReviewsPage> {
+  const res = await apiClient.get<StorefrontReviewsPage>(
+    `/storefront/products/${productId}/reviews`,
+    { params },
+  );
+  return unwrap(res, {
+    rating: { average: 0, count: 0 },
+    items: [],
+    total: 0,
+    page: params.page ?? 1,
+    limit: params.limit ?? 10,
+  });
+}
+
+/**
+ * POST /storefront/products/:productId/review — submit or edit a review.
+ * Requires authentication; a review is only allowed after a paid + delivered
+ * storefront purchase of the product (enforced server-side).
+ */
+export async function submitStorefrontReview(
+  productId: string,
+  input: SubmitReviewInput,
+): Promise<{ review: ReviewItem; rating: ProductRating }> {
+  const res = await apiClient.post<{ review: ReviewItem; rating: ProductRating }>(
+    `/storefront/products/${productId}/review`,
+    input,
+  );
+  return unwrap(res, {
+    review: {} as ReviewItem,
+    rating: { average: 0, count: 0 },
+  });
+}
+
+/**
+ * GET /storefront/products/:productId/review/mine — the signed-in buyer's own
+ * review plus their purchase eligibility for this product.
+ */
+export async function getMyStorefrontReview(
+  productId: string,
+): Promise<MyStorefrontReview> {
+  const res = await apiClient.get<MyStorefrontReview>(
+    `/storefront/products/${productId}/review/mine`,
+  );
+  return unwrap(res, {
+    canReview: false,
+    hasDeliveredPurchase: false,
+    review: null,
   });
 }

@@ -26,6 +26,9 @@ import {
   submitStorefrontPayment,
   getStorefrontOrder,
   listStorefrontOrders,
+  getStorefrontProductReviews,
+  submitStorefrontReview,
+  getMyStorefrontReview,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -331,6 +334,121 @@ describe("storefrontService", () => {
     it("throws when the success envelope is missing", async () => {
       vi.mocked(apiClient.get).mockResolvedValue({ success: true, data: undefined });
       await expect(listStorefrontOrders()).rejects.toThrow();
+    });
+  });
+
+  describe("getStorefrontProductReviews", () => {
+    const REVIEWS = {
+      success: true,
+      reqId: "r6",
+      rating: { average: 4.5, count: 2 },
+      items: [
+        {
+          id: "rev1",
+          rating: 5,
+          comment: "کیفیت عالی",
+          buyerName: "کاربر نخشا",
+          isAnonymous: true,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "rev2",
+          rating: 4,
+          comment: "خوب بود",
+          buyerName: "امین",
+          isAnonymous: false,
+          createdAt: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 5,
+    };
+
+    it("fetches the public review list with the rating block", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok(REVIEWS));
+      const result = await getStorefrontProductReviews("prod1", { page: 2, limit: 5 });
+      expect(result.items).toHaveLength(2);
+      expect(result.rating).toEqual({ average: 4.5, count: 2 });
+      expect(apiClient.get).toHaveBeenCalledWith("/storefront/products/prod1/reviews", {
+        params: { page: 2, limit: 5 },
+      });
+    });
+
+    it("defaults pagination and anon-labelled names", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(ok(REVIEWS));
+      const result = await getStorefrontProductReviews("prod1");
+      expect(result.items[0].buyerName).toBe("کاربر نخشا");
+      expect(apiClient.get).toHaveBeenCalledWith("/storefront/products/prod1/reviews", {
+        params: {},
+      });
+    });
+
+    it("throws when the product is unknown", async () => {
+      const err: ApiError = { code: "NOT_FOUND", message: "محصول یافت نشد" };
+      vi.mocked(apiClient.get).mockResolvedValue({ success: false, error: err });
+      await expect(getStorefrontProductReviews("prod-nope")).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+  });
+
+  describe("submitStorefrontReview", () => {
+    it("posts the review and returns the updated rating", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(
+        ok({ review: { id: "rev1", rating: 4, comment: "...", buyerName: "امین", isAnonymous: false }, rating: { average: 4, count: 1 } }),
+      );
+      const result = await submitStorefrontReview("prod1", {
+        rating: 4,
+        comment: "خوب بود",
+        isAnonymous: false,
+      });
+      expect(result.rating.count).toBe(1);
+      expect(apiClient.post).toHaveBeenCalledWith("/storefront/products/prod1/review", {
+        rating: 4,
+        comment: "خوب بود",
+        isAnonymous: false,
+      });
+    });
+
+    it("surfaces REVIEW_NOT_ALLOWED for buyers without a delivered purchase", async () => {
+      const err: ApiError = {
+        code: "REVIEW_NOT_ALLOWED",
+        message: "برای ثبت دیدگاه باید این کالا را خریداری و تحویل گرفته باشید",
+      };
+      vi.mocked(apiClient.post).mockResolvedValue({ success: false, error: err });
+      await expect(
+        submitStorefrontReview("prod1", { rating: 5, comment: "", isAnonymous: false }),
+      ).rejects.toMatchObject({ code: "REVIEW_NOT_ALLOWED" });
+    });
+  });
+
+  describe("getMyStorefrontReview", () => {
+    it("reports purchase eligibility and an existing review", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(
+        ok({
+          canReview: false,
+          hasDeliveredPurchase: true,
+          review: { id: "rev1", rating: 5, comment: "عالی", buyerName: "امین", isAnonymous: false },
+        }),
+      );
+      const result = await getMyStorefrontReview("prod1");
+      expect(result.canReview).toBe(false);
+      expect(result.hasDeliveredPurchase).toBe(true);
+      expect(result.review).toMatchObject({ rating: 5 });
+      expect(apiClient.get).toHaveBeenCalledWith("/storefront/products/prod1/review/mine");
+    });
+
+    it("reports no purchase for a stranger", async () => {
+      vi.mocked(apiClient.get).mockResolvedValue(
+        ok({ canReview: false, hasDeliveredPurchase: false, review: null }),
+      );
+      const result = await getMyStorefrontReview("prod1");
+      expect(result).toEqual({
+        canReview: false,
+        hasDeliveredPurchase: false,
+        review: null,
+      });
     });
   });
 });

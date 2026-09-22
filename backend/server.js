@@ -424,6 +424,12 @@ app.use("/api/seller", sellerRoutes);
 const storefrontOrderRoutes = require("./routes/storefront-order");
 app.use("/api/storefront", storefrontOrderRoutes);
 
+// Buyer product reviews (Phase 14). Every review path starts with a literal
+// `/products/:productId/…` segment, so it can neither shadow nor be shadowed
+// by the catalog routes. Still mounted before the catalog for symmetry.
+const storefrontReviewRoutes = require("./routes/storefront-review");
+app.use("/api/storefront", storefrontReviewRoutes);
+
 // Public storefront — no auth; visibility gated by the seller's publish setting
 const storefrontRoutes = require("./routes/storefront");
 app.use("/api/storefront", storefrontRoutes);

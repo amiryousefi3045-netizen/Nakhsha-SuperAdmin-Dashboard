@@ -6,25 +6,32 @@ import {
   CreditCard,
   Loader2,
   Package,
+  Star,
   Store,
   Tag,
   XCircle,
 } from "lucide-react";
 import { useAsync } from "../../hooks/useAsync";
 import { useAuth } from "../../hooks/useAuth";
-import { faNumber } from "../../lib/adminFormat";
+import { faNumber, formatDate } from "../../lib/adminFormat";
 import { formatSellerPrice } from "../../lib/sellerFormat";
 import { toAbsoluteMediaUrl } from "../../services/media";
 import {
   checkoutStorefront,
+  getMyStorefrontReview,
   getStorefrontProduct,
+  getStorefrontProductReviews,
   submitStorefrontPayment,
+  submitStorefrontReview,
 } from "../../services/storefrontService";
 import {
   STOREFRONT_CATEGORIES,
   type BuyerOrder,
   type CheckoutResponse,
+  type MyStorefrontReview,
+  type ReviewItem,
 } from "../../types/storefront";
+import { Pagination } from "../../components/admin/Pagination";
 
 function categoryLabel(value: string): string {
   return STOREFRONT_CATEGORIES.find((c) => c.value === value)?.label ?? value;
@@ -277,6 +284,225 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
   );
 }
 
+function StarRow({ value, onChange }: { value: number; onChange?: (v: number) => void }) {
+  const [hover, setHover] = useState(0);
+  const active = onChange ? hover || value : value;
+  return (
+    <div className="flex items-center gap-1" dir="ltr">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={!onChange}
+          onMouseEnter={() => onChange && setHover(n)}
+          onMouseLeave={() => onChange && setHover(0)}
+          onClick={() => onChange?.(n)}
+          className="disabled:cursor-default"
+          aria-label={`${n} ستاره`}
+        >
+          <Star
+            className={
+              active >= n
+                ? "h-5 w-5 fill-amber-400 text-amber-400"
+                : "h-5 w-5 text-gray-300"
+            }
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReviewCard({ review }: { review: ReviewItem }) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <StarRow value={review.rating} />
+          <span className="text-sm font-semibold text-[var(--color-text)]">
+            {review.buyerName}
+          </span>
+        </div>
+        {review.createdAt ? (
+          <span className="text-xs text-[var(--color-muted)]">{formatDate(review.createdAt)}</span>
+        ) : null}
+      </div>
+      {review.comment ? (
+        <p className="mt-3 text-sm leading-7 text-[var(--color-text)]">{review.comment}</p>
+      ) : null}
+    </div>
+  );
+}
+
+const REVIEWS_PAGE_SIZE = 5;
+
+function ReviewsSection({ productId }: { productId: string }) {
+  const { user } = useAuth();
+  const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [bump, setBump] = useState(0);
+
+  const list = useAsync(
+    () => getStorefrontProductReviews(productId, { page, limit: REVIEWS_PAGE_SIZE }),
+    [productId, page, bump],
+  );
+
+  const mine = useAsync<MyStorefrontReview | null>(
+    () => (user ? getMyStorefrontReview(productId) : Promise.resolve(null)),
+    [user?.id, productId, bump],
+  );
+
+  function startEdit(review?: ReviewItem) {
+    setRating(review?.rating ?? 5);
+    setComment(review?.comment ?? "");
+    setIsAnonymous(review?.isAnonymous ?? false);
+    setFormError("");
+    setEditing(true);
+  }
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    setFormError("");
+    try {
+      await submitStorefrontReview(productId, {
+        rating,
+        comment: comment.trim(),
+        isAnonymous,
+      });
+      setEditing(false);
+      setBump((b) => b + 1);
+      if (page !== 1) setPage(1);
+    } catch (err) {
+      setFormError(
+        (err as { message?: string })?.message ?? "ثبت دیدگاه ناموفق بود؛ دوباره تلاش کنید.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const canWrite =
+    user && !mine.loading && mine.data
+      ? mine.data.canReview || (mine.data.hasDeliveredPurchase && editing)
+      : false;
+  const myReview = mine.data?.review ?? null;
+  const showMyCard = user && !mine.loading && mine.data?.hasDeliveredPurchase && myReview && !editing;
+  const totalPages = list.data
+    ? Math.max(1, Math.ceil(list.data.total / list.data.limit))
+    : 1;
+  const rating0 = list.data?.rating ?? { average: 0, count: 0 };
+
+  return (
+    <div className="mt-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--color-text)]">
+          <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+          دیدگاه خریداران
+        </h2>
+        {rating0.count > 0 ? (
+          <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+            <StarRow value={rating0.average} />
+            {faNumber(rating0.average)} از ۵ — {faNumber(rating0.count)} دیدگاه
+          </span>
+        ) : null}
+      </div>
+
+      {canWrite ? (
+        <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-white p-5">
+          <p className="text-sm font-bold text-[var(--color-text)]">
+            {myReview ? "ویرایش دیدگاه" : "ثبت دیدگاه جدید"}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-[var(--color-muted)]">امتیاز شما</span>
+            <StarRow value={rating} onChange={setRating} />
+          </div>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={3}
+            maxLength={1000}
+            placeholder="تجربه‌ی خود از این محصول را بنویسید... (اختیاری)"
+            className="mt-3 w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+          />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
+              <input
+                type="checkbox"
+                checked={isAnonymous}
+                onChange={(e) => setIsAnonymous(e.target.checked)}
+                className="h-4 w-4 accent-[var(--color-primary)]"
+              />
+              انتشار با نام «کاربر نخشا»
+            </label>
+            <div className="flex items-center gap-2">
+              {myReview && user ? (
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-muted)] hover:bg-[var(--color-bg)]"
+                >
+                  انصراف
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-60"
+              >
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {myReview ? "به‌روزرسانی دیدگاه" : "ثبت دیدگاه"}
+              </button>
+            </div>
+          </div>
+          {formError ? (
+            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{formError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showMyCard ? (
+        <div className="mt-4">
+          {myReview ? <ReviewCard review={myReview} /> : null}
+          <button
+            type="button"
+            onClick={() => user && startEdit(myReview ?? undefined)}
+            className="mt-2 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
+          >
+            ویرایش دیدگاه‌ام
+          </button>
+        </div>
+      ) : null}
+
+      {list.loading ? (
+        <div className="mt-4 rounded-xl border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-[var(--color-muted)]">
+          در حال بارگذاری دیدگاه‌ها...
+        </div>
+      ) : list.data && list.data.items.length === 0 ? (
+        <div className="mt-4 rounded-xl border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-[var(--color-muted)]">
+          هنوز دیدگاهی برای این محصول ثبت نشده است. پس از خرید و تحویل، تجربه‌ی خود را بنویسید.
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 space-y-3">
+            {(list.data?.items ?? []).map((review) => (
+              <ReviewCard key={review.id} review={review} />
+            ))}
+          </div>
+          {totalPages > 1 ? (
+            <Pagination className="mt-4" page={page} totalPages={totalPages} onChange={setPage} />
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function StorefrontProductPage() {
   const { slug = "", productId = "" } = useParams<{ slug: string; productId: string }>();
 
@@ -379,6 +605,18 @@ export function StorefrontProductPage() {
 
           <h1 className="mt-3 text-2xl font-bold text-[var(--color-text)]">{product.title}</h1>
 
+          {(product.rating?.count ?? 0) > 0 ? (
+            <div className="mt-1 flex items-center gap-1.5">
+              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+              <span className="text-sm font-semibold text-[var(--color-text)]">
+                {faNumber(product.rating?.average ?? 0)}
+              </span>
+              <span className="text-xs text-[var(--color-muted)]">
+                ({faNumber(product.rating?.count ?? 0)} دیدگاه)
+              </span>
+            </div>
+          ) : null}
+
           <p className="mt-4 text-2xl font-extrabold text-[var(--color-primary)]">
             {formatSellerPrice(product.price, product.currency)}
           </p>
@@ -431,6 +669,8 @@ export function StorefrontProductPage() {
           </Link>
         </div>
       </div>
+
+      <ReviewsSection productId={product.id} />
     </div>
   );
 }

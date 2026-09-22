@@ -294,6 +294,17 @@ function StorefrontCard({ product: p, slug }: { product: StorefrontProduct; slug
       </div>
       <div className="p-4">
         <p className="truncate font-semibold text-[var(--color-text)]">{p.title}</p>
+        {(p.rating?.count ?? 0) > 0 ? (
+          <div className="mt-1.5 flex items-center gap-1">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+            <span className="text-xs font-semibold text-[var(--color-text)]">
+              {faNumber(p.rating?.average ?? 0)}
+            </span>
+            <span className="text-xs text-[var(--color-muted)]">
+              ({faNumber(p.rating?.count ?? 0)})
+            </span>
+          </div>
+        ) : null}
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs text-[var(--color-muted)]">{categoryLabel(p.category)}</span>
           <span className="text-sm font-bold text-[var(--color-primary)]">

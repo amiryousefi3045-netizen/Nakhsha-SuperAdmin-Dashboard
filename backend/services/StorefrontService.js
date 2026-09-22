@@ -7,7 +7,7 @@ const PUBLISHED_PROFILE_SELECT =
   "_id storeName slug description logo cover contact location stats createdAt";
 
 const PUBLIC_PRODUCT_SELECT =
-  "title description images category price currency tags lowStockThreshold stockPolicy stock.onHand stock.reserved createdAt";
+  "title description images category price currency tags lowStockThreshold rating stockPolicy stock.onHand stock.reserved createdAt";
 
 const PRODUCT_CATEGORIES = [
   "carpet",
@@ -70,6 +70,7 @@ function publicProductToDTO(product) {
     isLowStock:
       tracked && availableStock > 0 && availableStock <= (product.lowStockThreshold ?? 0),
     isOutOfStock: tracked && availableStock <= 0,
+    rating: product.rating || { average: 0, count: 0 },
     createdAt: product.createdAt,
   };
 }
