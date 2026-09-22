@@ -8,11 +8,13 @@ import {
 import type { User } from "../types/api";
 import {
   verifyOtp,
+  verifyTotp,
   me,
   updateMe,
   getToken,
   clearToken,
 } from "../services/auth";
+import type { OtpVerifyResponse, SessionPayload } from "../services/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -22,7 +24,12 @@ interface AuthContextType {
     phone: string,
     code: string,
     rememberMe?: boolean,
-  ) => Promise<{ token: string; user: User }>;
+  ) => Promise<OtpVerifyResponse>;
+  loginWithTotpVerify: (
+    challenge: string,
+    code: string,
+    rememberMe?: boolean,
+  ) => Promise<SessionPayload>;
   logout: () => void;
   refreshMe: () => Promise<void>;
   updateUser: (payload: {
@@ -65,6 +72,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
     rememberMe = false,
   ) => {
     const result = await verifyOtp(phone, code, rememberMe);
+    // For a 2FA-protected account this resolves to { requiresTotp, challenge }
+    // and we MUST NOT persist a token or set a user — the session is not yet
+    // issued. The caller shows the TOTP step and finishes via loginWithTotpVerify.
+    if (!("user" in result)) return result;
+    setUser(result.user);
+    return result;
+  };
+
+  const loginWithTotpVerify = async (
+    challenge: string,
+    code: string,
+    rememberMe = false,
+  ) => {
+    const result = await verifyTotp(challenge, code, rememberMe);
     setUser(result.user);
     return result;
   };
@@ -152,6 +173,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     isAuthed,
     loginWithOtpVerify,
+    loginWithTotpVerify,
     logout,
     refreshMe,
     updateUser,

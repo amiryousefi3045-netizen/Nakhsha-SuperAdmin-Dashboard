@@ -185,3 +185,73 @@ describe("Heavy endpoint rate limiting", () => {
     });
   });
 });
+
+// ===========================================================================
+// Seller Dashboard write endpoints (catalog / inventory / profile mutations)
+//
+// routes/seller.js protects mutations with sellerWriteLimiter
+// (createHeavyLimiter({ max: 60 })), which shares the exact same semantics as
+// the heavy limiter covered above: per-IP window, canonical 429 envelope,
+// skipped under NODE_ENV=test. Using the factory with skip: () => false here
+// exercises the actual middleware semantics; the production singleton uses the
+// same code path.
+// ===========================================================================
+describe("Seller write endpoint rate limiting", () => {
+  function buildSellerApp(max = 3) {
+    const app = express();
+    app.use((req, _res, next) => {
+      req.id = crypto.randomUUID();
+      next();
+    });
+    const limiter = createHeavyLimiter({ max, skip: () => false });
+    app.post("/api/seller/products", limiter, (_req, res) =>
+      res.json({ success: true, product: { id: "p1" } }),
+    );
+    app.patch("/api/seller/profile", limiter, (_req, res) =>
+      res.json({ success: true }),
+    );
+    app.patch("/api/seller/inventory/:productId", limiter, (_req, res) =>
+      res.json({ success: true, stock: { onHand: 0 } }),
+    );
+    return app;
+  }
+
+  async function exhaustWrites(app, method, url, max = 3) {
+    for (let i = 0; i < max; i++) {
+      await request(app)[method](url);
+    }
+    return request(app)[method](url);
+  }
+
+  it("POST /api/seller/products returns 429 after limit with canonical envelope", async () => {
+    const app = buildSellerApp(3);
+    const res = await exhaustWrites(app, "post", "/api/seller/products");
+    expect(res.status).toBe(429);
+    assert429Shape(res.body);
+  });
+
+  it("PATCH /api/seller/inventory/:productId returns 429 after limit", async () => {
+    const app = buildSellerApp(3);
+    const res = await exhaustWrites(app, "patch", "/api/seller/inventory/p1");
+    expect(res.status).toBe(429);
+    assert429Shape(res.body);
+  });
+
+  it("PATCH /api/seller/profile returns 429 after limit", async () => {
+    const app = buildSellerApp(3);
+    const res = await exhaustWrites(app, "patch", "/api/seller/profile");
+    expect(res.status).toBe(429);
+    assert429Shape(res.body);
+  });
+
+  it("write limit is shared per-IP across all seller mutation endpoints", async () => {
+    const app = buildSellerApp(3);
+    // Exhausting one write endpoint consumes the same per-IP budget as the
+    // others — production sellerWriteLimiter applies one window across all
+    // `/api/seller/*` mutations, not a separate budget per route.
+    await exhaustWrites(app, "patch", "/api/seller/inventory/p2");
+    const res = await request(app).patch("/api/seller/profile");
+    expect(res.status).toBe(429);
+    assert429Shape(res.body);
+  });
+});

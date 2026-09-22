@@ -24,8 +24,11 @@ import CreateListingTypePage from "./pages/CreateListingTypePage";
 import CreateListingWizardPage from "./pages/CreateListingWizardPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { SuperAdminGuard } from "./components/admin/SuperAdminGuard";
+import { SellerGuard } from "./components/seller/SellerGuard";
+import { SellerLayout } from "./components/seller/SellerLayout";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
+import { getSellerFinance } from "./services/sellerService";
 import "./App.css";
 
 const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
@@ -37,6 +40,31 @@ const CraftsAdmin = lazy(() => import("./pages/admin/CraftsAdmin"));
 const CommentsAdmin = lazy(() => import("./pages/admin/CommentsAdmin"));
 const AuditLogsAdmin = lazy(() => import("./pages/admin/AuditLogsAdmin"));
 const SettingsAdmin = lazy(() => import("./pages/admin/SettingsAdmin"));
+
+const DashboardSeller = lazy(() => import("./pages/seller/DashboardSeller"));
+const ProfileSeller = lazy(() => import("./pages/seller/ProfileSeller"));
+const AnalyticsSeller = lazy(() => import("./pages/seller/AnalyticsSeller"));
+const ProductsSeller = lazy(() => import("./pages/seller/ProductsSeller"));
+const ProductFormSeller = lazy(() => import("./pages/seller/ProductFormSeller"));
+const ProductDetailSeller = lazy(() => import("./pages/seller/ProductDetailSeller"));
+const InventorySeller = lazy(() => import("./pages/seller/InventorySeller"));
+const StockHistorySeller = lazy(() => import("./pages/seller/StockHistorySeller"));
+const OrdersSeller = lazy(() => import("./pages/seller/OrdersSeller"));
+const OrderDetailSeller = lazy(() => import("./pages/seller/OrderDetailSeller"));
+const FulfillmentSeller = lazy(() => import("./pages/seller/FulfillmentSeller"));
+const PlannedDomainPage = lazy(() => import("./pages/seller/PlannedDomainPage"));
+
+const SellerPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
+  <Suspense
+    fallback={
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-[var(--color-muted)]">در حال بارگذاری داشبورد فروشنده...</div>
+      </div>
+    }
+  >
+    {children}
+  </Suspense>
+);
 
 const AdminPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense
@@ -244,6 +272,138 @@ function App() {
                 <AdminPageSuspense>
                   <SettingsAdmin />
                 </AdminPageSuspense>
+              }
+            />
+          </Route>
+          {/* Seller dashboard (independent domain, never nested under /creator) */}
+          <Route
+            path="seller"
+            element={
+              <SellerGuard>
+                <SellerLayout />
+              </SellerGuard>
+            }
+          >
+            <Route
+              index
+              element={
+                <SellerPageSuspense>
+                  <DashboardSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="profile"
+              element={
+                <SellerPageSuspense>
+                  <ProfileSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="analytics"
+              element={
+                <SellerPageSuspense>
+                  <AnalyticsSeller />
+                </SellerPageSuspense>
+              }
+            />
+            {/* Products catalog — Phase 5 */}
+            <Route
+              path="products"
+              element={
+                <SellerPageSuspense>
+                  <ProductsSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="products/new"
+              element={
+                <SellerPageSuspense>
+                  <ProductFormSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="products/:id"
+              element={
+                <SellerPageSuspense>
+                  <ProductDetailSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="products/:id/edit"
+              element={
+                <SellerPageSuspense>
+                  <ProductFormSeller />
+                </SellerPageSuspense>
+              }
+            />
+            {/* Inventory — Phase 6 */}
+            <Route
+              path="inventory"
+              element={
+                <SellerPageSuspense>
+                  <InventorySeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="inventory/:productId/history"
+              element={
+                <SellerPageSuspense>
+                  <StockHistorySeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="orders"
+              element={
+                <SellerPageSuspense>
+                  <OrdersSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="orders/:id"
+              element={
+                <SellerPageSuspense>
+                  <OrderDetailSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="fulfillment"
+              element={
+                <SellerPageSuspense>
+                  <FulfillmentSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="finance"
+              element={
+                <SellerPageSuspense>
+                  <PlannedDomainPage
+                    fetcher={getSellerFinance}
+                    title="مالی و تسویه"
+                    staticMessage="دامنه مالی و تسویه هنوز در پلتفرم پیاده‌سازی نشده است."
+                  />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="settings"
+              element={
+                <SellerPageSuspense>
+                  <PlannedDomainPage
+                    fetcher={() => Promise.resolve({ status: "planned", domain: "تنظیمات", message: "تنظیمات فروشنده هنوز در پلتفرم پیاده‌سازی نشده است؛ مدیریت پروفایل فروشگاه هم‌اکنون در بخش «پروفایل فروشگاه» در دسترس است." })}
+                    title="تنظیمات"
+                    staticMessage="تنظیمات فروشنده هنوز در پلتفرم پیاده‌سازی نشده است."
+                  />
+                </SellerPageSuspense>
               }
             />
           </Route>

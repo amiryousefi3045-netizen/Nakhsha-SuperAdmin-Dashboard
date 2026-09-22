@@ -9,10 +9,12 @@ type Props = {
 };
 
 export default function AuthPanel({ onClose, onSuccess }: Props) {
-  const { loginWithOtpVerify } = useAuth();
-  const [step, setStep] = useState<"PHONE" | "CODE">("PHONE");
+  const { loginWithOtpVerify, loginWithTotpVerify } = useAuth();
+  const [step, setStep] = useState<"PHONE" | "CODE" | "TOTP">("PHONE");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [totp, setTotp] = useState("");
+  const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -121,8 +123,18 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
     setLoading(true);
     try {
       const phoneNormalized = normalizePhone(phone.trim());
-      const { user } = await loginWithOtpVerify(phoneNormalized, c, rememberMe);
-      onSuccess && onSuccess(user);
+      const result = await loginWithOtpVerify(phoneNormalized, c, rememberMe);
+
+      // 2FA-protected account → show the TOTP step before any session issues.
+      if (!("user" in result)) {
+        setTotpChallenge(result.challenge);
+        setTotp("");
+        setError(null);
+        setStep("TOTP");
+        return;
+      }
+
+      onSuccess && onSuccess(result.user);
       onClose();
     } catch (e: any) {
       if (e?.status === 429 && e?.details?.retryAfterSeconds) {
@@ -138,6 +150,38 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
         setTimeout(() => {
           setCanAutoSubmit(true);
           lastSubmittedCodeRef.current = null;
+        }, 2000);
+      }
+    } finally {
+      isVerifyingRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyTotp = async (code?: string) => {
+    setError(null);
+    const c = (code ?? totp).trim();
+    if (c.length !== 6) return setError("لطفاً کد ۶ رقمی اپلیکیشن احراز هویت را وارد کنید.");
+    if (!totpChallenge) return;
+    if (isVerifyingRef.current) return;
+
+    isVerifyingRef.current = true;
+    setLoading(true);
+    try {
+      const { user } = await loginWithTotpVerify(totpChallenge, c, rememberMe);
+      onSuccess && onSuccess(user);
+      onClose();
+    } catch (e: any) {
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
+        setError(e?.message || "تعداد تلاش‌ها زیاد بوده");
+        setRateLimitActive(true);
+        setCanAutoSubmit(false);
+        setSecondsLeft(e.details.retryAfterSeconds);
+      } else {
+        setError(e?.message || "کد ۲ عاملی نادرست است.");
+        setCanAutoSubmit(false);
+        setTimeout(() => {
+          setCanAutoSubmit(true);
         }, 2000);
       }
     } finally {
@@ -358,6 +402,140 @@ export default function AuthPanel({ onClose, onSuccess }: Props) {
                       />
                     </svg>
                     دریافت کد ورود
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : step === "TOTP" ? (
+          <div>
+            <div className="text-center mb-6">
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+                style={{ backgroundColor: "#1A5F7A" }}
+              >
+                <svg
+                  className="w-8 h-8 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+              </div>
+              <h3
+                className="text-xl font-bold mb-2"
+                style={{ color: "#2E2E2E" }}
+              >
+                احراز هویت دومرحله‌ای
+              </h3>
+              <p className="text-sm" style={{ color: "#666" }}>
+                کد ۶ رقمی اپلیکیشن احراز هویت خود را وارد کنید.
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <OtpInput
+                value={totp}
+                onChange={(v) => {
+                  const normalized = v
+                    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+                    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+                  setTotp(normalized);
+                  setCanAutoSubmit(true);
+                }}
+                autoFocus={true}
+                onComplete={(v) => {
+                  if (v && v.length === 6) handleVerifyTotp(v);
+                }}
+                error={!!error}
+                disabled={loading}
+                loading={loading}
+              />
+            </div>
+
+            {error && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-shake">
+                <div className="flex items-center gap-2">
+                  <svg
+                    className="w-5 h-5 text-red-500"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <p className="text-red-600 text-sm font-medium">{error}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setStep("CODE");
+                  setTotp("");
+                  setError(null);
+                  setCanAutoSubmit(true);
+                  lastSubmittedCodeRef.current = null;
+                }}
+                className="flex-1 py-3 rounded-lg transition-all duration-200 hover:bg-gray-200 flex items-center justify-center gap-2"
+                style={{ backgroundColor: "#E5E7EB" }}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                بازگشت
+              </button>
+              <button
+                onClick={() => handleVerifyTotp()}
+                disabled={totp.length !== 6 || loading}
+                className={`flex-1 py-3 rounded-lg text-white transition-all duration-200 flex items-center justify-center gap-2 ${
+                  totp.length === 6 && !loading
+                    ? "hover:bg-[#164F66] transform hover:scale-[1.02]"
+                    : "opacity-50 cursor-not-allowed"
+                }`}
+                style={{ backgroundColor: "#1A5F7A" }}
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    لطفاً صبر کنید...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    تأیید
                   </>
                 )}
               </button>

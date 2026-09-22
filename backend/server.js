@@ -326,6 +326,9 @@ require("./models/User");
 const Craft = require("./models/Craft");
 // Register Draft model for autosave functionality
 const Draft = require("./models/Draft");
+require("./models/SellerProfile");
+require("./models/Product");
+require("./models/StockAdjustment");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
 const postsRoutes = require("./routes/posts");
@@ -408,6 +411,10 @@ app.use("/api/uploads", uploadRoutes);
 // Admin (super_admin only) — the `admin` role is never allowed on /api/admin/*
 const adminRoutes = require("./routes/admin");
 app.use("/api/admin", adminRoutes);
+
+// Seller (seller role + SellerProfile) — independent domain from Creator/Admin
+const sellerRoutes = require("./routes/seller");
+app.use("/api/seller", sellerRoutes);
 
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(

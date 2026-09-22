@@ -45,7 +45,8 @@ export function StatusBadge({ label, tone = "gray", className, title }: StatusBa
 
 const ROLE_TONE: Record<string, BadgeTone> = {
   user: "gray",
-  tour_leader: "blue",
+  creator: "blue",
+  seller: "green",
   admin: "violet",
   super_admin: "gold",
 };
@@ -91,7 +92,8 @@ export function riskTone(risk: string): BadgeTone {
 
 export const ROLE_LABEL: Record<string, string> = {
   user: "کاربر",
-  tour_leader: "تورلیدر",
+  creator: "کریتور",
+  seller: "فروشنده",
   admin: "ادمین",
   super_admin: "سوپر ادمین",
 };

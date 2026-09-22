@@ -26,6 +26,8 @@ const AuditService = require("../services/AuditService");
 const adminStats = require("../services/adminStats");
 const adminEventHub = require("../services/AdminEventHub");
 const smsService = require("../services/sms/melipayamakSms");
+const TotpCredential = require("../models/TotpCredential");
+const TotpService = require("../services/TotpService");
 const securityAudit = require("../services/securityAudit");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
@@ -207,6 +209,87 @@ async function getSmsStatus(_req, res) {
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, _req.id));
+  }
+}
+
+// ── Admin 2FA (TOTP) ───────────────────────────────────────────────────────
+
+async function getTotpStatus(req, res) {
+  try {
+    const cred = await TotpCredential.findOne({ userId: req.user.id }).lean();
+    res.json(createSuccessResponse({ enabled: !!cred?.enabled, provisioned: !!cred }, req.id));
+  } catch (e) {
+    logger.error("Admin TOTP status error", { error: e.message, stack: e.stack });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function provisionTotp(req, res) {
+  try {
+    const existing = await TotpCredential.findOne({ userId: req.user.id });
+    const secret = TotpService.generateSecret();
+    if (existing) {
+      existing.secret = secret;
+      existing.enabled = false;
+      existing.verifiedAt = null;
+      await existing.save();
+    } else {
+      await TotpCredential.create({ userId: req.user.id, secret, enabled: false });
+    }
+    const user = await User.findById(req.user.id).select("phone handle");
+    const account = user?.phone || `user-${req.user.id}`;
+    res.json(createSuccessResponse({ secret, otpauthUri: TotpService.buildOtpAuthUri({ secret, account }) }, req.id));
+  } catch (e) {
+    logger.error("Admin TOTP provision error", { error: e.message, stack: e.stack });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function enableTotp(req, res) {
+  try {
+    const { code } = req.body || {};
+    if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "کد ۲ عاملی باید ۶ رقم باشد", { field: "code" }, req.id));
+    }
+    const cred = await TotpCredential.findOne({ userId: req.user.id });
+    if (!cred) {
+      return res.status(400).json(createErrorResponse("TOTP_NOT_PROVISIONED", "ابتدا مقداردهی اولیه ۲FA انجام شود", null, req.id));
+    }
+    if (!TotpService.verifyCode(cred.secret, code.trim())) {
+      return res.status(401).json(createErrorResponse("TOTP_REQUIRED", "کد تأیید نادرست است", null, req.id));
+    }
+    cred.enabled = true;
+    cred.verifiedAt = new Date();
+    await cred.save();
+    await writeAudit(req, { userId: req.user.id, action: "TOTP_ENABLED", resource: { type: "USER", id: req.user.id }, result: "SUCCESS", riskLevel: "HIGH" });
+    res.json(createSuccessResponse({ enabled: true }, req.id));
+  } catch (e) {
+    logger.error("Admin TOTP enable error", { error: e.message, stack: e.stack });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function disableTotp(req, res) {
+  try {
+    const { code } = req.body || {};
+    if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "کد ۲ عاملی باید ۶ رقم باشد", { field: "code" }, req.id));
+    }
+    const cred = await TotpCredential.findOne({ userId: req.user.id, enabled: true });
+    if (!cred) {
+      return res.status(400).json(createErrorResponse("TOTP_NOT_ENABLED", "احراز هویت دوم فعال نیست", null, req.id));
+    }
+    if (!TotpService.verifyCode(cred.secret, code.trim())) {
+      return res.status(401).json(createErrorResponse("TOTP_REQUIRED", "کد تأیید نادرست است", null, req.id));
+    }
+    cred.enabled = false;
+    cred.verifiedAt = null;
+    await cred.save();
+    await writeAudit(req, { userId: req.user.id, action: "TOTP_DISABLED", resource: { type: "USER", id: req.user.id }, result: "SUCCESS", riskLevel: "HIGH" });
+    res.json(createSuccessResponse({ enabled: false }, req.id));
+  } catch (e) {
+    logger.error("Admin TOTP disable error", { error: e.message, stack: e.stack });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
   }
 }
 
@@ -2090,4 +2173,8 @@ module.exports = {
   exportAuditLogs,
   getSettings,
   runSecurityAudit,
+  getTotpStatus,
+  provisionTotp,
+  enableTotp,
+  disableTotp,
 };

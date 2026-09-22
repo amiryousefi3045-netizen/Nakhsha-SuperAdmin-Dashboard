@@ -35,7 +35,7 @@ const PHONES = {
   admin: "09142000001",
   admin2: "09142000002",
   user: "09142000003",
-  tourLeader: "09142000004",
+  creator: "09142000004",
   user2: "09142000005",
 };
 
@@ -44,7 +44,7 @@ const PHONES = {
 let adminTokens = {};
 let regularUser;
 let targetUser;
-let tourLeader;
+let creator;
 
 let listingId;
 let craftId;
@@ -202,10 +202,10 @@ describe("Admin Routes - user management", () => {
     const res = await request(app)
       .patch(`/api/admin/users/${targetUser.userId}/role`)
       .set("Authorization", `Bearer ${adminTokens.accessToken}`)
-      .send({ role: "tour_leader" })
+      .send({ role: "creator" })
       .expect(200);
 
-    expect(res.body.user.role).toBe("tour_leader");
+    expect(res.body.user.role).toBe("creator");
 
     // Role change revokes refresh tokens and bumps tokenVersion → old ver dead.
     const fresh = await User.findById(targetUser.userId).lean();
@@ -295,25 +295,25 @@ describe("Admin Routes - block a user", () => {
 
 describe("Admin Routes - providers", () => {
   beforeAll(async () => {
-    const body = await otpLogin(PHONES.tourLeader);
-    tourLeader = {
+    const body = await otpLogin(PHONES.creator);
+    creator = {
       ...body,
       userId: body.user.id,
     };
-    await User.findByIdAndUpdate(tourLeader.userId, {
-      role: "tour_leader",
+    await User.findByIdAndUpdate(creator.userId, {
+      role: "creator",
       isVerified: true,
     });
   });
 
-  it("GET /api/admin/providers lists tour_leader providers", async () => {
+  it("GET /api/admin/providers lists creator providers", async () => {
     const res = await request(app)
       .get("/api/admin/providers")
       .set("Authorization", `Bearer ${adminTokens.accessToken}`)
       .expect(200);
 
     const providers = res.body.items.filter(
-      (p) => p.id === tourLeader.userId,
+      (p) => p.id === creator.userId,
     );
     expect(providers.length).toBe(1);
     expect(providers[0].status).toBe("active");
@@ -321,17 +321,17 @@ describe("Admin Routes - providers", () => {
 
   it("GET /api/admin/providers/:providerId returns stats for a provider", async () => {
     const res = await request(app)
-      .get(`/api/admin/providers/${tourLeader.userId}`)
+      .get(`/api/admin/providers/${creator.userId}`)
       .set("Authorization", `Bearer ${adminTokens.accessToken}`)
       .expect(200);
 
-    expect(res.body.provider.id).toBe(tourLeader.userId);
+    expect(res.body.provider.id).toBe(creator.userId);
     expect(res.body.provider.stats).toBeDefined();
   });
 
   it("PATCH /api/admin/providers/:providerId/status approves a pending provider", async () => {
     // Drop verification → the provider becomes "pending" (not blocked, not verified).
-    await User.findByIdAndUpdate(tourLeader.userId, {
+    await User.findByIdAndUpdate(creator.userId, {
       isVerified: false,
       isBlocked: false,
     });
@@ -341,13 +341,13 @@ describe("Admin Routes - providers", () => {
       .set("Authorization", `Bearer ${adminTokens.accessToken}`)
       .query({ status: "pending" })
       .expect(200);
-    const pendingRow = pendingList.body.items.find((p) => p.id === tourLeader.userId);
+    const pendingRow = pendingList.body.items.find((p) => p.id === creator.userId);
     expect(pendingRow).toBeDefined();
     expect(pendingRow.status).toBe("pending");
 
     // As the super admin, approve → "active" verifies the provider in the same call.
     const res = await request(app)
-      .patch(`/api/admin/providers/${tourLeader.userId}/status`)
+      .patch(`/api/admin/providers/${creator.userId}/status`)
       .set("Authorization", `Bearer ${adminTokens.accessToken}`)
       .send({ status: "active" })
       .expect(200);
@@ -355,14 +355,14 @@ describe("Admin Routes - providers", () => {
     expect(res.body.provider.status).toBe("active");
     expect(res.body.provider.unchanged).toBeUndefined();
 
-    const fresh = await User.findById(tourLeader.userId).lean();
+    const fresh = await User.findById(creator.userId).lean();
     expect(fresh.isVerified).toBe(true);
     expect(fresh.isBlocked).toBe(false);
   });
 
   it("PATCH /api/admin/providers/:providerId/status suspends a provider", async () => {
     const res = await request(app)
-      .patch(`/api/admin/providers/${tourLeader.userId}/status`)
+      .patch(`/api/admin/providers/${creator.userId}/status`)
       .set("Authorization", `Bearer ${adminTokens.accessToken}`)
       .send({ status: "suspended", reason: "آزمایشی" })
       .expect(200);
@@ -372,7 +372,7 @@ describe("Admin Routes - providers", () => {
     // A provider suspended while logged in loses access immediately.
     const denied = await request(app)
       .get("/api/auth/me")
-      .set("Authorization", `Bearer ${tourLeader.accessToken}`)
+      .set("Authorization", `Bearer ${creator.accessToken}`)
       .expect(403);
     expect(denied.body.error.code).toBe("FORBIDDEN");
 
@@ -384,12 +384,12 @@ describe("Admin Routes - providers", () => {
 describe("Admin Routes - listings & crafts", () => {
   beforeAll(async () => {
     // Restore the tour leader so their content can be owned by a valid user.
-    await User.findByIdAndUpdate(tourLeader.userId, { isBlocked: false });
+    await User.findByIdAndUpdate(creator.userId, { isBlocked: false });
 
     const listing = await PostListing.create({
       title: "آزمایش محتوای ادمین",
       description: "توضیحات برای تست ماژول ادمین",
-      owner: tourLeader.userId,
+      owner: creator.userId,
       status: "pending",
     });
     listingId = listing._id.toString();
@@ -399,7 +399,7 @@ describe("Admin Routes - listings & crafts", () => {
       description: "گلیم برای تست ماژول ادمین",
       kind: "artwork",
       craftType: "carpet",
-      author: tourLeader.userId,
+      author: creator.userId,
       isPublished: false,
     });
     craftId = craft._id.toString();
@@ -414,7 +414,7 @@ describe("Admin Routes - listings & crafts", () => {
     const item = res.body.items.find((l) => l.id === listingId);
     expect(item).toBeDefined();
     expect(item.status).toBe("pending");
-    expect(item.owner.id).toBe(tourLeader.userId);
+    expect(item.owner.id).toBe(creator.userId);
   });
 
   it("PATCH /api/admin/listings/:id/status publishes a listing and verifies the owner", async () => {
@@ -426,7 +426,7 @@ describe("Admin Routes - listings & crafts", () => {
 
     expect(res.body.listing.status).toBe("published");
 
-    const owner = await User.findById(tourLeader.userId).lean();
+    const owner = await User.findById(creator.userId).lean();
     expect(owner.isVerified).toBe(true);
 
     const audit = await AuditLog.findOne({ action: "LISTING_STATUS_CHANGED" });

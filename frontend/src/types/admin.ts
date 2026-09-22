@@ -5,10 +5,22 @@
  * and `backend/services/adminStats.js`.
  */
 
-export type AdminRole = "user" | "tour_leader" | "admin" | "super_admin";
-export type AssignableRole = "user" | "tour_leader" | "admin";
+export type AdminRole = "user" | "creator" | "seller" | "admin" | "super_admin";
+export type AssignableRole = "user" | "creator" | "seller" | "admin";
 
 export type AdminPermission = "DELETE_USERS" | "APPROVE_CONTENT" | "VIEW_AUDIT_LOGS";
+
+/** TOTP (2FA) state for the signed-in super admin account. */
+export interface AdminTotpStatus {
+  enabled: boolean;
+  provisioned: boolean;
+}
+
+/** Response of POST /admin/2fa/provision — secret shown exactly once. */
+export interface AdminTotpProvision {
+  secret: string;
+  otpauthUri: string;
+}
 
 export type ListingType = "post" | "tour" | "training" | "academy";
 export type ListingStatus = "draft" | "pending" | "published" | "rejected" | "archived";
@@ -251,7 +263,7 @@ export interface ListProvidersParams {
   page?: number;
   limit?: number;
   status?: ProviderStatus;
-  role?: "admin" | "tour_leader";
+  role?: "admin" | "creator";
 }
 
 export interface ListAuditLogsParams {

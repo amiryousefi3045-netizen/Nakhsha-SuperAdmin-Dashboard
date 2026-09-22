@@ -45,7 +45,7 @@ const AUTH = (token) => `Bearer ${token}`;
 // ── Test phones (unique per this suite) ────────────────────────────────────
 const PHONES = {
   sa: "09145000001",
-  tourLeader: "09145000002",
+  creator: "09145000002",
   admin: "09145000003",
   disposable: "09145000004",
   nono: "09145000005",
@@ -55,8 +55,8 @@ const PHONES = {
 
 let saUser;
 let saToken;
-let tourLeaderUser;
-let tourLeaderToken;
+let creatorUser;
+let creatorToken;
 let adminUser;
 let adminToken;
 let disposableUser;
@@ -90,14 +90,15 @@ beforeAll(async () => {
   });
   saToken = TOKEN_OF(saUser);
 
-  tourLeaderUser = await User.create({
-    name: "تورلیدر ماتریکس",
-    phone: PHONES.tourLeader,
-    handle: "tl_matrix",
-    role: "tour_leader",
+  creatorUser = await User.create({
+    name: "کریتور ماتریکس",
+    phone: PHONES.creator,
+    handle: "cr_matrix",
+    role: "creator",
+    creatorType: "tour_leader",
     isVerified: true,
   });
-  tourLeaderToken = TOKEN_OF(tourLeaderUser);
+  creatorToken = TOKEN_OF(creatorUser);
 
   adminUser = await User.create({
     name: "ادمین ماتریکس",
@@ -119,7 +120,7 @@ beforeAll(async () => {
   const listing = await PostListing.create({
     title: "فهرست امنیتی",
     description: "توضیحات تست ماتریس امنیتی",
-    owner: tourLeaderUser._id,
+    owner: creatorUser._id,
     status: "pending",
   });
   listingId = listing._id.toString();
@@ -136,10 +137,10 @@ afterAll(async () => {
 });
 
 describe("Security Matrix - role enforcement", () => {
-  it("a tour_leader is DENIED all /api/admin/* routes with 403", async () => {
+  it("a creator (ex-tour_leader) is DENIED all /api/admin/* routes with 403", async () => {
     const denied = await request(app)
       .get("/api/admin/stats")
-      .set("Authorization", AUTH(tourLeaderToken))
+      .set("Authorization", AUTH(creatorToken))
       .expect(403);
 
     expect(denied.body.success).toBe(false);
@@ -182,7 +183,7 @@ describe("Security Matrix - self protection", () => {
     const res = await request(app)
       .patch(`/api/admin/users/${saUser._id}/role`)
       .set("Authorization", AUTH(saToken))
-      .send({ role: "tour_leader" })
+      .send({ role: "creator" })
       .expect(403);
 
     expect(res.body.error.code).toBe("FORBIDDEN");
@@ -243,7 +244,7 @@ describe("Security Matrix - input validation", () => {
     const res = await request(app)
       .patch("/api/admin/users/not-an-object-id/role")
       .set("Authorization", AUTH(saToken))
-      .send({ role: "tour_leader" })
+      .send({ role: "creator" })
       .expect(400);
 
     expect(res.body.error.code).toBe("VALIDATION_ERROR");
@@ -261,7 +262,7 @@ describe("Security Matrix - input validation", () => {
 
   it("only `admin` users can hold granular permissions", async () => {
     const res = await request(app)
-      .patch(`/api/admin/users/${tourLeaderUser._id}/permissions`)
+      .patch(`/api/admin/users/${creatorUser._id}/permissions`)
       .set("Authorization", AUTH(saToken))
       .send({ permissions: ["APPROVE_CONTENT"] })
       .expect(400);
@@ -331,7 +332,7 @@ describe("Security Matrix - input validation", () => {
 
   it("validates the provider status allowlist", async () => {
     const res = await request(app)
-      .patch(`/api/admin/providers/${tourLeaderUser._id}/status`)
+      .patch(`/api/admin/providers/${creatorUser._id}/status`)
       .set("Authorization", AUTH(saToken))
       .send({ status: "hacked" })
       .expect(400);

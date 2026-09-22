@@ -33,7 +33,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function ProvidersAdmin() {
   const { user: me } = useAuth();
-  const [role, setRole] = useState<"admin" | "tour_leader">("tour_leader");
+  const [role, setRole] = useState<"admin" | "creator">("creator");
   const [status, setStatus] = useState<"" | ProviderStatus>("");
   const [page, setPage] = useState(1);
 
@@ -162,12 +162,12 @@ export function ProvidersAdmin() {
           <select
             value={role}
             onChange={(e) => {
-              setRole(e.target.value as "admin" | "tour_leader");
+              setRole(e.target.value as "admin" | "creator");
               setPage(1);
             }}
             className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)]"
           >
-            <option value="tour_leader">تورلیدرها</option>
+            <option value="creator">کریتورها</option>
             <option value="admin">ادمین‌ها</option>
           </select>
           <select

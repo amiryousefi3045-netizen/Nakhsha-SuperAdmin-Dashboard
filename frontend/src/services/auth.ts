@@ -35,6 +35,24 @@ export interface OtpStartResponse {
   retryAfterSeconds?: number;
 }
 
+/** Successful OTP login → full session. */
+export interface SessionPayload {
+  token: string;
+  accessToken: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
+  user: User;
+}
+
+/** OTP verified but the account has 2FA → challenge for the TOTP step. */
+export interface TotpChallengePayload {
+  requiresTotp: true;
+  challenge: string;
+  phone: string;
+}
+
+export type OtpVerifyResponse = SessionPayload | TotpChallengePayload;
+
 // ── API functions ──────────────────────────────────────────────────────────
 
 /**
@@ -52,6 +70,10 @@ export async function otpStart(phone: string): Promise<OtpStartResponse> {
 /**
  * Step 2 of OTP flow: verify the code and receive a JWT token + user.
  *
+ * If the account has 2FA enabled the backend instead answers 202 with
+ * `{ requiresTotp, challenge, phone }` — the caller must then complete the
+ * TOTP step via `verifyTotp` before any session tokens are issued.
+ *
  * @param rememberMe  When true the token is persisted to localStorage so the
  *                    session survives full page reloads. Defaults to false
  *                    (in-memory / session-only — safer against XSS).
@@ -60,11 +82,38 @@ export async function verifyOtp(
   phone: string,
   code: string,
   rememberMe = false,
-): Promise<{ token: string; user: User }> {
-  const result = await apiClient.post<{ token: string; user: User }>(
-    "/auth/otp/verify",
-    { phone, code },
-  );
+): Promise<OtpVerifyResponse> {
+  const result = await apiClient.post<OtpVerifyResponse>("/auth/otp/verify", {
+    phone,
+    code,
+  });
+  if (!result.success) throw result.error!;
+  const payload = result.data!;
+
+  if ("requiresTotp" in payload && payload.requiresTotp) {
+    // 2FA challenge — no token yet; do not store anything.
+    return payload;
+  }
+
+  if ("token" in payload && payload.token) {
+    TokenManager.set(payload.token, rememberMe);
+  }
+  return payload;
+}
+
+/**
+ * Step 3 of a 2FA-protected OTP login: exchange the short-lived challenge
+ * (returned by `verifyOtp`) plus a valid TOTP code for a full session.
+ */
+export async function verifyTotp(
+  challenge: string,
+  totpCode: string,
+  rememberMe = false,
+): Promise<SessionPayload> {
+  const result = await apiClient.post<SessionPayload>("/auth/otp/totp", {
+    challenge,
+    totpCode,
+  });
   if (!result.success) throw result.error!;
   const payload = result.data!;
   if (payload.token) TokenManager.set(payload.token, rememberMe);

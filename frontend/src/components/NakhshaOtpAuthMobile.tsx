@@ -11,15 +11,18 @@ interface OtpError {
 
 export default function NakhshaOtpAuthMobile() {
   const nav = useNavigate();
-  const { loginWithOtpVerify } = useAuth();
-  const [step, setStep] = useState<"PHONE" | "CODE">("PHONE");
+  const { loginWithOtpVerify, loginWithTotpVerify } = useAuth();
+  const [step, setStep] = useState<"PHONE" | "CODE" | "TOTP">("PHONE");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [totp, setTotp] = useState("");
+  const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(120);
   const [loading, setLoading] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [otpFocused, setOtpFocused] = useState(false);
+  const [totpFocused, setTotpFocused] = useState(false);
   const [rateLimitActive, setRateLimitActive] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [lastSubmittedCode, setLastSubmittedCode] = useState<string | null>(
@@ -81,7 +84,17 @@ export default function NakhshaOtpAuthMobile() {
     setLastSubmittedCode(c);
     setLoading(true);
     try {
-      await loginWithOtpVerify(phone.trim(), c, true);
+      const result = await loginWithOtpVerify(phone.trim(), c, true);
+
+      // 2FA-protected account → show the TOTP step.
+      if (!("user" in result)) {
+        setTotpChallenge(result.challenge);
+        setTotp("");
+        setError(null);
+        setStep("TOTP");
+        return;
+      }
+
       nav("/");
     } catch (err) {
       const e = err as OtpError;
@@ -95,6 +108,32 @@ export default function NakhshaOtpAuthMobile() {
           e?.message ||
             "کد واردشده اشتباه است. کد ارسال را بررسی و دوباره وارد کنید.",
         );
+      }
+    } finally {
+      setIsVerifying(false);
+      setLoading(false);
+    }
+  };
+
+  const handleTotpSubmit = async () => {
+    setError(null);
+    const c = totp.trim();
+    if (c.length !== 6) return setError("لطفاً کد ۶ رقمی اپلیکیشن احراز هویت را وارد کنید.");
+    if (!totpChallenge || isVerifying) return;
+
+    setIsVerifying(true);
+    setLoading(true);
+    try {
+      await loginWithTotpVerify(totpChallenge, c, true);
+      nav("/");
+    } catch (err) {
+      const e = err as OtpError;
+      if (e?.status === 429 && e?.details?.retryAfterSeconds) {
+        setError(null);
+        setRateLimitActive(true);
+        setSecondsLeft(e.details.retryAfterSeconds);
+      } else {
+        setError(e?.message || "کد ۲ عاملی نادرست است.");
       }
     } finally {
       setIsVerifying(false);
@@ -135,8 +174,11 @@ export default function NakhshaOtpAuthMobile() {
 
   const handleBackClick = () => {
     if (step === "PHONE") {
-      // Close/dismiss (placeholder for modal or route back)
       nav("/");
+    } else if (step === "TOTP") {
+      setStep("CODE");
+      setTotp("");
+      setError(null);
     } else {
       setStep("PHONE");
       setOtp("");
@@ -269,7 +311,7 @@ export default function NakhshaOtpAuthMobile() {
             {loading ? "لطفاً صبر کنید..." : "ادامه"}
           </button>
         </div>
-      ) : (
+      ) : step === "CODE" ? (
         // CODE STEP
         <div className="w-full max-w-md">
           <h1
@@ -402,6 +444,84 @@ export default function NakhshaOtpAuthMobile() {
           <button
             onClick={handleOtpSubmit}
             disabled={otp.length !== 6 || loading}
+            className="w-full py-3 rounded-lg font-medium text-white transition-opacity disabled:opacity-50"
+            style={{ backgroundColor: "#1A5F7A" }}
+          >
+            {loading ? "لطفاً صبر کنید..." : "تأیید و ورود"}
+          </button>
+        </div>
+      ) : (
+        // TOTP STEP (2FA)
+        <div className="w-full max-w-md">
+          <h1
+            className="text-3xl font-bold text-center mb-2"
+            style={{ color: "#2E2E2E" }}
+          >
+            کد امنیتی را وارد کنید
+          </h1>
+          <p className="text-center text-sm mb-6" style={{ color: "#666" }}>
+            این اکانت با تأیید دو مرحله‌ای (TOTP) محافظت می‌شود. کد ۶ رقمی
+            اپلیکیشن احراز هویت را وارد کنید.
+          </p>
+
+          {error && (
+            <div
+              className="text-sm rounded-lg px-4 py-2 mb-4 text-center"
+              style={{ color: "#DC2626", backgroundColor: "#FEE2E2" }}
+            >
+              {error}
+            </div>
+          )}
+
+          {/* TOTP Input - 6 slots */}
+          <div className="flex justify-center gap-2 mb-6">
+            {Array.from({ length: 6 }).map((_, idx) => {
+              const underlineColor = error
+                ? "#DC2626"
+                : totpFocused || totp.length > 0
+                  ? "#1A5F7A"
+                  : "#C7CCD8";
+              return (
+                <div
+                  key={idx}
+                  className="w-12 h-12 flex items-center justify-center text-lg font-semibold transition-colors"
+                  style={{
+                    borderBottom: `2px solid ${underlineColor}`,
+                    color: "#2E2E2E",
+                  }}
+                >
+                  {totp[idx] || ""}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Hidden input for TOTP (handles all keyboard input) */}
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={totp}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+              setTotp(val);
+              if (val.length === 6) {
+                setTimeout(() => handleTotpSubmit(), 300);
+              }
+            }}
+            onKeyPress={(e) => {
+              if (e.key === "Enter" && totp.length === 6) handleTotpSubmit();
+            }}
+            className="absolute opacity-0 w-0 h-0"
+            autoFocus
+            onFocus={() => setTotpFocused(true)}
+            onBlur={() => setTotpFocused(false)}
+          />
+
+          {/* Submit button */}
+          <button
+            onClick={handleTotpSubmit}
+            disabled={totp.length !== 6 || loading}
             className="w-full py-3 rounded-lg font-medium text-white transition-opacity disabled:opacity-50"
             style={{ backgroundColor: "#1A5F7A" }}
           >

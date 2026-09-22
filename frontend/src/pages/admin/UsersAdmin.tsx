@@ -30,14 +30,16 @@ const PERMISSION_LABEL: Record<AdminPermission, string> = {
 const ROLE_FILTER_OPTIONS: Array<{ value: "" | AdminRole; label: string }> = [
   { value: "", label: "همه نقش‌ها" },
   { value: "user", label: "کاربر" },
-  { value: "tour_leader", label: "تورلیدر" },
+  { value: "creator", label: "کریتور" },
+  { value: "seller", label: "فروشنده" },
   { value: "admin", label: "ادمین" },
   { value: "super_admin", label: "سوپر ادمین" },
 ];
 
 const ASSIGNABLE_ROLES: Array<{ value: AssignableRole; label: string }> = [
   { value: "user", label: "کاربر" },
-  { value: "tour_leader", label: "تورلیدر" },
+  { value: "creator", label: "کریتور" },
+  { value: "seller", label: "فروشنده" },
   { value: "admin", label: "ادمین" },
 ];
 

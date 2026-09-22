@@ -63,6 +63,11 @@ const auditLogSchema = new mongoose.Schema(
         "TOKEN_REVOKED",
         "SESSION_CREATED",
 
+        // Two-factor authentication actions
+        "TOTP_VERIFY",
+        "TOTP_ENABLED",
+        "TOTP_DISABLED",
+
         // Listing/Content actions
         "LISTING_CREATED",
         "LISTING_UPDATED",
@@ -102,6 +107,17 @@ const auditLogSchema = new mongoose.Schema(
         "DATA_EXPORTED",
         "DATA_BULK_OPERATION",
         "REPORT_ACCESSED",
+
+        // Seller dashboard domain
+        "SELLER_PROFILE_CREATED",
+        "SELLER_PROFILE_UPDATE",
+        "PRODUCT_CREATED",
+        "PRODUCT_UPDATED",
+        "PRODUCT_STATUS_CHANGED",
+        "PRODUCT_ARCHIVED",
+        "STOCK_ADJUSTED",
+        "ORDER_CREATED",
+        "ORDER_STATUS_CHANGED",
 
         // Security events
         "SUSPICIOUS_ACTIVITY_DETECTED",
@@ -152,15 +168,11 @@ const auditLogSchema = new mongoose.Schema(
       default: "LOW",
     },
 
-    // Additional context
+    // Additional context — free-form Mixed so domain handlers can attach
+    // attributes (e.g. orderNumber, updatedFields) without schema drift.
     metadata: {
-      reason: String, // Why the action was performed
-      approvedBy: mongoose.Schema.Types.ObjectId, // If admin action, who approved
-      batch: String, // For bulk operations, batch identifier
-      affectedCount: Number, // For bulk ops, how many items affected
-      duration: Number, // How long action took (ms)
-      autoAssigned: Boolean, // True when a role was auto-assigned (super admin bootstrap)
-      source: String, // Assignment path, e.g. "SUPER_ADMIN_PHONE"
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
     },
 
     // Compliance fields

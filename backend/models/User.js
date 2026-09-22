@@ -14,10 +14,17 @@ const ALLOWED_PERMISSIONS = Object.freeze([
 
 const ROLES = Object.freeze([
   "user",
-  "tour_leader",
+  "creator",
+  "seller",
   "admin",
   "super_admin",
 ]);
+
+/**
+ * Creator sub-types. `creator` is the parent role; each creator belongs to a
+ * sub-category (artisan, tour_leader, future creator types).
+ */
+const CREATOR_TYPES = Object.freeze(["artisan", "tour_leader"]);
 
 const userSchema = new mongoose.Schema(
   {
@@ -107,7 +114,7 @@ const userSchema = new mongoose.Schema(
     },
     /**
      * Granular permissions array. Only meaningful for role === "admin".
-     * `user`, `tour_leader` and `super_admin` must always keep it empty.
+     * `user`, `creator`, `seller` and `super_admin` must always keep it empty.
      */
     permissions: {
       type: [String],
@@ -119,9 +126,14 @@ const userSchema = new mongoose.Schema(
         message: "دسترسی نامعتبر است",
       },
     },
+    /**
+     * Creator subtype — meaningful only when role === "creator".
+     * The parent role is `creator`; `creatorType` further refines it
+     * (artisan, tour_leader, ...future creator types).
+     */
     creatorType: {
       type: String,
-      enum: ["artisan", "tour_leader"],
+      enum: CREATOR_TYPES,
       default: "artisan",
     },
     isVerified: {
@@ -267,3 +279,4 @@ const User = mongoose.model("User", userSchema);
 module.exports = User;
 module.exports.ALLOWED_PERMISSIONS = ALLOWED_PERMISSIONS;
 module.exports.ROLES = ROLES;
+module.exports.CREATOR_TYPES = CREATOR_TYPES;

@@ -16,6 +16,8 @@ const { generateUniqueHandle } = require("../utils/handleGenerator");
 const { requireAuth } = require("../middleware/auth");
 const TokenService = require("../services/TokenService");
 const AuditService = require("../services/AuditService");
+const TotpCredential = require("../models/TotpCredential");
+const TotpService = require("../services/TotpService");
 const router = express.Router();
 
 /**
@@ -35,17 +37,44 @@ function getJwtSecret() {
   return secret;
 }
 
-const TOKEN_TTL = process.env.JWT_TTL || "7d";
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || "120", 10);
 const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || "60", 10);
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || "8", 10);
 
 const iranPhoneRegex = /^09\d{9}$/;
 
-function sign(user) {
-  return jwt.sign({ id: user._id, role: user.role }, getJwtSecret(), {
-    expiresIn: TOKEN_TTL,
-  });
+/**
+ * Issue the complete session payload (access token + rotated refresh token +
+ * user DTO) for an authenticated user.  Shared by the plain OTP login and the
+ * 2FA (TOTP) challenge-completion flows so both produce identical responses.
+ */
+async function issueSession(freshUser, req) {
+  const accessToken = TokenService.generateAccessToken(
+    freshUser._id,
+    freshUser.role,
+    freshUser.tokenVersion,
+  );
+
+  const { token: refreshToken, expiresAt: refreshExpiresAt } =
+    await TokenService.createRefreshToken(
+      freshUser._id,
+      null, // deviceId — can be set by client if needed
+      {
+        userAgent: req.get("User-Agent"),
+        ipAddress: req.ip,
+      },
+      req,
+    );
+
+  const userDTO = createUserDTO(freshUser, req);
+  return {
+    accessToken,
+    refreshToken,
+    refreshExpiresAt,
+    user: userDTO,
+    // Deprecated: keeping for backward compatibility
+    token: accessToken,
+  };
 }
 
 /**
@@ -754,36 +783,37 @@ router.post("/otp/verify", otpRateLimit, async (req, res) => {
       }
     }
 
-    // Generate JWT token (short-lived access token)
-    const accessToken = TokenService.generateAccessToken(
-      freshUser._id,
-      freshUser.role,
-      freshUser.tokenVersion,
-    );
+    // ── TWO-FACTOR (TOTP) gate ─────────────────────────────────────────────
+    // If the account has 2FA enabled, a successful OTP alone is not enough:
+    // we emit a short-lived challenge token and require a valid TOTP code
+    // before any session tokens leave the server. The OTP code was already
+    // consumed above, so a failed 2FA forces a fresh OTP request — the
+    // challenge itself is the only proof that the SMS step succeeded.
+    const totpCred = await TotpCredential.findOne({
+      userId: freshUser._id,
+      enabled: true,
+    }).lean();
 
-    // Create refresh token (long-lived, stored in DB)
-    const { token: refreshToken, expiresAt: refreshExpiresAt } =
-      await TokenService.createRefreshToken(
-        freshUser._id,
-        null, // deviceId - can be set by client if needed
-        {
-          userAgent: req.get("User-Agent"),
-          ipAddress: req.ip,
-        },
-        req,
+    if (totpCred) {
+      const challenge = jwt.sign(
+        { id: String(freshUser._id), type: "totp-challenge" },
+        getJwtSecret(),
+        { expiresIn: "5m" },
       );
+      logger.info("TOTP challenge issued after OTP success", {
+        userId: String(freshUser._id),
+        phone: normPhone,
+      });
+      return res.status(202).json({
+        requiresTotp: true,
+        challenge,
+        phone: normPhone,
+      });
+    }
 
     logger.info("otp/verify: responded", { phone: normPhone });
 
-    const userDTO = createUserDTO(freshUser, req);
-    return res.json({
-      accessToken,
-      refreshToken,
-      refreshExpiresAt,
-      user: userDTO,
-      // Deprecated: keeping for backward compatibility
-      token: accessToken,
-    });
+    return res.json(await issueSession(freshUser, req));
   } catch (e) {
     const errorDuration = Date.now() - startTime;
     otpMetrics.recordError("otp_verify", e, {
@@ -815,6 +845,86 @@ router.get("/otp/metrics", async (req, res) => {
     });
     res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
   }
+});
+
+/**
+ * Complete the 2FA step of an OTP login.
+ *
+ * Body: { challenge, totpCode }
+ *  - challenge  : JWT of type "totp-challenge" returned by /otp/verify (5 min).
+ *  - totpCode   : 6-digit code from the user's authenticator app.
+ *
+ * On success the same session payload as a plain OTP login is returned.
+ */
+router.post("/otp/totp", otpRateLimit, async (req, res) => {
+  const { challenge, totpCode } = req.body || {};
+
+  if (typeof challenge !== "string" || challenge.length === 0) {
+    return res
+      .status(400)
+      .json(createErrorResponse("TOTP_CHALLENGE_INVALID", "چالش احراز هویت الزامی است"));
+  }
+  if (typeof totpCode !== "string" || !/^\d{6}$/.test(totpCode.trim())) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "کد ۲ عاملی باید ۶ رقم باشد", { field: "totpCode" }));
+  }
+
+  let payload;
+  try {
+    payload = jwt.verify(challenge, getJwtSecret());
+  } catch {
+    return res
+      .status(400)
+      .json(createErrorResponse("TOTP_CHALLENGE_INVALID", "چالش منقضی یا نامعتبر است؛ دوباره وارد شوید"));
+  }
+  if (payload.type !== "totp-challenge" || !payload.id) {
+    return res
+      .status(400)
+      .json(createErrorResponse("TOTP_CHALLENGE_INVALID", "چالش نامعتبر است"));
+  }
+
+  const user = await User.findById(payload.id);
+  if (!user) {
+    return res.status(401).json(createErrorResponse("UNAUTHORIZED", "کاربر یافت نشد"));
+  }
+
+  const cred = await TotpCredential.findOne({ userId: user._id, enabled: true });
+  if (!cred) {
+    return res
+      .status(400)
+      .json(createErrorResponse("TOTP_NOT_ENABLED", "احراز هویت دوم برای این حساب فعال نیست"));
+  }
+
+  const code = totpCode.trim();
+  if (!TotpService.verifyCode(cred.secret, code)) {
+    AuditService.log({
+      userId: String(user._id),
+      action: "TOTP_VERIFY",
+      resource: { type: "USER", id: String(user._id) },
+      result: "FAILURE",
+      requestContext: req,
+      riskLevel: "HIGH",
+      metadata: { reason: "invalid_2fa_code", challenge: true },
+    }).catch(() => {});
+
+    logger.warn("TOTP verification failed", { userId: String(user._id) });
+    return res
+      .status(401)
+      .json(createErrorResponse("TOTP_REQUIRED", "کد ۲ عاملی نادرست است"));
+  }
+
+  AuditService.log({
+    userId: String(user._id),
+    action: "TOTP_VERIFY",
+    resource: { type: "USER", id: String(user._id) },
+    result: "SUCCESS",
+    requestContext: req,
+    riskLevel: "MEDIUM",
+  }).catch(() => {});
+
+  logger.info("TOTP verified — issuing session", { userId: String(user._id) });
+  return res.json(await issueSession(user, req));
 });
 
 /**

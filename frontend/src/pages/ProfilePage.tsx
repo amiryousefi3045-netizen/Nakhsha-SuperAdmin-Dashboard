@@ -234,8 +234,10 @@ const ProfilePage: React.FC = () => {
     switch (role) {
       case "admin":
         return "bg-purple-100 text-purple-800";
-      case "tour_leader":
+      case "creator":
         return "bg-blue-100 text-blue-800";
+      case "seller":
+        return "bg-green-100 text-green-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -256,8 +258,10 @@ const ProfilePage: React.FC = () => {
     switch (role) {
       case "admin":
         return "مدیر";
-      case "tour_leader":
-        return "راهنمای تور";
+      case "creator":
+        return "کریتور";
+      case "seller":
+        return "فروشنده";
       default:
         return "کاربر";
     }

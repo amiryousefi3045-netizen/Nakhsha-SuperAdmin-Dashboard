@@ -18,6 +18,8 @@ import type {
   AdminProvider,
   AdminSettings,
   AdminStats,
+  AdminTotpProvision,
+  AdminTotpStatus,
   AdminUser,
   AssignableRole,
   AuditLogDetail,
@@ -376,5 +378,31 @@ export async function updateAdminProfile(payload: { name?: string; bio?: string;
 /** POST /admin/logout-all */
 export async function adminLogoutAll(): Promise<{ message: string }> {
   const res = await apiClient.post<{ message: string }>("/admin/logout-all");
+  return unwrap(res);
+}
+
+// ── Admin 2FA (TOTP) ───────────────────────────────────────────────────────
+
+/** GET /admin/2fa/status */
+export async function getAdminTotpStatus(): Promise<AdminTotpStatus> {
+  const res = await apiClient.get<AdminTotpStatus>("/admin/2fa/status");
+  return unwrap(res);
+}
+
+/** POST /admin/2fa/provision — returns the (one-time) secret + QR URI. */
+export async function provisionAdminTotp(): Promise<AdminTotpProvision> {
+  const res = await apiClient.post<AdminTotpProvision>("/admin/2fa/provision");
+  return unwrap(res);
+}
+
+/** POST /admin/2fa/enable — verifies the 6-digit code then turns 2FA on. */
+export async function enableAdminTotp(code: string): Promise<{ enabled: boolean }> {
+  const res = await apiClient.post<{ enabled: boolean }>("/admin/2fa/enable", { code });
+  return unwrap(res);
+}
+
+/** POST /admin/2fa/disable — verifies the 6-digit code then turns 2FA off. */
+export async function disableAdminTotp(code: string): Promise<{ enabled: boolean }> {
+  const res = await apiClient.post<{ enabled: boolean }>("/admin/2fa/disable", { code });
   return unwrap(res);
 }

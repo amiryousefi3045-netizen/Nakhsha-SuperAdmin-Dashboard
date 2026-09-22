@@ -109,8 +109,10 @@ const PublicProfilePage = () => {
     switch (role) {
       case "admin":
         return "مدیر";
-      case "tour_leader":
-        return "راهنمای گردشگری";
+      case "creator":
+        return "کریتور";
+      case "seller":
+        return "فروشنده";
       default:
         return "کاربر";
     }

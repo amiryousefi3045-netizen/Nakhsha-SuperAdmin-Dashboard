@@ -47,6 +47,12 @@ function createHeavyLimiter(opts = {}) {
 // Singleton used by route files and server.js middleware chain.
 const heavyLimiter = createHeavyLimiter();
 
+// Rate limiter for Seller Dashboard write endpoints (catalog & inventory
+// mutations). Seller is a B2B surface: tight enough to blunt abuse, loose
+// enough for a seller editing listings. Shared per-IP window like the rest
+// of the app.
+const sellerWriteLimiter = createHeavyLimiter({ max: 60 });
+
 // Rate limiter for OTP start endpoint - more lenient
 const otpStartLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -100,4 +106,5 @@ module.exports = {
   authLimiter,
   heavyLimiter,
   createHeavyLimiter,
+  sellerWriteLimiter,
 };

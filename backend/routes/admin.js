@@ -473,4 +473,45 @@ router.post(
   adminController.logoutAll,
 );
 
+// ---------------------------------------------------------------------------
+// Admin 2FA (TOTP)
+//   GET    /api/admin/2fa/status
+//   POST   /api/admin/2fa/provision
+//   POST   /api/admin/2fa/enable
+//   POST   /api/admin/2fa/disable
+// ---------------------------------------------------------------------------
+router.get(
+  "/2fa/status",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.getTotpStatus,
+);
+
+router.post(
+  "/2fa/provision",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.provisionTotp,
+);
+
+const totpCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "کد باید ۶ رقم باشد"),
+});
+
+router.post(
+  "/2fa/enable",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(totpCodeSchema, "body"),
+  adminController.enableTotp,
+);
+
+router.post(
+  "/2fa/disable",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(totpCodeSchema, "body"),
+  adminController.disableTotp,
+);
+
 module.exports = router;

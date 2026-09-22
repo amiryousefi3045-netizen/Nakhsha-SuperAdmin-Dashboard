@@ -1,0 +1,337 @@
+/**
+ * Unit tests for the Seller Dashboard API service.
+ *
+ * apiClient is fully mocked so no network calls are made.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("../../lib/apiClient", () => ({
+  apiClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+    put: vi.fn(),
+    rawGet: vi.fn(),
+  },
+  TokenManager: { get: vi.fn(), set: vi.fn(), clear: vi.fn() },
+  API_BASE_URL: "/api",
+}));
+
+import {
+  getSellerDashboard,
+  getSellerProfile,
+  updateSellerProfile,
+  listSellerProducts,
+  createSellerProduct,
+  getSellerProduct,
+  updateSellerProduct,
+  deleteSellerProduct,
+  updateSellerProductStatus,
+  listSellerInventory,
+  adjustSellerStock,
+  getSellerStockHistory,
+  getSellerAnalytics,
+  listSellerOrders,
+  getSellerOrder,
+  updateSellerOrderStatus,
+  getSellerFulfillment,
+  getSellerFinance,
+} from "../sellerService";
+import { apiClient } from "../../lib/apiClient";
+
+const ok = <T>(data: T) => ({ success: true as const, data });
+
+const DASHBOARD = {
+  overview: {
+    totalProducts: 4,
+    activeProducts: 2,
+    lowStock: 1,
+    outOfStock: 1,
+    pendingProducts: 1,
+  },
+  orders: {
+    byStatus: {
+      pending: 1,
+      confirmed: 0,
+      processing: 0,
+      shipped: 0,
+      delivered: 0,
+      cancelled: 0,
+      returned: 0,
+    },
+    total: 1,
+    needAction: 1,
+    open: 1,
+  },
+  revenue: { shipped: 0, delivered: 450000, total: 450000 },
+  recentProducts: [],
+  profile: { id: "sp1", storeName: "فروشگاه نخشا" },
+};
+
+const PRODUCT = {
+  id: "p1",
+  sellerId: "sp1",
+  title: "گلیم دستباف",
+  price: 2500000,
+  currency: "IRR",
+  status: "draft",
+  stock: { onHand: 20, reserved: 2, incoming: 0, available: 18 },
+  stockPolicy: "tracked",
+  lowStockThreshold: 3,
+  images: [],
+  tags: [],
+  createdAt: "2026-09-15T00:00:00.000Z",
+  updatedAt: "2026-09-15T00:00:00.000Z",
+};
+
+const ORDER = {
+  id: "o1",
+  sellerId: "sp1",
+  orderNumber: 1042,
+  customer: { name: "مریم احمدی", phone: "09121111111" },
+  items: [
+    { productId: "p1", title: "گلیم دستباف", sku: "SKU-1", image: "", price: 2500000, currency: "IRR", qty: 2 },
+  ],
+  subtotal: 5000000,
+  shippingFee: 120000,
+  discount: 0,
+  total: 5120000,
+  currency: "IRR",
+  status: "pending",
+  itemCount: 2,
+  timeline: [{ status: "pending", at: "2026-09-15T00:00:00.000Z", by: null, reason: "" }],
+  carrierInfo: {},
+  payment: { status: "unpaid" },
+  customerNote: "",
+  sellerNote: "",
+  createdAt: "2026-09-15T00:00:00.000Z",
+  updatedAt: "2026-09-15T00:00:00.000Z",
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("seller dashboard & profile", () => {
+  it("getSellerDashboard GETs /seller/dashboard", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok(DASHBOARD));
+    await expect(getSellerDashboard()).resolves.toEqual(DASHBOARD);
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/dashboard");
+  });
+
+  it("getSellerProfile unwraps the profile", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ profile: DASHBOARD.profile }));
+    const profile = await getSellerProfile();
+    expect(profile.storeName).toBe("فروشگاه نخشا");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/profile");
+  });
+
+  it("updateSellerProfile PATCHes the profile endpoint", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ profile: { ...DASHBOARD.profile, storeName: "نام جدید" } }),
+    );
+    const profile = await updateSellerProfile({ storeName: "نام جدید" });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/profile", {
+      storeName: "نام جدید",
+    });
+    expect(profile.storeName).toBe("نام جدید");
+  });
+});
+
+describe("seller products", () => {
+  it("listSellerProducts forwards filters and pagination", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [PRODUCT], total: 1, page: 1, limit: 25 }),
+    );
+    const page = await listSellerProducts({ page: 2, status: "active", q: "گلیم" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/products", {
+      params: { page: 2, status: "active", q: "گلیم" },
+    });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].id).toBe("p1");
+  });
+
+  it("createSellerProduct POSTs to /seller/products and unwraps product", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ product: PRODUCT }));
+    const product = await createSellerProduct({
+      title: "گلیم دستباف",
+      price: 2500000,
+      stock: { onHand: 20, reserved: 2 },
+    });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/products", {
+      title: "گلیم دستباف",
+      price: 2500000,
+      stock: { onHand: 20, reserved: 2 },
+    });
+    expect(product.stock.available).toBe(18);
+  });
+
+  it("getSellerProduct GETs the single product", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ product: PRODUCT }));
+    const product = await getSellerProduct("p1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/products/p1");
+    expect(product.title).toBe("گلیم دستباف");
+  });
+
+  it("updateSellerProduct PATCHes the product", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ product: { ...PRODUCT, price: 3000000 } }),
+    );
+    const product = await updateSellerProduct("p1", { price: 3000000 });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/products/p1", {
+      price: 3000000,
+    });
+    expect(product.price).toBe(3000000);
+  });
+
+  it("updateSellerProductStatus PATCHes the status endpoint", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ product: { ...PRODUCT, status: "active" } }),
+    );
+    const product = await updateSellerProductStatus("p1", "active");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/products/p1/status", {
+      status: "active",
+    });
+    expect(product.status).toBe("active");
+  });
+
+  it("deleteSellerProduct calls DELETE (soft delete)", async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce(ok({ message: "محصول بایگانی شد", id: "p1" }));
+    const result = await deleteSellerProduct("p1");
+    expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith("/seller/products/p1");
+    expect(result.id).toBe("p1");
+  });
+});
+
+describe("seller inventory", () => {
+  it("listSellerInventory forwards the low-stock filter", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ items: [], total: 0, page: 1, limit: 25 }));
+    await listSellerInventory({ status: "low" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/inventory", {
+      params: { status: "low" },
+    });
+  });
+
+  it("adjustSellerStock PATCHes inventory with delta + reason", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ product: { ...PRODUCT, stock: { ...PRODUCT.stock, onHand: 25, available: 23 } } }),
+    );
+    const product = await adjustSellerStock("p1", { delta: 5, reason: "شرج دوباره" });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/inventory/p1", {
+      delta: 5,
+      reason: "شرج دوباره",
+    });
+    expect(product.stock.onHand).toBe(25);
+  });
+
+  it("getSellerStockHistory GETs the adjustment trail", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        product: { id: "p1", title: "گلیم", sku: "SKU-1" },
+        items: [{ id: "h1", delta: 5, type: "receipt", createdAt: "2026-09-15T00:00:00.000Z" }],
+        total: 1,
+        page: 1,
+        limit: 25,
+      }),
+    );
+    const history = await getSellerStockHistory("p1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/inventory/p1/history", {
+      params: {},
+    });
+    expect(history.items[0].delta).toBe(5);
+  });
+});
+
+describe("seller analytics", () => {
+  it("getSellerAnalytics GETs /seller/analytics", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        inventory: { totalOnHand: 40, totalReserved: 4, available: 36, products: 4 },
+        byStatus: { draft: 2, active: 2 },
+        note: "",
+      }),
+    );
+    const analytics = await getSellerAnalytics();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/analytics");
+    expect(analytics.inventory.available).toBe(36);
+  });
+});
+
+describe("seller orders & fulfillment (real domains)", () => {
+  it("listSellerOrders forwards filters and pagination", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [ORDER], total: 1, page: 1, limit: 25 }),
+    );
+    const page = await listSellerOrders({ page: 2, status: "pending", q: "مریم" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/orders", {
+      params: { page: 2, status: "pending", q: "مریم" },
+    });
+    expect(page.items[0].orderNumber).toBe(1042);
+    expect(page.total).toBe(1);
+  });
+
+  it("getSellerOrder unwraps the order detail", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ order: ORDER }));
+    const order = await getSellerOrder("o1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/orders/o1");
+    expect(order.customer.name).toBe("مریم احمدی");
+    expect(order.total).toBe(5120000);
+  });
+
+  it("updateSellerOrderStatus PATCHes the status endpoint with the reason", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ order: { ...ORDER, status: "confirmed" } }),
+    );
+    const order = await updateSellerOrderStatus("o1", "confirmed", "تأیید شد");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/orders/o1/status", {
+      status: "confirmed",
+      reason: "تأیید شد",
+    });
+    expect(order.status).toBe("confirmed");
+  });
+
+  it("updateSellerOrderStatus omits the reason when absent", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(ok({ order: ORDER }));
+    await updateSellerOrderStatus("o1", "cancelled");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/orders/o1/status", {
+      status: "cancelled",
+    });
+  });
+
+  it("getSellerFulfillment unwraps counts and recent orders", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        counts: { pending: 2, confirmed: 1, processing: 0, shipped: 1, delivered: 4, cancelled: 0, returned: 1 },
+        needAction: 3,
+        needingShipment: 1,
+        recent: [ORDER],
+      }),
+    );
+    const summary = await getSellerFulfillment();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/fulfillment");
+    expect(summary.needAction).toBe(3);
+    expect(summary.counts.delivered).toBe(4);
+    expect(summary.recent).toHaveLength(1);
+  });
+});
+
+describe("seller finance still an honest domain gap", () => {
+  it("getSellerFinance surfaces the 501 planned response", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      success: false as const,
+      error: { code: "SERVER_ERROR", message: "دامنه مالی و تسویه هنوز پیاده‌سازی نشده است.", status: 501 },
+    });
+    const gap = await getSellerFinance();
+    expect(gap.status).toBe("planned");
+    expect(gap.domain).toBe("مالی و تسویه");
+  });
+
+  it("throws when a planned fetch fails for another reason", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      success: false as const,
+      error: { code: "UNAUTHORIZED", message: "لطفاً وارد شوید", status: 401 },
+    });
+    await expect(getSellerFinance()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
