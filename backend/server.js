@@ -416,6 +416,10 @@ app.use("/api/admin", adminRoutes);
 const sellerRoutes = require("./routes/seller");
 app.use("/api/seller", sellerRoutes);
 
+// Public storefront — no auth; visibility gated by the seller's publish setting
+const storefrontRoutes = require("./routes/storefront");
+app.use("/api/storefront", storefrontRoutes);
+
 // Swagger API Documentation - must be BEFORE 404 handler
 app.use(
   "/api-docs",

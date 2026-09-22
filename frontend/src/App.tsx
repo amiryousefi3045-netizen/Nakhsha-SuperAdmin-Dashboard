@@ -55,6 +55,11 @@ const FulfillmentSeller = lazy(() => import("./pages/seller/FulfillmentSeller"))
 const FinanceSeller = lazy(() => import("./pages/seller/FinanceSeller"));
 const SettingsSeller = lazy(() => import("./pages/seller/SettingsSeller"));
 
+const StorefrontPage = lazy(() => import("./pages/storefront/StorefrontPage"));
+const StorefrontProductPage = lazy(
+  () => import("./pages/storefront/StorefrontProductPage"),
+);
+
 const SellerPageSuspense: FC<{ children: ReactNode }> = ({ children }) => (
   <Suspense
     fallback={
@@ -185,6 +190,27 @@ function App() {
             <Route path="p/:id" element={<PostDetailPage />} />
             <Route path="tour/:id" element={<TourDetailPage />} />
             <Route path="learn/:id" element={<TutorialDetailPage />} />
+            {/* Public storefront — Phase 11 */}
+            <Route
+              path="store/:slug"
+              element={
+                <Suspense
+                  fallback={<div className="p-8 text-center text-sm text-[var(--color-muted)]">در حال بارگذاری ویترین...</div>}
+                >
+                  <StorefrontPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="store/:slug/p/:productId"
+              element={
+                <Suspense
+                  fallback={<div className="p-8 text-center text-sm text-[var(--color-muted)]">در حال بارگذاری محصول...</div>}
+                >
+                  <StorefrontProductPage />
+                </Suspense>
+              }
+            />
             <Route
               path="my"
               element={
