@@ -165,6 +165,52 @@ export interface SellerAnalytics {
   note: string;
 }
 
+// ── Sales report (Phase 24) ────────────────────────────────────────────────
+
+export interface SalesReportSummary {
+  orders: number;
+  units: number;
+  subtotal: number;
+  shippingFee: number;
+  discount: number;
+  total: number;
+}
+
+export interface SalesReportStatusRow {
+  status: OrderStatus;
+  count: number;
+  total: number;
+}
+
+export interface SalesReportTopProduct {
+  productId: string;
+  title: string;
+  orders: number;
+  units: number;
+  revenue: number;
+}
+
+export interface SalesReportDay {
+  day: string;
+  orders: number;
+  total: number;
+}
+
+export interface SellerSalesReport {
+  period: { from: string; to: string };
+  summary: SalesReportSummary;
+  byStatus: SalesReportStatusRow[];
+  topProducts: SalesReportTopProduct[];
+  daily: SalesReportDay[];
+  currency: "IRR";
+}
+
+export interface SalesReportParams {
+  from?: string;
+  to?: string;
+  top?: number;
+}
+
 // ── Orders & fulfillment ────────────────────────────────────────────────────
 
 /**

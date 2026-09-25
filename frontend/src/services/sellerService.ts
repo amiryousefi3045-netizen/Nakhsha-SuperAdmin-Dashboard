@@ -15,6 +15,7 @@ import type {
   OrderStatus,
   ProductStatus,
   ReviewStatus,
+  SalesReportParams,
   SellerAnalytics,
   SellerDashboardData,
   SellerFinanceSummary,
@@ -25,6 +26,7 @@ import type {
   SellerProduct,
   SellerProfile,
   SellerReview,
+  SellerSalesReport,
   SellerSettings,
   SellerSettingsUpdate,
   SellerTeam,
@@ -194,6 +196,23 @@ export async function getSellerStockHistory(
 export async function getSellerAnalytics(): Promise<SellerAnalytics> {
   const res = await apiClient.get<SellerAnalytics>("/seller/analytics");
   return unwrap(res, {} as SellerAnalytics);
+}
+
+// ── Reports (Phase 24) ──────────────────────────────────────────────────────
+
+/** GET /seller/reports/sales?from&to&top */
+export async function getSellerSalesReport(
+  params: SalesReportParams = {},
+): Promise<SellerSalesReport> {
+  const res = await apiClient.get<SellerSalesReport>("/seller/reports/sales", { params });
+  return unwrap(res, {
+    period: { from: "", to: "" },
+    summary: { orders: 0, units: 0, subtotal: 0, shippingFee: 0, discount: 0, total: 0 },
+    byStatus: [],
+    topProducts: [],
+    daily: [],
+    currency: "IRR",
+  });
 }
 
 // ── Orders ──────────────────────────────────────────────────────────────────

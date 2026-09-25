@@ -32,6 +32,7 @@ import {
   adjustSellerStock,
   getSellerStockHistory,
   getSellerAnalytics,
+  getSellerSalesReport,
   listSellerOrders,
   getSellerOrder,
   updateSellerOrderStatus,
@@ -316,6 +317,25 @@ describe("seller analytics", () => {
     const analytics = await getSellerAnalytics();
     expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/analytics");
     expect(analytics.inventory.available).toBe(36);
+  });
+
+  it("getSellerSalesReport GETs /seller/reports/sales with period params", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        period: { from: "2026-08-26T00:00:00Z", to: "2026-09-25T23:59:59Z" },
+        summary: { orders: 4, units: 14, subtotal: 1050000, shippingFee: 0, discount: 0, total: 1050000 },
+        byStatus: [{ status: "delivered", count: 2, total: 600000 }],
+        topProducts: [{ productId: "p1", title: "سفال", orders: 1, units: 5, revenue: 300000 }],
+        daily: [{ day: "2026-08-26", orders: 0, total: 0 }],
+        currency: "IRR",
+      }),
+    );
+    const report = await getSellerSalesReport({ from: "2026-08-26", to: "2026-09-25" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/reports/sales", {
+      params: { from: "2026-08-26", to: "2026-09-25" },
+    });
+    expect(report.summary.orders).toBe(4);
+    expect(report.topProducts[0].revenue).toBe(300000);
   });
 });
 

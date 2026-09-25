@@ -8,6 +8,7 @@ import {
   Truck,
   Wallet,
   BarChart3,
+  FileBarChart2,
   Store,
   Settings,
   MessageSquareText,
@@ -37,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/seller/reviews", label: "دیدگاه‌ها", icon: MessageSquareText },
   { to: "/seller/finance", label: "مالی و تسویه", icon: Wallet },
   { to: "/seller/analytics", label: "تحلیل عملکرد", icon: BarChart3 },
+  { to: "/seller/reports/sales", label: "گزارش فروش", icon: FileBarChart2 },
   { to: "/seller/profile", label: "پروفایل فروشگاه", icon: Store },
   { to: "/seller/settings", label: "تنظیمات", icon: Settings },
 ];

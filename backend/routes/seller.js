@@ -225,4 +225,14 @@ router.get(
   sellerController.getAnalytics,
 );
 
+// ── Reports (Phase 24) ──────────────────────────────────────────────────────
+router.get(
+  "/reports/sales",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireManagerOrOwner,
+  sellerController.getSalesReport,
+);
+
 module.exports = router;

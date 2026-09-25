@@ -6,6 +6,7 @@ const Craft = require("../models/Craft");
 const Order = require("../models/Order");
 const OrderService = require("../services/OrderService");
 const FinanceService = require("../services/FinanceService");
+const SalesReportService = require("../services/SalesReportService");
 const AuditService = require("../services/AuditService");
 const SettingsService = require("../services/SettingsService");
 const StorefrontReviewService = require("../services/StorefrontReviewService");
@@ -832,6 +833,28 @@ async function getAnalytics(req, res) {
   }
 }
 
+async function getSalesReport(req, res) {
+  try {
+    const { from, to, top } = req.query;
+    const report = await SalesReportService.salesReport(req.seller._id, {
+      from,
+      to,
+      top,
+    });
+    res.json(createSuccessResponse({ report }, req.id));
+  } catch (e) {
+    if (e instanceof SalesReportService.SalesReportDomainError) {
+      return res
+        .status(e.code === "VALIDATION_ERROR" ? 400 : 422)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller getSalesReport error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ORDERS & FULFILLMENT  (real domain — see services/OrderService.js)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1431,6 +1454,7 @@ module.exports = {
   adjustStock,
   getStockHistory,
   getAnalytics,
+  getSalesReport,
   listSellerOrders,
   getSellerOrder,
   changeOrderStatus,
