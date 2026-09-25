@@ -48,6 +48,8 @@ import {
   removeSellerTeamMember,
   listSellerReviews,
   updateSellerReviewVisibility,
+  updateSellerReviewReply,
+  deleteSellerReviewReply,
 } from "../sellerService";
 import { apiClient } from "../../lib/apiClient";
 
@@ -551,6 +553,7 @@ describe("seller reviews (live backend)", () => {
     status: "published",
     createdAt: "2026-09-01T10:00:00Z",
     updatedAt: "2026-09-01T10:00:00Z",
+    sellerReply: null,
   };
 
   beforeEach(() => {
@@ -580,5 +583,30 @@ describe("seller reviews (live backend)", () => {
       status: "hidden",
     });
     expect(review.status).toBe("hidden");
+  });
+
+  it("updateSellerReviewReply PUTs the comment and returns the review with the reply", async () => {
+    vi.mocked(apiClient.put).mockResolvedValueOnce(
+      ok({
+        review: {
+          ...REVIEW,
+          sellerReply: { comment: "ممنون از بازخوردتون", createdAt: "2026-09-02T10:00:00Z", updatedAt: "2026-09-02T10:00:00Z" },
+        },
+      }),
+    );
+    const review = await updateSellerReviewReply("rv1", "ممنون از بازخوردتون");
+    expect(vi.mocked(apiClient.put)).toHaveBeenCalledWith("/seller/reviews/rv1/reply", {
+      comment: "ممنون از بازخوردتون",
+    });
+    expect(review.sellerReply?.comment).toBe("ممنون از بازخوردتون");
+  });
+
+  it("deleteSellerReviewReply DELETEs the reply and returns the review", async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce(
+      ok({ review: { ...REVIEW, sellerReply: null } }),
+    );
+    const review = await deleteSellerReviewReply("rv1");
+    expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith("/seller/reviews/rv1/reply");
+    expect(review.sellerReply).toBeNull();
   });
 });

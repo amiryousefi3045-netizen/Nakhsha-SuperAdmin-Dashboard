@@ -139,6 +139,11 @@ const auditLogSchema = new mongoose.Schema(
         "TEAM_MEMBER_ROLE_CHANGED",
         "TEAM_MEMBER_REMOVED",
 
+        // Seller review moderation & reply domain
+        "REVIEW_VISIBILITY_CHANGED",
+        "SELLER_REVIEW_REPLIED",
+        "SELLER_REVIEW_REPLY_REMOVED",
+
         // Security events
         "SUSPICIOUS_ACTIVITY_DETECTED",
         "BRUTE_FORCE_ATTEMPT",

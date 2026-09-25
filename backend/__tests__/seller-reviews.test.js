@@ -346,3 +346,154 @@ describe("PATCH /api/seller/reviews/:id/visibility", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── Reply moderation ─────────────────────────────────────────────────────────
+
+describe("seller review replies", () => {
+  const REPLY = "ممنون از بازخوردتون، خوشحالیم راضی بودید";
+
+  it("rejects without a token for PUT and DELETE", async () => {
+    await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .send({ comment: REPLY })
+      .expect(401);
+    await request(app)
+      .delete(`/api/seller/reviews/${reviewA._id}/reply`)
+      .expect(401);
+  });
+
+  it("rejects a non-seller role", async () => {
+    const buyerToken = TOKEN_OF(buyerUser);
+    await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({ comment: REPLY })
+      .expect(403);
+  });
+
+  it("creates a reply and exposes it on the seller DTO", async () => {
+    const res = await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: REPLY });
+    expect(res.status).toBe(200);
+    expect(res.body.review.sellerReply.comment).toBe(REPLY);
+    expect(res.body.review.sellerReply.createdAt).toBeTruthy();
+    expect(res.body.review.sellerReply.updatedAt).toBeTruthy();
+  });
+
+  it("updates the reply in place, keeping the original createdAt", async () => {
+    const first = await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: REPLY });
+    const createdAt = first.body.review.sellerReply.createdAt;
+
+    const second = await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: "نسخهٔ دوم پاسخ" });
+    expect(second.status).toBe(200);
+    expect(second.body.review.sellerReply.comment).toBe("نسخهٔ دوم پاسخ");
+    expect(second.body.review.sellerReply.createdAt).toBe(createdAt);
+  });
+
+  it("400 for an empty or blank comment", async () => {
+    const res = await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: "   " });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("400 for an over-long comment", async () => {
+    const res = await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: "آ".repeat(501) });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("404 for a review the seller does not own", async () => {
+    const res = await request(app)
+      .put(`/api/seller/reviews/${reviewOther._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: REPLY });
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe("REVIEW_NOT_FOUND");
+  });
+
+  it("404 for an unknown review id and 400 for a malformed one", async () => {
+    const unknown = await request(app)
+      .put(`/api/seller/reviews/${new mongoose.Types.ObjectId()}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: REPLY });
+    expect(unknown.status).toBe(404);
+
+    const malformed = await request(app)
+      .put("/api/seller/reviews/not-an-id/reply")
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: REPLY });
+    expect(malformed.status).toBe(400);
+  });
+
+  it("removes the reply idempotently via DELETE", async () => {
+    const removed = await request(app)
+      .delete(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken));
+    expect(removed.status).toBe(200);
+    expect(removed.body.review.sellerReply).toBeNull();
+
+    const again = await request(app)
+      .delete(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken));
+    expect(again.status).toBe(200);
+  });
+
+  it("exposes the reply on the PUBLIC review list for published reviews only", async () => {
+    await request(app)
+      .put(`/api/seller/reviews/${reviewA._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: REPLY });
+
+    const res = await request(app).get(
+      `/api/storefront/products/${productA._id}/reviews`,
+    );
+    expect(res.status).toBe(200);
+    const published = res.body.items.find((r) => r.id === String(reviewA._id));
+    expect(published.sellerReply.comment).toBe(REPLY);
+
+    await request(app)
+      .patch(`/api/seller/reviews/${reviewA._id}/visibility`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ status: "published" });
+  });
+
+  it("keeps a hidden review's reply private: owner sees it, the public never does", async () => {
+    await request(app)
+      .patch(`/api/seller/reviews/${reviewAHidden._id}/visibility`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ status: "hidden" });
+    await request(app)
+      .put(`/api/seller/reviews/${reviewAHidden._id}/reply`)
+      .set("Authorization", AUTH(sellerToken))
+      .send({ comment: "پاسخی روی دیدگاه مخفی" });
+
+    const mine = await request(app)
+      .get(`/api/storefront/products/${productA._id}/review/mine`)
+      .set("Authorization", AUTH(TOKEN_OF(buyer2User)));
+    expect(mine.status).toBe(200);
+    expect(mine.body.review.sellerReply.comment).toBe("پاسخی روی دیدگاه مخفی");
+
+    // The public list is published-only, so a hidden review (and its reply)
+    // never appears — even though the reply exists on the record.
+    const publicList = await request(app).get(
+      `/api/storefront/products/${productA._id}/reviews`,
+    );
+    expect(publicList.body.items.map((r) => r.id)).not.toContain(
+      String(reviewAHidden._id),
+    );
+  });
+});

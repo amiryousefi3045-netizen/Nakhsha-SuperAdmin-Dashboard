@@ -275,6 +275,24 @@ export async function updateSellerReviewVisibility(
   return unwrap(res, { review: {} as SellerReview }).review;
 }
 
+/** PUT /seller/reviews/:id/reply — create or update the store's reply. */
+export async function updateSellerReviewReply(
+  id: string,
+  comment: string,
+): Promise<SellerReview> {
+  const res = await apiClient.put<{ review: SellerReview }>(
+    `/seller/reviews/${id}/reply`,
+    { comment },
+  );
+  return unwrap(res, { review: {} as SellerReview }).review;
+}
+
+/** DELETE /seller/reviews/:id/reply — remove the store's reply. */
+export async function deleteSellerReviewReply(id: string): Promise<SellerReview> {
+  const res = await apiClient.delete<{ review: SellerReview }>(`/seller/reviews/${id}/reply`);
+  return unwrap(res, { review: {} as SellerReview }).review;
+}
+
 // ── Finance & payouts ───────────────────────────────────────────────────────
 
 /** GET /seller/finance — live settlement summary (real backend, no DomainGap). */

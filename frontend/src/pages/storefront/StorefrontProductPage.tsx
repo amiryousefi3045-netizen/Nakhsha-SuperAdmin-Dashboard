@@ -330,6 +330,19 @@ function ReviewCard({ review }: { review: ReviewItem }) {
       {review.comment ? (
         <p className="mt-3 text-sm leading-7 text-[var(--color-text)]">{review.comment}</p>
       ) : null}
+      {review.sellerReply?.comment ? (
+        <div className="mt-4 rounded-xl bg-[var(--color-primary)]/5 p-3">
+          <p className="text-xs font-semibold text-[var(--color-primary)]">پاسخ فروشگاه</p>
+          <p className="mt-1.5 text-sm leading-6 text-[var(--color-text)]">
+            {review.sellerReply.comment}
+          </p>
+          {review.sellerReply.createdAt ? (
+            <p className="mt-1.5 text-xs text-[var(--color-muted)]">
+              {formatDate(review.sellerReply.createdAt)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

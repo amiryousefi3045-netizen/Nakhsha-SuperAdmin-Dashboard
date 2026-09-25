@@ -137,6 +137,18 @@ router.patch(
   requireManagerOrOwner,
   sellerController.setReviewVisibility,
 );
+router.put(
+  "/reviews/:id/reply",
+  write,
+  requireManagerOrOwner,
+  sellerController.setSellerReviewReply,
+);
+router.delete(
+  "/reviews/:id/reply",
+  write,
+  requireManagerOrOwner,
+  sellerController.deleteSellerReviewReply,
+);
 
 // ── Finance ─────────────────────────────────────────────────────────────────
 // Finance reads stay unthrottled; payout mutations are part of the seller

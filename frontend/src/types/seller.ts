@@ -249,6 +249,13 @@ export interface FulfillmentSummary {
 /** Review visibility states the seller can moderate. */
 export type ReviewStatus = "published" | "hidden";
 
+/** The store owner's reply to a review (one per review, updatable). */
+export interface SellerReply {
+  comment: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 /** One buyer review as seen by the store owner (real name + product context). */
 export interface SellerReview {
   id: string;
@@ -261,6 +268,7 @@ export interface SellerReview {
   status: ReviewStatus;
   createdAt: string;
   updatedAt: string;
+  sellerReply: SellerReply | null;
 }
 
 export interface ListSellerReviewsParams {

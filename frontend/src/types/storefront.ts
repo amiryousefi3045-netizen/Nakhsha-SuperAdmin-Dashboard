@@ -245,6 +245,11 @@ export interface ReviewItem {
   buyerName: string;
   isAnonymous: boolean;
   createdAt?: string;
+  sellerReply?: {
+    comment: string;
+    createdAt: string | null;
+    updatedAt: string | null;
+  } | null;
 }
 
 export interface StorefrontReviewsPage {

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageSquareText, RefreshCw, Eye, EyeOff, Star } from "lucide-react";
+import { MessageSquareText, RefreshCw, Eye, EyeOff, Star, Reply } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
-import { listSellerReviews, updateSellerReviewVisibility } from "../../services/sellerService";
+import {
+  deleteSellerReviewReply,
+  listSellerReviews,
+  updateSellerReviewReply,
+  updateSellerReviewVisibility,
+} from "../../services/sellerService";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { Pagination } from "../../components/admin/Pagination";
@@ -14,11 +19,17 @@ const STATUS_OPTIONS: Array<{ value: "" | ReviewStatus; label: string }> = [
   { value: "hidden", label: "مخفی" },
 ];
 
+const MAX_REPLY_LENGTH = 500;
+
 export function ReviewsSeller() {
   const [status, setStatus] = useState<"" | ReviewStatus>("");
   const [page, setPage] = useState(1);
   const [target, setTarget] = useState<SellerReview | null>(null);
   const [busy, setBusy] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<SellerReview | null>(null);
+  const [replyComment, setReplyComment] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
+  const [replyError, setReplyError] = useState("");
 
   const fetcher = useCallback(
     () =>
@@ -54,6 +65,49 @@ export function ReviewsSeller() {
     }
   };
 
+  const openReply = (review: SellerReview) => {
+    setReplyTarget(review);
+    setReplyComment(review.sellerReply?.comment ?? "");
+    setReplyError("");
+  };
+
+  const saveReply = async (topic: SellerReview) => {
+    if (!replyComment.trim()) {
+      setReplyError("متن پاسخ نمی‌تواند خالی باشد");
+      return;
+    }
+    if (replyComment.trim().length > MAX_REPLY_LENGTH) {
+      setReplyError(`متن پاسخ نباید بیش از ${MAX_REPLY_LENGTH} کاراکتر باشد`);
+      return;
+    }
+    setReplyBusy(true);
+    setReplyError("");
+    try {
+      await updateSellerReviewReply(topic.id, replyComment.trim());
+      setReplyTarget(null);
+      await reload();
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "ثبت پاسخ ناموفق بود");
+    } finally {
+      setReplyBusy(false);
+    }
+  };
+
+  const removeReply = async (topic: SellerReview) => {
+    if (!window.confirm("پاسخ فروشگاه به این دیدگاه حذف شود؟")) return;
+    setReplyBusy(true);
+    setReplyError("");
+    try {
+      await deleteSellerReviewReply(topic.id);
+      setReplyTarget(null);
+      await reload();
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "حذف پاسخ ناموفق بود");
+    } finally {
+      setReplyBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -76,7 +130,8 @@ export function ReviewsSeller() {
 
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-primary)]/5 px-4 py-3 text-xs text-[var(--color-muted)]">
         مخفی‌کردن یک دیدگاه، آن را از ویترین محصول حذف می‌کند و در محاسبهٔ امتیاز
-        محصول و فروشگاه لحاظ نمی‌شود. نام واقعی خریدار فقط برای شما نمایش داده می‌شود.
+        محصول و فروشگاه لحاظ نمی‌شود. نام واقعی خریدار فقط برای شما نمایش داده می‌شود؛
+        پاسخ فروشگاه زیر دیدگاه در ویترین نمایش داده می‌شود.
       </div>
 
       {error ? (
@@ -108,7 +163,12 @@ export function ReviewsSeller() {
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
               {(data?.items ?? []).map((r) => (
-                <ReviewRow key={r.id} review={r} onToggle={setTarget} />
+                <ReviewRow
+                  key={r.id}
+                  review={r}
+                  onToggle={setTarget}
+                  onReply={openReply}
+                />
               ))}
             </tbody>
           </table>
@@ -139,11 +199,30 @@ export function ReviewsSeller() {
         onConfirm={() => (target ? toggleReview(target) : undefined)}
         onCancel={() => setTarget(null)}
       />
+
+      <ReplyDialog
+        review={replyTarget}
+        value={replyComment}
+        onChange={setReplyComment}
+        busy={replyBusy}
+        error={replyError}
+        onSave={saveReply}
+        onRemove={removeReply}
+        onClose={() => setReplyTarget(null)}
+      />
     </div>
   );
 }
 
-function ReviewRow({ review: r, onToggle }: { review: SellerReview; onToggle: (r: SellerReview) => void }) {
+function ReviewRow({
+  review: r,
+  onToggle,
+  onReply,
+}: {
+  review: SellerReview;
+  onToggle: (r: SellerReview) => void;
+  onReply: (r: SellerReview) => void;
+}) {
   const hidden = r.status === "hidden";
   return (
     <tr className={`transition-colors hover:bg-[var(--color-primary)]/5 ${hidden ? "bg-[var(--color-bg)]/50" : ""}`}>
@@ -157,6 +236,11 @@ function ReviewRow({ review: r, onToggle }: { review: SellerReview; onToggle: (r
         <p className="mt-1 text-xs text-[var(--color-muted)]">
           {r.isAnonymous ? "خریدار (بی‌نام)" : r.buyerName || "خریدار"}
         </p>
+        {r.sellerReply ? (
+          <p className="mt-2 line-clamp-1 rounded-lg bg-[var(--color-primary)]/5 px-2 py-1 text-xs text-[var(--color-primary)]">
+            <span className="font-semibold">پاسخ شما:</span> {r.sellerReply.comment}
+          </p>
+        ) : null}
       </td>
       <td className="px-4 py-3 text-center">
         <span
@@ -174,29 +258,117 @@ function ReviewRow({ review: r, onToggle }: { review: SellerReview; onToggle: (r
         {formatDateTime(r.createdAt)}
       </td>
       <td className="px-4 py-3 text-end">
-        <button
-          type="button"
-          onClick={() => onToggle(r)}
-          className={
-            hidden
-              ? "inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
-              : "inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
-          }
-        >
-          {hidden ? (
-            <>
-              <Eye className="h-4 w-4" />
-              <span className="hidden xl:inline">نمایش</span>
-            </>
-          ) : (
-            <>
-              <EyeOff className="h-4 w-4" />
-              <span className="hidden xl:inline">مخفی</span>
-            </>
-          )}
-        </button>
+        <div className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onReply(r)}
+            title={r.sellerReply ? "ویرایش پاسخ" : "ثبت پاسخ"}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+          >
+            <Reply className="h-4 w-4" />
+            <span className="hidden xl:inline">{r.sellerReply ? "ویرایش" : "پاسخ"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggle(r)}
+            className={
+              hidden
+                ? "inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+                : "inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+            }
+          >
+            {hidden ? (
+              <>
+                <Eye className="h-4 w-4" />
+                <span className="hidden xl:inline">نمایش</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-4 w-4" />
+                <span className="hidden xl:inline">مخفی</span>
+              </>
+            )}
+          </button>
+        </div>
       </td>
     </tr>
+  );
+}
+
+function ReplyDialog({
+  review,
+  value,
+  onChange,
+  busy,
+  error,
+  onSave,
+  onRemove,
+  onClose,
+}: {
+  review: SellerReview | null;
+  value: string;
+  onChange: (v: string) => void;
+  busy: boolean;
+  error: string;
+  onSave: (r: SellerReview) => void;
+  onRemove: (r: SellerReview) => void;
+  onClose: () => void;
+}) {
+  if (!review) return null;
+  const hasReply = Boolean(review.sellerReply);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40" onClick={busy ? undefined : onClose} aria-hidden />
+      <div className="relative w-full max-w-lg rounded-2xl border border-[var(--color-border)] bg-white p-6 shadow-xl">
+        <h3 className="text-base font-bold text-[var(--color-text)]">
+          {hasReply ? "ویرایش پاسخ فروشگاه" : "پاسخ به دیدگاه"}
+        </h3>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">
+          «{review.comment || "بدون متن"}» ✕ {faNumber(review.rating)} ستاره —{" "}
+          {review.isAnonymous ? "خریدار (بی‌نام)" : review.buyerName || "خریدار"}
+        </p>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          maxLength={MAX_REPLY_LENGTH}
+          rows={5}
+          placeholder="پاسخ شما زیر دیدگاه در ویترین محصول نمایش داده می‌شود..."
+          className="mt-4 w-full resize-none rounded-xl border border-[var(--color-border)] bg-white p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] focus:outline-none"
+        />
+        <div className="mt-1 flex items-center justify-between text-xs text-[var(--color-muted)]">
+          <span>{error ? <span className="text-red-600">{error}</span> : null}</span>
+          <span dir="ltr">{faNumber(value.length)} / {faNumber(MAX_REPLY_LENGTH)}</span>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          {hasReply ? (
+            <button
+              type="button"
+              onClick={() => onRemove(review)}
+              disabled={busy}
+              className="me-auto rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+              حذف پاسخ
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5 disabled:opacity-50"
+          >
+            انصراف
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(review)}
+            disabled={busy}
+            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50"
+          >
+            {busy ? "در حال ذخیره..." : hasReply ? "به‌روزرسانی پاسخ" : "ثبت پاسخ"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

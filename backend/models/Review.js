@@ -66,6 +66,13 @@ const ReviewSchema = new mongoose.Schema(
       enum: ["published", "hidden"],
       default: "published",
     },
+    // One seller reply (Phase 17). The owner may set or update it freely; it is
+    // exposed on the PUBLIC surface only while the review itself is `published`.
+    sellerReply: {
+      comment: { type: String, trim: true, default: null, maxlength: 500 },
+      createdAt: { type: Date, default: null },
+      updatedAt: { type: Date, default: null },
+    },
   },
   {
     timestamps: true,

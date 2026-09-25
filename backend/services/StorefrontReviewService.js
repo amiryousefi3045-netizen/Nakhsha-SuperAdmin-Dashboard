@@ -22,6 +22,18 @@ const SellerProfile = require("../models/SellerProfile");
 const Review = require("../models/Review");
 
 const ANONYMOUS_NAME = "کاربر نخشا";
+const MAX_REPLY_LENGTH = 500;
+
+/** The seller's reply block, or null when there is none yet. */
+function sellerReplyDTO(review) {
+  const reply = review.sellerReply;
+  if (!reply || !reply.comment) return null;
+  return {
+    comment: reply.comment,
+    createdAt: reply.createdAt ?? null,
+    updatedAt: reply.updatedAt ?? null,
+  };
+}
 
 class StorefrontReviewError extends Error {
   /**
@@ -113,6 +125,7 @@ function reviewToPublicDTO(review) {
     buyerName: anonymous ? ANONYMOUS_NAME : review.buyerName || "خریدار",
     isAnonymous: anonymous,
     createdAt: review.createdAt,
+    sellerReply: sellerReplyDTO(review),
   };
 }
 
@@ -134,6 +147,7 @@ function reviewToSellerDTO(review) {
     status: review.status,
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
+    sellerReply: sellerReplyDTO(review),
   };
 }
 
@@ -333,6 +347,73 @@ async function setReviewVisibility({ reviewId, sellerId, status }) {
   };
 }
 
+/**
+ * Create or update the seller's reply to one of their reviews (upsert-style:
+ * the first reply stamps createdAt; later edits move updatedAt). Ownership is
+ * enforced on the review's sellerId. A reply never touches the rating/status
+ * aggregates — it only shows up while the review itself is `published`.
+ */
+async function setSellerReply({ reviewId, sellerId, comment }) {
+  if (typeof comment !== "string" || comment.trim() === "") {
+    throw new StorefrontReviewError("VALIDATION_ERROR", "متن پاسخ نمی‌تواند خالی باشد");
+  }
+  const trimmed = comment.trim();
+  if (trimmed.length > MAX_REPLY_LENGTH) {
+    throw new StorefrontReviewError(
+      "VALIDATION_ERROR",
+      `متن پاسخ نباید بیش از ${MAX_REPLY_LENGTH} کاراکتر باشد`,
+    );
+  }
+
+  const existing = await Review.findOne({
+    _id: toObjectId(reviewId),
+    sellerId: toObjectId(sellerId),
+  })
+    .select("sellerReply")
+    .lean();
+  if (!existing) {
+    throw new StorefrontReviewError("REVIEW_NOT_FOUND", "دیدگاه یافت نشد");
+  }
+
+  const now = new Date();
+  const review = await Review.findOneAndUpdate(
+    { _id: toObjectId(reviewId), sellerId: toObjectId(sellerId) },
+    {
+      $set: {
+        "sellerReply.comment": trimmed,
+        "sellerReply.createdAt": existing.sellerReply?.createdAt ?? now,
+        "sellerReply.updatedAt": now,
+      },
+    },
+    { new: true },
+  )
+    .populate("productId", "title")
+    .lean();
+
+  return {
+    ...reviewToSellerDTO(review),
+    productId: String(review.productId?._id ?? review.productId),
+  };
+}
+
+/** Remove the seller's reply from one of their reviews (idempotent). */
+async function removeSellerReply({ reviewId, sellerId }) {
+  const review = await Review.findOneAndUpdate(
+    { _id: toObjectId(reviewId), sellerId: toObjectId(sellerId) },
+    { $unset: { sellerReply: "" } },
+    { new: true },
+  )
+    .populate("productId", "title")
+    .lean();
+  if (!review) {
+    throw new StorefrontReviewError("REVIEW_NOT_FOUND", "دیدگاه یافت نشد");
+  }
+  return {
+    ...reviewToSellerDTO(review),
+    productId: String(review.productId?._id ?? review.productId),
+  };
+}
+
 module.exports = {
   StorefrontReviewError,
   ANONYMOUS_NAME,
@@ -342,4 +423,6 @@ module.exports = {
   listProductReviews,
   listSellerReviews,
   setReviewVisibility,
+  setSellerReply,
+  removeSellerReply,
 };

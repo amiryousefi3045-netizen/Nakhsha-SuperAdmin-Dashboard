@@ -1329,6 +1329,94 @@ async function setReviewVisibility(req, res) {
   }
 }
 
+async function setSellerReviewReply(req, res) {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه دیدگاه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const review = await StorefrontReviewService.setSellerReply({
+      reviewId: id,
+      sellerId: req.seller._id,
+      comment,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "SELLER_REVIEW_REPLIED",
+      resource: { type: "REVIEW", id: String(review.id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { productId: review.productId },
+    });
+
+    res.json(createSuccessResponse({ review }, req.id));
+  } catch (e) {
+    if (e instanceof StorefrontReviewService.StorefrontReviewError) {
+      const statusMap = {
+        VALIDATION_ERROR: 400,
+        REVIEW_NOT_FOUND: 404,
+      };
+      return res
+        .status(statusMap[e.code] || 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller setSellerReviewReply error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function deleteSellerReviewReply(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه دیدگاه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const review = await StorefrontReviewService.removeSellerReply({
+      reviewId: id,
+      sellerId: req.seller._id,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "SELLER_REVIEW_REPLY_REMOVED",
+      resource: { type: "REVIEW", id: String(review.id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { productId: review.productId },
+    });
+
+    res.json(createSuccessResponse({ review }, req.id));
+  } catch (e) {
+    if (e instanceof StorefrontReviewService.StorefrontReviewError) {
+      const statusMap = {
+        VALIDATION_ERROR: 400,
+        REVIEW_NOT_FOUND: 404,
+      };
+      return res
+        .status(statusMap[e.code] || 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller deleteSellerReviewReply error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 module.exports = {
   getDashboard,
   getProfile,
@@ -1359,4 +1447,6 @@ module.exports = {
   removeTeamMember,
   listSellerReviews,
   setReviewVisibility,
+  setSellerReviewReply,
+  deleteSellerReviewReply,
 };
