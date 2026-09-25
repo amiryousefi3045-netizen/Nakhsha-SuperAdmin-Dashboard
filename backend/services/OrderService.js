@@ -273,6 +273,7 @@ async function createOrder({
       name: customer.name,
       phone: customer.phone,
       email: customer.email || "",
+      telegram: customer.telegram || "",
       address: customer.address || "",
     },
     items: snapshotItems,
@@ -369,6 +370,14 @@ async function transitionOrder({
       channel: "email",
       status: nextStatus,
       to: order.customer.email,
+      reason: reason || "",
+    });
+  }
+  if (NotificationService.hasTelegramTarget(order)) {
+    order.notifications.push({
+      channel: "telegram",
+      status: nextStatus,
+      to: order.customer.telegram,
       reason: reason || "",
     });
   }

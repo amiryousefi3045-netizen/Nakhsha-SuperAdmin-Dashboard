@@ -157,7 +157,7 @@ export interface BuyerOrderTimelineEntry {
 }
 
 export interface OrderNotification {
-  channel: "sms" | "email";
+  channel: "sms" | "email" | "telegram";
   status: BuyerOrderStatus;
   reason: string;
   message: string;

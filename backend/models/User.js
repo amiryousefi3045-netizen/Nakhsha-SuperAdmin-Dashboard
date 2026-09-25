@@ -47,6 +47,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Buyer-linkable Telegram chat id (Phase 22). When set, storefront orders
+    // of this user also emit a "telegram" notification record on transitions.
+    telegramChatId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     bio: {
       type: String,
       default: "",

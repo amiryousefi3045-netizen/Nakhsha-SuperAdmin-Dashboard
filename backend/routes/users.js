@@ -452,6 +452,65 @@ router.patch("/me", requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/users/me/telegram - Link (or unlink) the buyer's Telegram chat id
+// (Phase 22). The chat id is what the order-notification pipeline uses as the
+// "telegram" channel target, so it is only ever tampered by its owner.
+router.patch("/me/telegram", requireAuth, async (req, res) => {
+  try {
+    const { chatId } = req.body || {};
+    if (typeof chatId !== "string") {
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "chatId must be a string", {
+          field: "chatId",
+        }),
+      );
+    }
+
+    const trimmed = chatId.trim();
+    if (trimmed && !/^\d{1,20}$/.test(trimmed)) {
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "chatId must be numeric", {
+          field: "chatId",
+        }),
+      );
+    }
+    if (trimmed.length > 20) {
+      return res.status(400).json(
+        createErrorResponse("VALIDATION_ERROR", "chatId is too long", {
+          field: "chatId",
+        }),
+      );
+    }
+
+    const updated = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: { telegramChatId: trimmed } },
+      { new: true, runValidators: true },
+    ).select(
+      "name phone handle role avatar bio location creatorType isVerified createdAt updatedAt telegramChatId",
+    );
+
+    if (!updated) {
+      return res.status(404).json(
+        createErrorResponse("USER_NOT_FOUND", "User not found"),
+      );
+    }
+
+    res.json({
+      user: createUserDTO(updated, req),
+      telegramChatId: updated.telegramChatId || "",
+      linked: Boolean(updated.telegramChatId),
+    });
+  } catch (error) {
+    logger.error("PATCH /users/me/telegram error", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+    });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "Server error"));
+  }
+});
+
 // GET /api/users/handle/:handle - Get user by handle
 router.get("/handle/:handle", async (req, res) => {
   try {

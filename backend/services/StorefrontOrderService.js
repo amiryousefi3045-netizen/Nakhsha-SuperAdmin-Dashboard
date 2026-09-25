@@ -16,6 +16,7 @@
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const SellerProfile = require("../models/SellerProfile");
+const User = require("../models/User");
 const OrderService = require("./OrderService");
 const AuditService = require("./AuditService");
 const { StorefrontService } = require("./StorefrontService");
@@ -42,7 +43,7 @@ class StorefrontOrderError extends Error {
  * @param {object} params
  * @param {string} params.slug - published storefront slug
  * @param {string} params.buyerUserId - authenticated buyer user id
- * @param {{ name: string; phone: string; email?: string; address?: string }} params.customer
+ * @param {{ name: string; phone: string; email?: string; telegram?: string; address?: string }} params.customer
  * @param {Array<{ productId: string; qty: number }>} params.items
  * @param {"card"|"wallet"|"other"} [params.paymentMethod]
  * @param {string} [params.customerNote]
@@ -103,11 +104,20 @@ async function createBuyerOrder({
     }
   }
 
+  // Telegram chat id is NOT accepted from the public form; it comes from the
+  // buyer's linked account (PATCH /api/users/me/telegram) so storefront
+  // orders whisper to the right inbox without a verification vector on the form.
+  let telegram = "";
+  if (buyerUserId) {
+    const buyer = await User.findById(buyerUserId).select("telegramChatId").lean();
+    telegram = buyer?.telegramChatId || "";
+  }
+
   // Atomic reservation + snapshot happens here (OrderService.createOrder).
   const order = await OrderService.createOrder({
     sellerId: profile._id,
     sellerUserId: owner.userId,
-    customer,
+    customer: { ...customer, telegram },
     items,
     origin: "storefront",
     buyerUserId,

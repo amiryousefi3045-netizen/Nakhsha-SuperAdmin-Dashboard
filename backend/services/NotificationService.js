@@ -29,6 +29,7 @@ const Order = require("../models/Order");
 const logger = require("../utils/logger");
 const { sendSms } = require("./sms/melipayamakSms");
 const { sendEmail } = require("./email/emailSender");
+const { sendTelegram } = require("./telegram/telegramSender");
 
 const STATUS_MESSAGES = {
   confirmed: "سفارش شما تأیید شد",
@@ -107,6 +108,15 @@ function hasEmailTarget(order) {
   );
 }
 
+/** Telegram counterpart: shipping relies on the buyer's linked chat id. */
+function hasTelegramTarget(order) {
+  return (
+    order.origin === "storefront" &&
+    Boolean(order.buyerUserId) &&
+    Boolean(order.customer && order.customer.telegram)
+  );
+}
+
 /** Email subject line mirroring the Persian SMS template of the status. */
 function buildEmailSubject(order, status, reason = "") {
   const template = STATUS_MESSAGES[status];
@@ -159,7 +169,7 @@ async function deliverOrderNotifications(orderId, opts = {}) {
 
     for (const n of order.notifications) {
       if (n.delivered) continue;
-      if (n.channel !== "sms" && n.channel !== "email") continue;
+      if (n.channel !== "sms" && n.channel !== "email" && n.channel !== "telegram") continue;
       // Payment-reminder records are only actionable while the order is still
       // pending. The transition drops them once the order moves on; this guard
       // is the belt-and-suspenders that keeps a stale record from ever firing.
@@ -212,6 +222,11 @@ async function deliverOrderNotifications(orderId, opts = {}) {
             message,
             { kind: "order-status", orderId: String(order._id) },
           );
+        } else if (n.channel === "telegram") {
+          await sendTelegram(n.to, message, {
+            kind: "order-status",
+            orderId: String(order._id),
+          });
         } else {
           await sendSms(n.to, message, {
             kind: "order-status",
@@ -222,7 +237,7 @@ async function deliverOrderNotifications(orderId, opts = {}) {
         summary.delivered += 1;
       } catch (err) {
         summary.failed += 1;
-        logger.warn("Order notification SMS failed", {
+        logger.warn("Order notification failed", {
           orderId: String(order._id),
           status: n.status,
           attempts: (n.attempts ?? 0) + 1,
@@ -255,6 +270,7 @@ module.exports = {
   buildNotificationMessage,
   hasNotificationTarget,
   hasEmailTarget,
+  hasTelegramTarget,
   buildEmailSubject,
   notificationRecordState,
   deliverOrderNotifications,

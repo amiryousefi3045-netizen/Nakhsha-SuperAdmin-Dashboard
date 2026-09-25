@@ -169,7 +169,11 @@ function Receipt({ order }: { order: BuyerOrder }) {
                         : statusLabel(n.status)}
                     </span>
                     <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-xs text-[var(--color-muted)]">
-                      {n.channel === "email" ? "ایمیل" : "پیامک"}
+                      {n.channel === "email"
+                        ? "ایمیل"
+                        : n.channel === "telegram"
+                          ? "تلگرام"
+                          : "پیامک"}
                     </span>
                     {n.delivered ? (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">

@@ -55,7 +55,7 @@ const TimelineEntrySchema = new mongoose.Schema(
 // flag, so delivery state is observable (buyer receipt UI) and retryable.
 const OrderNotificationSchema = new mongoose.Schema(
   {
-    channel: { type: String, enum: ["sms", "email"], required: true },
+    channel: { type: String, enum: ["sms", "email", "telegram"], required: true },
     status: { type: String, enum: ORDER_STATUSES, required: true },
     to: { type: String, default: "" },
     message: { type: String, default: "" },
@@ -107,6 +107,9 @@ const OrderSchema = new mongoose.Schema(
       name: { type: String, required: true, trim: true, maxlength: 200 },
       phone: { type: String, required: true, trim: true, maxlength: 20 },
       email: { type: String, trim: true, maxlength: 200, default: "" },
+      // Filled server-side at checkout from the buyer's linked Telegram chat
+      // id (never accepted from the public form).
+      telegram: { type: String, trim: true, default: "" },
       address: { type: String, default: "", maxlength: 1000 },
     },
     items: { type: [OrderItemSchema], required: true, validate: [(v) => v.length > 0, "حداقل یک قلم الزامی است"] },

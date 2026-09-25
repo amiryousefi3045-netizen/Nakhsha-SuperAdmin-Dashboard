@@ -358,7 +358,7 @@ export interface NotificationQueueSummary {
 export interface NotificationQueueRecord {
   orderId: string;
   orderNumber: number;
-  channel: "sms" | "email";
+  channel: "sms" | "email" | "telegram";
   status: string;
   to: string;
   message: string;

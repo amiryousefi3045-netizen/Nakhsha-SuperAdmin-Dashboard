@@ -53,7 +53,7 @@ class NotificationQueueService {
       origin: "storefront",
       notifications: {
         $elemMatch: {
-          channel: { $in: ["sms", "email"] },
+          channel: { $in: ["sms", "email", "telegram"] },
           delivered: false,
           attempts: { $lt: max },
           $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $lte: now } }],
