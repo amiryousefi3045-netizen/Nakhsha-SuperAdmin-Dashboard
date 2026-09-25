@@ -22,6 +22,7 @@
 const Payout = require("../models/Payout");
 const Order = require("../models/Order");
 const SellerProfile = require("../models/SellerProfile");
+const { resolveRange } = require("../utils/reportRange");
 
 // ── Custom domain errors (controller maps these to HTTP) ────────────────────
 
@@ -301,6 +302,148 @@ async function cancelPayout({ sellerId, payoutId, sellerUserId, note }) {
   return payout;
 }
 
+/**
+ * Period settlement report for a seller (Phase 28).
+ *
+ * Scoped strictly to `{ sellerId, createdAt: [start, end] }` — never
+ * client-supplied sellerId. Returns per-status/per-method aggregates plus a
+ * continuous daily series, mirroring the sales report shape so the front-end
+ * can render the same patterns.
+ *
+ * @param {import("mongoose").Types.ObjectId|string} sellerId
+ * @param {object} [opts] `from`/`to` ISO bounds (inclusive UTC days)
+ * @throws {ReportRangeError} on invalid/inverted/oversized windows
+ */
+function emptyStatusAgg() {
+  const agg = {};
+  for (const s of Payout.PAYOUT_STATUSES) agg[s] = { count: 0, amount: 0 };
+  return agg;
+}
+
+async function payoutReport(sellerId, { from, to } = {}) {
+  const { start, end } = resolveRange({ from, to });
+
+  const match = { sellerId, createdAt: { $gte: start, $lte: end } };
+
+  const [faceted] = await Payout.aggregate([
+    { $match: match },
+    {
+      $facet: {
+        byStatus: [
+          { $group: { _id: "$status", count: { $sum: 1 }, amount: { $sum: "$amount" } } },
+        ],
+        byMethod: [
+          { $group: { _id: "$method", count: { $sum: 1 }, amount: { $sum: "$amount" } } },
+        ],
+        daily: [
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" },
+              },
+              count: { $sum: 1 },
+              amount: { $sum: "$amount" },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ],
+      },
+    },
+  ]);
+
+  const byStatusMap = {};
+  for (const row of faceted.byStatus) byStatusMap[row._id] = row;
+
+  const summary = { total: { count: 0, amount: 0 }, ...emptyStatusAgg() };
+  for (const s of Payout.PAYOUT_STATUSES) {
+    const row = byStatusMap[s];
+    summary[s] = { count: row?.count || 0, amount: row?.amount || 0 };
+    summary.total.count += summary[s].count;
+    summary.total.amount += summary[s].amount;
+  }
+
+  const byMethodMap = {};
+  for (const row of faceted.byMethod) byMethodMap[row._id] = row;
+  const byMethod = Payout.PAYOUT_METHODS.map((method) => ({
+    method,
+    count: byMethodMap[method]?.count || 0,
+    amount: byMethodMap[method]?.amount || 0,
+  }));
+
+  const dailyMap = {};
+  for (const row of faceted.daily) dailyMap[row._id] = row;
+  const daily = [];
+  for (let d = new Date(start); d <= end; d = new Date(d.getTime() + 86400000)) {
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    daily.push({
+      day: key,
+      count: dailyMap[key]?.count || 0,
+      amount: dailyMap[key]?.amount || 0,
+    });
+  }
+
+  return {
+    period: { from: start, to: end },
+    summary,
+    byMethod,
+    daily,
+    currency: "IRR",
+  };
+}
+
+/**
+ * Row-level CSV export of the same settlement window: one line per payout,
+ * sorted by creation date ascending. RFC-4180 escaping; the controller adds
+ * the UTF-8 BOM so Excel/Persian text renders correctly.
+ */
+async function payoutReportCsv(sellerId, { from, to } = {}) {
+  const { start, end } = resolveRange({ from, to });
+
+  const payouts = await Payout.find({
+    sellerId,
+    createdAt: { $gte: start, $lte: end },
+  })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const csvCell = (value) => {
+    const s = value === null || value === undefined ? "" : String(value);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const header = [
+    "id",
+    "status",
+    "method",
+    "amount",
+    "currency",
+    "note",
+    "decisionNote",
+    "reference",
+    "createdAt",
+    "updatedAt",
+  ];
+
+  const rows = payouts.map((p) =>
+    [
+      String(p._id),
+      p.status,
+      p.method,
+      p.amount,
+      p.currency,
+      p.note,
+      p.decisionNote,
+      p.reference,
+      p.createdAt.toISOString(),
+      p.updatedAt.toISOString(),
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+
+  return header.map(csvCell).join(",") + "\r\n" + rows.join("\r\n");
+}
+
 // ── Admin / settlement-queue service ────────────────────────────────────────
 
 /**
@@ -463,6 +606,8 @@ module.exports = {
   listPayouts,
   requestPayout,
   cancelPayout,
+  payoutReport,
+  payoutReportCsv,
   listAllPayouts,
   adminOverview,
   getPayoutDetail,

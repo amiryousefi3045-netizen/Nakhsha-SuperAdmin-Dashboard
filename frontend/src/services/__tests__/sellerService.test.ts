@@ -34,6 +34,8 @@ import {
   getSellerAnalytics,
   getSellerSalesReport,
   exportSellerSalesReportCsv,
+  getSellerPayoutReport,
+  exportSellerPayoutReportCsv,
   getSellerActivity,
   listSellerOrders,
   getSellerOrder,
@@ -355,6 +357,53 @@ describe("seller analytics", () => {
     });
     expect(file.blob.type).toBe("text/csv");
     expect(file.filename).toBe("sales-report-2026-09-25.csv");
+  });
+});
+
+describe("settlement report (Phase 28)", () => {
+  it("getSellerPayoutReport GETs /seller/reports/payouts with period params", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        period: { from: "2026-08-26T00:00:00Z", to: "2026-09-25T23:59:59Z" },
+        summary: {
+          total: { count: 5, amount: 1150000 },
+          requested: { count: 1, amount: 300000 },
+          processing: { count: 1, amount: 100000 },
+          paid: { count: 1, amount: 500000 },
+          cancelled: { count: 1, amount: 200000 },
+          rejected: { count: 1, amount: 50000 },
+        },
+        byMethod: [
+          { method: "bank_transfer", count: 2, amount: 500000 },
+          { method: "card", count: 1, amount: 500000 },
+        ],
+        daily: [{ day: "2026-08-26", count: 0, amount: 0 }],
+        currency: "IRR",
+      }),
+    );
+    const report = await getSellerPayoutReport({ from: "2026-08-26", to: "2026-09-25" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/reports/payouts", {
+      params: { from: "2026-08-26", to: "2026-09-25" },
+    });
+    expect(report.summary.total.count).toBe(5);
+    expect(report.byMethod[0].amount).toBe(500000);
+  });
+
+  it("exportSellerPayoutReportCsv downloads a blob and picks the filename", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["\uFEFFid,status,amount\r\n"], { type: "text/csv" }),
+      status: 200,
+      statusText: "OK",
+      headers: { "content-disposition": 'attachment; filename="payout-report-2026-09-25.csv"' },
+      config: {},
+    } as never);
+    const file = await exportSellerPayoutReportCsv({ from: "2026-08-26", to: "2026-09-25" });
+    expect(vi.mocked(apiClient.rawGet)).toHaveBeenCalledWith("/seller/reports/payouts/export", {
+      params: { from: "2026-08-26", to: "2026-09-25" },
+      responseType: "blob",
+    });
+    expect(file.blob.type).toBe("text/csv");
+    expect(file.filename).toBe("payout-report-2026-09-25.csv");
   });
 });
 

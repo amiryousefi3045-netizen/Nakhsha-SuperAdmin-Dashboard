@@ -12,6 +12,7 @@ const AuditService = require("../services/AuditService");
 const SettingsService = require("../services/SettingsService");
 const StorefrontReviewService = require("../services/StorefrontReviewService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
+const { ReportRangeError } = require("../utils/reportRange");
 const logger = require("../utils/logger");
 
 const MAX_PAGE_SIZE = 100;
@@ -884,6 +885,57 @@ async function exportSalesReport(req, res) {
   }
 }
 
+/**
+ * Period settlement report (Phase 28, P0-04): per-status/per-method/daily
+ * aggregates for the authenticated seller. Owner-only route.
+ */
+async function getPayoutReport(req, res) {
+  try {
+    const { from, to } = req.query;
+    const report = await FinanceService.payoutReport(req.seller._id, { from, to });
+    res.json(createSuccessResponse({ report }, req.id));
+  } catch (e) {
+    if (e instanceof ReportRangeError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller getPayoutReport error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/** CSV export of the settlement report window. Owner-only route. */
+async function exportPayoutReport(req, res) {
+  try {
+    const { from, to } = req.query;
+    const csv = await FinanceService.payoutReportCsv(req.seller._id, { from, to });
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="payout-report-${date}.csv"`,
+    );
+    res.write("\uFEFF");
+    res.end(csv);
+  } catch (e) {
+    if (e instanceof ReportRangeError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller exportPayoutReport error", { error: e.message, sellerId: req.seller?._id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
+  }
+}
+
 function activityToDTO(log) {
   const l = log.toObject ? log.toObject({ virtuals: true }) : log;
   return {
@@ -1560,6 +1612,8 @@ module.exports = {
   getAnalytics,
   getSalesReport,
   exportSalesReport,
+  getPayoutReport,
+  exportPayoutReport,
   getActivity,
   listSellerOrders,
   getSellerOrder,

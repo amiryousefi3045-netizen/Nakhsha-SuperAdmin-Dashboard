@@ -10,77 +10,24 @@
  * host timezone.
  */
 const Order = require("../models/Order");
+const {
+  ReportRangeError,
+  MAX_RANGE_DAYS,
+  resolveRange,
+  addDaysUtc,
+  dayKey,
+} = require("../utils/reportRange");
 
-const DEFAULT_DAYS = 30;
-const MAX_RANGE_DAYS = 366;
+// Backwards-compatible alias: existing controllers/tests import this class
+// from SalesReportService; it is now the shared ReportRangeError.
+const SalesReportDomainError = ReportRangeError;
+
 const MAX_TOP_PRODUCTS = 20;
-
-class SalesReportDomainError extends Error {
-  constructor(code, message, details = null) {
-    super(message);
-    this.code = code;
-    this.details = details;
-  }
-}
 
 function parseLimit(value, fallback = 5) {
   const n = Number.parseInt(value, 10);
   if (!Number.isInteger(n)) return fallback;
   return Math.min(Math.max(n, 1), MAX_TOP_PRODUCTS);
-}
-
-function dayKey(d) {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-/** Midnight (UTC) of the given date — the inclusive lower edge of its day. */
-function startOfDayUtc(d) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-/** Last millisecond (UTC) of the given date — the inclusive upper edge. */
-function endOfDayUtc(d) {
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999),
-  );
-}
-
-function addDaysUtc(d, n) {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + n);
-  return x;
-}
-
-/** Shared period parsing/normalisation: throws SalesReportDomainError. */
-function resolveRange({ from, to } = {}) {
-  const now = new Date();
-  let start = from ? new Date(from) : new Date(now.getTime() - DEFAULT_DAYS * 86400000);
-  let end = to ? new Date(to) : new Date(now.getTime());
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new SalesReportDomainError("VALIDATION_ERROR", "بازه زمانی نامعتبر است", {
-      field: "from/to",
-    });
-  }
-  if (start > end) {
-    throw new SalesReportDomainError(
-      "VALIDATION_ERROR",
-      "تاریخ شروع باید قبل از تاریخ پایان باشد",
-      { field: "from" },
-    );
-  }
-  const rangeDays = Math.ceil((end.getTime() - start.getTime()) / 86400000);
-  if (rangeDays > MAX_RANGE_DAYS) {
-    throw new SalesReportDomainError(
-      "VALIDATION_ERROR",
-      `بازه زمانی نمی‌تواند بیش از ${MAX_RANGE_DAYS} روز باشد`,
-      { field: "from/to" },
-    );
-  }
-
-  // Normalise to whole UTC days so the aggregate window, the chart axis and
-  // the guard all agree on the same inclusive calendar range.
-  return { start: startOfDayUtc(start), end: endOfDayUtc(end) };
 }
 
 /**

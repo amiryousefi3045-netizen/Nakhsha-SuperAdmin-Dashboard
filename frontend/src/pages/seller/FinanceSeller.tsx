@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Wallet,
   RefreshCw,
@@ -11,16 +11,26 @@ import {
   Coins,
   CircleDollarSign,
   Info,
+  BarChart3,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import {
   cancelSellerPayout,
+  exportSellerPayoutReportCsv,
   getSellerFinance,
+  getSellerPayoutReport,
   getSellerPayouts,
   getSellerSettings,
   requestSellerPayout,
 } from "../../services/sellerService";
-import type { PayoutMethod, SellerPayout } from "../../types/seller";
+import type {
+  PayoutMethod,
+  PayoutReportMethodRow,
+  SellerPayout,
+  SellerPayoutReport,
+} from "../../types/seller";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { faNumber, formatDateTime } from "../../lib/adminFormat";
 import {
@@ -146,6 +156,84 @@ export function FinanceSeller() {
   );
 
   const totalPages = Math.max(1, Math.ceil(payoutsTotal / PAYOUT_PAGE_SIZE));
+
+  const toInputDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  const defaultReportRange = () => {
+    const to = new Date();
+    const from = new Date(to.getTime() - 29 * 86400000);
+    return { from: toInputDate(from), to: toInputDate(to) };
+  };
+
+  const [reportRange, setReportRange] = useState(defaultReportRange);
+  const [payoutReport, setPayoutReport] = useState<SellerPayoutReport | null>(null);
+  const [payoutReportLoading, setPayoutReportLoading] = useState(false);
+  const [payoutReportError, setPayoutReportError] = useState<string | null>(null);
+  const [exportingReport, setExportingReport] = useState(false);
+  const [exportReportDone, setExportReportDone] = useState(false);
+  const [exportReportError, setExportReportError] = useState<string | null>(null);
+
+  const loadPayoutReport = useCallback(async (range: { from: string; to: string }) => {
+    setPayoutReportLoading(true);
+    setPayoutReportError(null);
+    try {
+      const report = await getSellerPayoutReport({ from: range.from, to: range.to });
+      setPayoutReport(report);
+    } catch (e) {
+      setPayoutReportError(e instanceof Error ? e.message : "بارگذاری گزارش تسویه ناموفق بود");
+    } finally {
+      setPayoutReportLoading(false);
+    }
+  }, []);
+
+  const handleRunReport = useCallback(() => {
+    setExportReportDone(false);
+    void loadPayoutReport(reportRange);
+  }, [loadPayoutReport, reportRange]);
+
+  const handleExportReport = useCallback(async () => {
+    setExportingReport(true);
+    setExportReportError(null);
+    setExportReportDone(false);
+    try {
+      const { blob, filename } = await exportSellerPayoutReportCsv({
+        from: reportRange.from,
+        to: reportRange.to,
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setExportReportDone(true);
+    } catch (e) {
+      setExportReportError(e instanceof Error ? e.message : "خطا در دریافت فایل خروجی");
+    } finally {
+      setExportingReport(false);
+    }
+  }, [reportRange]);
+
+  // Load the default 30-day window once on mount.
+  useEffect(() => {
+    void loadPayoutReport(defaultReportRange());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const reportMaxDaily = useMemo(
+    () => Math.max(1, ...(payoutReport?.daily.map((d) => d.amount) ?? [0])),
+    [payoutReport],
+  );
+
+  const reportMethodRows: PayoutReportMethodRow[] = payoutReport
+    ? [...payoutReport.byMethod].sort((a, b) => b.amount - a.amount)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -418,6 +506,244 @@ export function FinanceSeller() {
               </div>
             )}
           </div>
+
+          {/* Settlement report (Phase 28, P0-04) */}
+          <div className="rounded-2xl border border-[var(--color-border)] bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-[var(--color-primary)]" />
+                <h3 className="text-sm font-bold text-[var(--color-text)]">گزارش تسویهٔ دوره‌ای</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportReport}
+                  disabled={exportingReport}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+                >
+                  {exportingReport ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  خروجی CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportRange(defaultReportRange());
+                    setExportReportDone(false);
+                    void loadPayoutReport(defaultReportRange());
+                  }}
+                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--color-primary)] hover:bg-[var(--color-muted)]/10"
+                >
+                  بازگشت به ۳۰ روز اخیر
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 px-5 py-4">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs font-medium text-[var(--color-muted)]">از تاریخ</span>
+                <input
+                  type="date"
+                  value={reportRange.from}
+                  onChange={(e) => setReportRange((r) => ({ ...r, from: e.target.value }))}
+                  className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs font-medium text-[var(--color-muted)]">تا تاریخ</span>
+                <input
+                  type="date"
+                  value={reportRange.to}
+                  onChange={(e) => setReportRange((r) => ({ ...r, to: e.target.value }))}
+                  className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleRunReport}
+                disabled={payoutReportLoading}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40"
+              >
+                <RefreshCw className={`h-4 w-4 ${payoutReportLoading ? "animate-spin" : ""}`} />
+                نمایش گزارش
+              </button>
+            </div>
+
+            {exportReportError && (
+              <p className="mx-5 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                {exportReportError}
+              </p>
+            )}
+            {exportReportDone && !exportReportError && (
+              <p className="mx-5 mb-4 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+                <CheckCircle2 className="h-4 w-4" />
+                فایل خروجی دانلود شد.
+              </p>
+            )}
+
+            <div className="px-5 pb-5">
+              {payoutReportLoading ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="h-20 animate-pulse rounded-xl bg-[var(--color-border)]/40" />
+                    ))}
+                  </div>
+                  <div className="h-40 animate-pulse rounded-xl bg-[var(--color-border)]/30" />
+                </div>
+              ) : payoutReportError ? (
+                <p className="text-sm text-red-600">{payoutReportError}</p>
+              ) : payoutReport ? (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <ReportKpiCard
+                      label="جمع تسویه‌های دوره"
+                      value={formatSellerPrice(payoutReport.summary.total.amount, payoutReport.currency)}
+                      sub={`${faNumber(payoutReport.summary.total.count)} درخواست`}
+                      tone="default"
+                    />
+                    <ReportKpiCard
+                      label="در انتظار پردازش"
+                      value={formatSellerPrice(
+                        payoutReport.summary.requested.amount + payoutReport.summary.processing.amount,
+                        payoutReport.currency,
+                      )}
+                      sub={`${faNumber(payoutReport.summary.requested.count + payoutReport.summary.processing.count)} درخواست`}
+                      tone="amber"
+                    />
+                    <ReportKpiCard
+                      label="پرداخت‌شده"
+                      value={formatSellerPrice(payoutReport.summary.paid.amount, payoutReport.currency)}
+                      sub={`${faNumber(payoutReport.summary.paid.count)} درخواست`}
+                      tone="green"
+                    />
+                    <ReportKpiCard
+                      label="لغو/ردشده"
+                      value={formatSellerPrice(
+                        payoutReport.summary.cancelled.amount + payoutReport.summary.rejected.amount,
+                        payoutReport.currency,
+                      )}
+                      sub={`${faNumber(payoutReport.summary.cancelled.count + payoutReport.summary.rejected.count)} درخواست`}
+                      tone="gray"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                    <div>
+                      <h4 className="mb-3 text-sm font-semibold text-[var(--color-text)]">
+                        تفکیک بر اساس وضعیت
+                      </h4>
+                      {payoutReport.summary.total.count === 0 ? (
+                        <p className="text-sm text-[var(--color-muted)]">تسویه‌ای در این بازه ثبت نشده است.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {(
+                            [
+                              "requested",
+                              "processing",
+                              "paid",
+                              "cancelled",
+                              "rejected",
+                            ] as const
+                          ).map((s) => {
+                            const row = payoutReport.summary[s];
+                            if (row.count === 0) return null;
+                            return (
+                              <div
+                                key={s}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] px-3 py-2"
+                              >
+                                <StatusBadge
+                                  tone={PAYOUT_STATUS_TONE[s]}
+                                  label={PAYOUT_STATUS_LABEL[s] ?? s}
+                                />
+                                <span className="text-sm text-[var(--color-muted)]">
+                                  {faNumber(row.count)} درخواست ·{" "}
+                                  <b className="text-[var(--color-text)]">
+                                    {formatSellerPrice(row.amount, payoutReport.currency)}
+                                  </b>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="mb-3 text-sm font-semibold text-[var(--color-text)]">
+                        تفکیک بر اساس روش پرداخت
+                      </h4>
+                      {reportMethodRows.length === 0 ? (
+                        <p className="text-sm text-[var(--color-muted)]">داده‌ای در این بازه ثبت نشده است.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-[var(--color-border)] text-right text-xs text-[var(--color-muted)]">
+                                <th className="py-2 pr-1 font-medium">روش</th>
+                                <th className="py-2 pr-1 text-center font-medium">تعداد</th>
+                                <th className="py-2 pr-1 text-left font-medium">مبلغ</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--color-border)]">
+                              {reportMethodRows.map((m) => {
+                                const MethodIcon = METHOD_ICON[m.method] ?? CircleDollarSign;
+                                return (
+                                  <tr key={m.method}>
+                                    <td className="py-2.5 pr-1 font-medium text-[var(--color-text)]">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <MethodIcon className="h-4 w-4" />
+                                        {PAYOUT_METHOD_LABEL[m.method] ?? m.method}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 pr-1 text-center text-[var(--color-muted)]">
+                                      {faNumber(m.count)}
+                                    </td>
+                                    <td className="py-2.5 pr-1 text-left font-semibold text-[var(--color-text)]">
+                                      {formatSellerPrice(m.amount, payoutReport.currency)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-[var(--color-text)]">
+                        جریان تسویهٔ روزانه ({payoutReport.daily.length} روز)
+                      </h4>
+                      <span className="text-xs text-[var(--color-muted)]">
+                        اوج: {formatSellerPrice(reportMaxDaily === 1 ? 0 : reportMaxDaily, payoutReport.currency)}
+                      </span>
+                    </div>
+                    <div className="flex h-40 items-end gap-[2px]" dir="ltr">
+                      {payoutReport.daily.map((d) => (
+                        <div
+                          key={d.day}
+                          title={`${d.day} — ${faNumber(d.count)} درخواست · ${formatSellerPrice(d.amount, payoutReport.currency)}`}
+                          className="group relative flex-1 rounded-t bg-[var(--color-primary)]/60 transition-colors hover:bg-[var(--color-primary)]"
+                          style={{ height: `${Math.max(2, (d.amount / reportMaxDaily) * 100)}%` }}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-2 flex justify-between text-[10px] text-[var(--color-muted)]" dir="ltr">
+                      <span>{payoutReport.daily[0]?.day}</span>
+                      <span>{payoutReport.daily[payoutReport.daily.length - 1]?.day}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
         </>
       ) : null}
     </div>
@@ -475,6 +801,35 @@ function Loading() {
         ))}
       </div>
       <div className="h-64 animate-pulse rounded-2xl bg-[var(--color-border)]/30" />
+    </div>
+  );
+}
+
+function ReportKpiCard({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone: "default" | "green" | "amber" | "gray";
+}) {
+  const tones = {
+    default: "bg-[var(--color-primary)]/10 text-[var(--color-primary)]",
+    green: "bg-green-50 text-green-600",
+    amber: "bg-amber-50 text-amber-600",
+    gray: "bg-slate-100 text-slate-500",
+  } as const;
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] p-3">
+      <p className="text-xs text-[var(--color-muted)]">{label}</p>
+      <p className="mt-1 text-base font-bold text-[var(--color-text)]" dir="auto">
+        {value}
+      </p>
+      <p className="mt-0.5 text-xs text-[var(--color-muted)]">{sub}</p>
+      <div className={`mt-2 h-1 w-full rounded-full ${tones[tone]}`} />
     </div>
   );
 }

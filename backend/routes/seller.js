@@ -245,6 +245,26 @@ router.get(
   sellerController.exportSalesReport,
 );
 
+// ── Settlement report (Phase 28, P0-04) — owner-only like the finance domain ─
+router.get(
+  "/reports/payouts",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireOwnerOnly,
+  sellerController.getPayoutReport,
+);
+
+// CSV row-level export of the same settlement window ─────────────────────────
+router.get(
+  "/reports/payouts/export",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireOwnerOnly,
+  sellerController.exportPayoutReport,
+);
+
 // ── Store activity (Phase 26) — owner + roster audit feed ──────────────────
 router.get(
   "/activity",

@@ -211,6 +211,40 @@ export interface SalesReportParams {
   top?: number;
 }
 
+// ── Settlement report (Phase 28, P0-04) ─────────────────────────────────────
+
+export interface PayoutReportStatusSummary {
+  count: number;
+  amount: number;
+}
+
+export interface PayoutReportMethodRow {
+  method: PayoutMethod;
+  count: number;
+  amount: number;
+}
+
+export interface PayoutReportDay {
+  day: string;
+  count: number;
+  amount: number;
+}
+
+export interface SellerPayoutReport {
+  period: { from: string; to: string };
+  summary: Record<PayoutStatus, PayoutReportStatusSummary> & {
+    total: PayoutReportStatusSummary;
+  };
+  byMethod: PayoutReportMethodRow[];
+  daily: PayoutReportDay[];
+  currency: "IRR";
+}
+
+export interface PayoutReportParams {
+  from?: string;
+  to?: string;
+}
+
 // ── Store activity feed (Phase 26) ─────────────────────────────────────────
 
 export type SellerActivityAction =

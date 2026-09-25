@@ -15,6 +15,7 @@ import type {
   OrderStatus,
   ProductStatus,
   ReviewStatus,
+  PayoutReportParams,
   SalesReportParams,
   SellerAnalytics,
   SellerActivityParams,
@@ -25,6 +26,7 @@ import type {
   SellerPage,
   SellerPayout,
   SellerPayoutListParams,
+  SellerPayoutReport,
   SellerProduct,
   SellerProfile,
   SellerReview,
@@ -231,6 +233,46 @@ export async function exportSellerSalesReportCsv(
   return {
     blob: response.data,
     filename: match?.[1] ?? `sales-report-${new Date().toISOString().slice(0, 10)}.csv`,
+  };
+}
+
+// ── Settlement report (Phase 28, P0-04) ────────────────────────────────────
+
+/** GET /seller/reports/payouts?from&to — period aggregates by status/method/day. */
+export async function getSellerPayoutReport(
+  params: PayoutReportParams = {},
+): Promise<SellerPayoutReport> {
+  const res = await apiClient.get<SellerPayoutReport>("/seller/reports/payouts", { params });
+  return unwrap(res, {
+    period: { from: "", to: "" },
+    summary: {
+      total: { count: 0, amount: 0 },
+      requested: { count: 0, amount: 0 },
+      processing: { count: 0, amount: 0 },
+      paid: { count: 0, amount: 0 },
+      cancelled: { count: 0, amount: 0 },
+      rejected: { count: 0, amount: 0 },
+    },
+    byMethod: [],
+    daily: [],
+    currency: "IRR",
+  });
+}
+
+/** GET /seller/reports/payouts/export — row-level CSV download. */
+export async function exportSellerPayoutReportCsv(
+  params: PayoutReportParams = {},
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.rawGet<Blob>("/seller/reports/payouts/export", {
+    params,
+    responseType: "blob",
+  });
+
+  const disposition = String(response.headers["content-disposition"] ?? "");
+  const match = /filename="?([^";]+)"?/.exec(disposition);
+  return {
+    blob: response.data,
+    filename: match?.[1] ?? `payout-report-${new Date().toISOString().slice(0, 10)}.csv`,
   };
 }
 
