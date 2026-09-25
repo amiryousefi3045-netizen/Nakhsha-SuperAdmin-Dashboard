@@ -2,9 +2,10 @@
  * NotificationService — outbound buyer notification engine (Phases 18-19).
  *
  * The pipeline is fire-and-forget by contract: a status transition in
- * OrderService records a notification on the order (same save), then kicks
- * deliverOrderNotifications off-loop. The queue scheduler (Notification-
- * QueueService) later re-attempts records that still have `delivered: false`.
+ * OrderService records notifications (sms + optional email) on the order
+ * (same save), then kicks deliverOrderNotifications off-loop. The queue
+ * scheduler (NotificationQueueService) later re-attempts records that still
+ * have `delivered: false`.
  *
  * Delivery ledger per record (subdocument):
  *   - delivered      true once the provider accepted the send.
@@ -17,7 +18,7 @@
  *
  * Invariants pinned by tests:
  *   - Only STOREFRONT orders with a real buyer get notified; seller-entered
- *     orders never do.
+ *     orders never do. SMS needs a phone, email needs an address.
  *   - Notified statuses: confirmed, processing, shipped, delivered, cancelled,
  *     returned. A fresh `pending` order is never announced.
  *   - A delivery failure NEVER throws out of this service.
@@ -27,6 +28,7 @@
 const Order = require("../models/Order");
 const logger = require("../utils/logger");
 const { sendSms } = require("./sms/melipayamakSms");
+const { sendEmail } = require("./email/emailSender");
 
 const STATUS_MESSAGES = {
   confirmed: "سفارش شما تأیید شد",
@@ -96,6 +98,24 @@ function hasNotificationTarget(order) {
   );
 }
 
+/** Email counterpart: same storefront/buyer rule, but the address must exist. */
+function hasEmailTarget(order) {
+  return (
+    order.origin === "storefront" &&
+    Boolean(order.buyerUserId) &&
+    Boolean(order.customer && order.customer.email)
+  );
+}
+
+/** Email subject line mirroring the Persian SMS template of the status. */
+function buildEmailSubject(order, status, reason = "") {
+  const template = STATUS_MESSAGES[status];
+  if (!template) return `نخشا | سفارش ${order.orderNumber}`;
+  let subject = `نخشا | ${template} — سفارش ${order.orderNumber}`;
+  if (reason) subject += ` (${reason})`;
+  return subject;
+}
+
 /**
  * Machine state of one ledger record at a moment in time:
  *   - "delivered"  → success.
@@ -117,9 +137,9 @@ function notificationRecordState(record, opts = {}) {
 }
 
 /**
- * Attempt every eligible sms notification on one order (idempotent, safe to
+ * Deliver every eligible outbound record on one order (idempotent, safe to
  * call from the transition hook AND the scheduler — claims are atomic, so the
- * same record never fires twice).
+ * same record never fires twice). sms → sendSms, email → sendEmail.
  *
  * @param {string} orderId
  * @param {object} [opts] { now, maxAttempts, backoffMs } — now/maxAttempts/backoffMs
@@ -138,7 +158,8 @@ async function deliverOrderNotifications(orderId, opts = {}) {
     if (!order || !hasNotificationTarget(order)) return summary;
 
     for (const n of order.notifications) {
-      if (n.delivered || n.channel !== "sms") continue;
+      if (n.delivered) continue;
+      if (n.channel !== "sms" && n.channel !== "email") continue;
       // Payment-reminder records are only actionable while the order is still
       // pending. The transition drops them once the order moves on; this guard
       // is the belt-and-suspenders that keeps a stale record from ever firing.
@@ -156,7 +177,7 @@ async function deliverOrderNotifications(orderId, opts = {}) {
           notifications: {
             $elemMatch: {
               _id: n._id,
-              channel: "sms",
+              channel: n.channel,
               delivered: false,
               attempts: { $lt: max },
               $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $lte: now } }],
@@ -184,7 +205,19 @@ async function deliverOrderNotifications(orderId, opts = {}) {
         );
 
       try {
-        await sendSms(n.to, message, { kind: "order-status", orderId: String(order._id) });
+        if (n.channel === "email") {
+          await sendEmail(
+            n.to,
+            buildEmailSubject(order, n.status, n.reason),
+            message,
+            { kind: "order-status", orderId: String(order._id) },
+          );
+        } else {
+          await sendSms(n.to, message, {
+            kind: "order-status",
+            orderId: String(order._id),
+          });
+        }
         await mark({ "notifications.$.delivered": true, "notifications.$.error": "" });
         summary.delivered += 1;
       } catch (err) {
@@ -221,6 +254,8 @@ module.exports = {
   buildPaymentReminderMessage,
   buildNotificationMessage,
   hasNotificationTarget,
+  hasEmailTarget,
+  buildEmailSubject,
   notificationRecordState,
   deliverOrderNotifications,
 };

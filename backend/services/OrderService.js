@@ -364,6 +364,14 @@ async function transitionOrder({
       reason: reason || "",
     });
   }
+  if (NotificationService.hasEmailTarget(order)) {
+    order.notifications.push({
+      channel: "email",
+      status: nextStatus,
+      to: order.customer.email,
+      reason: reason || "",
+    });
+  }
   await order.save();
 
   if (order.notifications.length > 0) {

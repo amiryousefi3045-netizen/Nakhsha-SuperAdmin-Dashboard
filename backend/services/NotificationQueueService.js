@@ -46,14 +46,14 @@ class NotificationQueueService {
     return Number.isInteger(v) && v >= 1 ? v : DEFAULT_RUN_LIMIT;
   }
 
-  /** Orders carrying at least one pending (retry-eligible) sms record. */
+  /** Orders carrying at least one pending (retry-eligible) deliverable record. */
   findPendingOrders({ now = new Date(), limit = this.runLimit } = {}) {
     const max = NotificationService.maxAttemptsOf();
     return Order.find({
       origin: "storefront",
       notifications: {
         $elemMatch: {
-          channel: "sms",
+          channel: { $in: ["sms", "email"] },
           delivered: false,
           attempts: { $lt: max },
           $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $lte: now } }],
