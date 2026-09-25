@@ -18,6 +18,7 @@ const Product = require("../models/Product");
 const SellerProfile = require("../models/SellerProfile");
 const User = require("../models/User");
 const OrderService = require("./OrderService");
+const NotificationService = require("./NotificationService");
 const AuditService = require("./AuditService");
 const { StorefrontService } = require("./StorefrontService");
 
@@ -128,6 +129,7 @@ async function createBuyerOrder({
   order.payment.method = paymentMethod;
   order.payment.provider = PAYMENT_PROVIDER;
   order.payment.refId = refId;
+  order.sellerStoreName = profile.storeName || "";
   await order.save();
 
   await AuditService.log({
@@ -192,6 +194,19 @@ async function submitPaymentResult({ refId, result, reason = "" }) {
     order.payment.provider = order.payment.provider || PAYMENT_PROVIDER;
     order.payment.refId = String(order._id);
     await order.save();
+
+    // Phase 23 — a paid storefront order with an email address gets an itemised
+    // invoice over email, delivered (and retried) through the same queue.
+    if (NotificationService.hasEmailTarget(order)) {
+      order.notifications.push({
+        channel: "email",
+        status: order.status,
+        to: order.customer.email,
+        reason: NotificationService.INVOICE_REASON,
+      });
+      await order.save();
+      void NotificationService.deliverOrderNotifications(order._id);
+    }
 
     await AuditService.log({
       userId: order.buyerUserId || undefined,

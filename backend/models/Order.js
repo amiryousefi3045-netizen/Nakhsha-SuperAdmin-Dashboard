@@ -103,6 +103,8 @@ const OrderSchema = new mongoose.Schema(
     },
     // Human-readable store number, unique per seller (monotonic counter).
     orderNumber: { type: Number, required: true },
+    // Seller store display name snapshotted at checkout (invoice emails).
+    sellerStoreName: { type: String, default: "", maxlength: 300 },
     customer: {
       name: { type: String, required: true, trim: true, maxlength: 200 },
       phone: { type: String, required: true, trim: true, maxlength: 20 },

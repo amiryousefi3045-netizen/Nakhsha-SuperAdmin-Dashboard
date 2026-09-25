@@ -30,6 +30,7 @@ const logger = require("../utils/logger");
 const { sendSms } = require("./sms/melipayamakSms");
 const { sendEmail } = require("./email/emailSender");
 const { sendTelegram } = require("./telegram/telegramSender");
+const { buildInvoiceText, buildInvoiceHtml } = require("./email/invoiceHtml");
 
 const STATUS_MESSAGES = {
   confirmed: "سفارش شما تأیید شد",
@@ -46,6 +47,18 @@ const STATUS_MESSAGES = {
  * SMS nor ever re-sent once the order leaves pending.
  */
 const REMINDER_REASON = "payment_reminder";
+
+/**
+ * `reason` marker for the invoice email (Phase 23). Emitted on the payment
+ * SUCCESS callback for storefront orders with an email address; delivered as
+ * rich HTML through the email channel.
+ */
+const INVOICE_REASON = "invoice";
+
+/** Email subject for the invoice record. */
+function buildInvoiceSubject(order) {
+  return `نخشا | فاکتور سفارش ${order.orderNumber}`;
+}
 
 /**
  * Compose the buyer-facing SMS body for one transition. Returns "" for statuses
@@ -174,7 +187,8 @@ async function deliverOrderNotifications(orderId, opts = {}) {
       // pending. The transition drops them once the order moves on; this guard
       // is the belt-and-suspenders that keeps a stale record from ever firing.
       if (n.status === "pending" && order.status !== "pending") continue;
-      const message = buildNotificationMessage(order, n.status, n.reason);
+      const message =
+        n.reason === INVOICE_REASON ? buildInvoiceText(order) : buildNotificationMessage(order, n.status, n.reason);
 
       // CLAIM — atomic inc guards concurrent runners: whoever bumps the count
       // first owns this attempt; a runner that lost the race matches 0 rows.
@@ -215,7 +229,14 @@ async function deliverOrderNotifications(orderId, opts = {}) {
         );
 
       try {
-        if (n.channel === "email") {
+        if (n.channel === "email" && n.reason === INVOICE_REASON) {
+          await sendEmail(
+            n.to,
+            buildInvoiceSubject(order),
+            message,
+            { kind: "invoice", orderId: String(order._id), html: buildInvoiceHtml(order) },
+          );
+        } else if (n.channel === "email") {
           await sendEmail(
             n.to,
             buildEmailSubject(order, n.status, n.reason),
@@ -263,11 +284,15 @@ async function deliverOrderNotifications(orderId, opts = {}) {
 module.exports = {
   STATUS_MESSAGES,
   REMINDER_REASON,
+  INVOICE_REASON,
   maxAttemptsOf,
   backoffMsOf,
   buildOrderStatusMessage,
   buildPaymentReminderMessage,
   buildNotificationMessage,
+  buildInvoiceSubject,
+  buildInvoiceText,
+  buildInvoiceHtml,
   hasNotificationTarget,
   hasEmailTarget,
   hasTelegramTarget,

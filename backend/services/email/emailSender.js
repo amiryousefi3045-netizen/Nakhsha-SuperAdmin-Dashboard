@@ -25,7 +25,8 @@ function isConfigured() {
  * @param {string} to      recipient address
  * @param {string} subject email subject
  * @param {string} body    plain-text Persian body
- * @param {object} [meta]  context for logs (e.g. { kind: "order-status" })
+ * @param {object} [meta]  context for logs (e.g. { kind: "order-status" });
+ *                         `meta.html` embeds an HTML body (invoice emails)
  * @returns {Promise<void>}
  * @throws {Error} if delivery fails outside mock/dev modes
  */
@@ -45,6 +46,7 @@ async function sendEmail(to, subject, body, meta = {}) {
       to,
       subject,
       kind,
+      hasHtml: Boolean(meta.html),
       body: "Email would be sent in production with a configured API hook",
     });
     if (process.env.EMAIL_MOCK_FAIL === "true") {
@@ -77,7 +79,7 @@ async function sendEmail(to, subject, body, meta = {}) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.MAIL_API_KEY}`,
       },
-      body: JSON.stringify({ from: EMAIL_FROM, to, subject, text: body, kind, meta }),
+      body: JSON.stringify({ from: EMAIL_FROM, to, subject, text: body, html: meta.html || null, kind, meta }),
       signal: controller.signal,
     });
     if (!res.ok) {

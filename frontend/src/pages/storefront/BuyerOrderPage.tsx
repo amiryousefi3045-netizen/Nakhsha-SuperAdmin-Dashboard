@@ -164,9 +164,11 @@ function Receipt({ order }: { order: BuyerOrder }) {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-[var(--color-text)]">
-                      {n.reason === "payment_reminder"
-                        ? "یادآوری پرداخت"
-                        : statusLabel(n.status)}
+                      {n.reason === "invoice"
+                        ? "فاکتور سفارش"
+                        : n.reason === "payment_reminder"
+                          ? "یادآوری پرداخت"
+                          : statusLabel(n.status)}
                     </span>
                     <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-xs text-[var(--color-muted)]">
                       {n.channel === "email"

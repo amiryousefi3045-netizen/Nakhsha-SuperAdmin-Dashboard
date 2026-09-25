@@ -135,6 +135,8 @@ export function NotificationQueueAdmin() {
       render: (r) =>
         r.reason === "payment_reminder" ? (
           <StatusBadge label="یادآوری پرداخت" tone="amber" />
+        ) : r.reason === "invoice" ? (
+          <StatusBadge label="فاکتور" tone="blue" />
         ) : r.reason ? (
           <span className="block max-w-[160px] truncate text-xs text-[var(--color-muted)]" title={r.reason}>
             {r.reason}
