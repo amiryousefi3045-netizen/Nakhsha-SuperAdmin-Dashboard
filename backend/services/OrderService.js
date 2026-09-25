@@ -336,7 +336,17 @@ async function transitionOrder({
     }
   }
 
+  const fromStatus = order.status;
   order.status = nextStatus;
+  // A payment-reminder record is only meaningful while the order is still
+  // pending. The moment it leaves pending (payment done / cancelled) the nudge
+  // is moot — drop it here so the delivery queue never resurfaces it after
+  // the buyer already paid.
+  if (fromStatus === "pending") {
+    order.notifications = order.notifications.filter(
+      (n) => !(n.status === "pending" && n.reason === NotificationService.REMINDER_REASON),
+    );
+  }
   order.timeline.push({
     status: nextStatus,
     at: new Date(),

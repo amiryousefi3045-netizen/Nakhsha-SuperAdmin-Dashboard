@@ -130,6 +130,20 @@ export function NotificationQueueAdmin() {
       ),
     },
     {
+      key: "reason",
+      header: "دلیل",
+      render: (r) =>
+        r.reason === "payment_reminder" ? (
+          <StatusBadge label="یادآوری پرداخت" tone="amber" />
+        ) : r.reason ? (
+          <span className="block max-w-[160px] truncate text-xs text-[var(--color-muted)]" title={r.reason}>
+            {r.reason}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--color-muted)]">—</span>
+        ),
+    },
+    {
       key: "attempts",
       header: "تلاش‌ها",
       render: (r) => <span className="text-xs text-[var(--color-text)]">{faNumber(r.attempts)}</span>,

@@ -14,6 +14,7 @@ const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
 const otpCleanupService = require("./services/otpCleanup");
 const notificationQueueService = require("./services/NotificationQueueService");
+const paymentReminderService = require("./services/PaymentReminderService");
 
 // Load environment variables
 dotenv.config();
@@ -564,6 +565,16 @@ const connectDB = async () => {
     otpCleanupService.start();
     logger.info("OTP cleanup service started");
 
+    // Start the payment-reminder scheduler (skipped in tests and when
+    // explicitly disabled via PAYMENT_REMINDER_ENABLED=false).
+    if (process.env.NODE_ENV === "test") {
+      logger.info("Payment reminder service skipped (NODE_ENV=test)");
+    } else if (process.env.PAYMENT_REMINDER_ENABLED === "false") {
+      logger.info("Payment reminder service skipped (PAYMENT_REMINDER_ENABLED=false)");
+    } else {
+      paymentReminderService.start();
+    }
+
     // Start the notification retry queue (skipped in tests and when explicitly
     // disabled via NOTIFICATION_QUEUE_ENABLED=false).
     if (process.env.NODE_ENV === "test") {
@@ -597,6 +608,7 @@ const PORT = process.env.PORT || 5000;
   process.on("SIGTERM", async () => {
     logger.info("SIGTERM received, shutting down gracefully...");
     otpCleanupService.stop();
+    paymentReminderService.stop();
     notificationQueueService.stop();
     server.close(() => {
       logger.info("Process terminated");
@@ -606,6 +618,7 @@ const PORT = process.env.PORT || 5000;
   process.on("SIGINT", async () => {
     logger.info("SIGINT received, shutting down gracefully...");
     otpCleanupService.stop();
+    paymentReminderService.stop();
     notificationQueueService.stop();
     server.close(() => {
       logger.info("Process terminated");

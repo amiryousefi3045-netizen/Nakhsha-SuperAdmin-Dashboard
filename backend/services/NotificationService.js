@@ -37,17 +37,12 @@ const STATUS_MESSAGES = {
   returned: "سفارش شما مرجوع شد",
 };
 
-function maxAttemptsOf() {
-  const v = Number.parseInt(process.env.NOTIFICATION_MAX_ATTEMPTS || "", 10);
-  if (Number.isInteger(v) && v >= 1) return v;
-  return 3;
-}
-
-function backoffMsOf() {
-  const v = Number.parseInt(process.env.NOTIFICATION_RETRY_BACKOFF_MS || "", 10);
-  if (Number.isInteger(v) && v >= 0) return v;
-  return 60 * 1000;
-}
+/**
+ * `reason` marker for the payment-reminder record (Phase 20). The scheduler
+ * enqueues it while an order is still `pending`; it is neither a status-change
+ * SMS nor ever re-sent once the order leaves pending.
+ */
+const REMINDER_REASON = "payment_reminder";
 
 /**
  * Compose the buyer-facing SMS body for one transition. Returns "" for statuses
@@ -59,6 +54,37 @@ function buildOrderStatusMessage(order, status, reason = "") {
   let message = `نخشا | ${template}\nشماره سفارش: ${order.orderNumber}`;
   if (reason) message += `\nدلیل: ${reason}`;
   return message;
+}
+
+/** Body of the single payment reminder for a `pending` storefront order. */
+function buildPaymentReminderMessage(order) {
+  return (
+    `نخشا | سفارش شما در انتظار پرداخت است\n` +
+    `شماره سفارش: ${order.orderNumber}\n` +
+    `برای تکمیل خرید، لطفاً به پروفایل خود مراجعه کنید.`
+  );
+}
+
+/**
+ * Message for one ledger record: status-change templates first; the
+ * payment-reminder nudge second; anything else is not announced ("").
+ */
+function buildNotificationMessage(order, status, reason = "") {
+  if (STATUS_MESSAGES[status]) return buildOrderStatusMessage(order, status, reason);
+  if (reason === REMINDER_REASON) return buildPaymentReminderMessage(order);
+  return "";
+}
+
+function maxAttemptsOf() {
+  const v = Number.parseInt(process.env.NOTIFICATION_MAX_ATTEMPTS || "", 10);
+  if (Number.isInteger(v) && v >= 1) return v;
+  return 3;
+}
+
+function backoffMsOf() {
+  const v = Number.parseInt(process.env.NOTIFICATION_RETRY_BACKOFF_MS || "", 10);
+  if (Number.isInteger(v) && v >= 0) return v;
+  return 60 * 1000;
 }
 
 /** Only real storefront buyers with a deliverable phone get notified. */
@@ -113,7 +139,11 @@ async function deliverOrderNotifications(orderId, opts = {}) {
 
     for (const n of order.notifications) {
       if (n.delivered || n.channel !== "sms") continue;
-      const message = buildOrderStatusMessage(order, n.status, n.reason);
+      // Payment-reminder records are only actionable while the order is still
+      // pending. The transition drops them once the order moves on; this guard
+      // is the belt-and-suspenders that keeps a stale record from ever firing.
+      if (n.status === "pending" && order.status !== "pending") continue;
+      const message = buildNotificationMessage(order, n.status, n.reason);
 
       // CLAIM — atomic inc guards concurrent runners: whoever bumps the count
       // first owns this attempt; a runner that lost the race matches 0 rows.
@@ -184,9 +214,12 @@ async function deliverOrderNotifications(orderId, opts = {}) {
 
 module.exports = {
   STATUS_MESSAGES,
+  REMINDER_REASON,
   maxAttemptsOf,
   backoffMsOf,
   buildOrderStatusMessage,
+  buildPaymentReminderMessage,
+  buildNotificationMessage,
   hasNotificationTarget,
   notificationRecordState,
   deliverOrderNotifications,

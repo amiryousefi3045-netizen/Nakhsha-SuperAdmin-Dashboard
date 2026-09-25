@@ -164,7 +164,9 @@ function Receipt({ order }: { order: BuyerOrder }) {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-[var(--color-text)]">
-                      {statusLabel(n.status)}
+                      {n.reason === "payment_reminder"
+                        ? "یادآوری پرداخت"
+                        : statusLabel(n.status)}
                     </span>
                     {n.delivered ? (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">

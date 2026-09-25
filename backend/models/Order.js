@@ -135,6 +135,10 @@ const OrderSchema = new mongoose.Schema(
     },
     customerNote: { type: String, default: "", maxlength: 2000 },
     sellerNote: { type: String, default: "", maxlength: 2000 },
+    // Set once the payment-reminder scheduler enqueues the single SMS nudge for
+    // a storefront order that is still `pending` past its max age. Its presence
+    // is what makes reminder scheduling idempotent (Phase 20).
+    paymentReminderAt: { type: Date, default: null },
   },
   {
     timestamps: true,
