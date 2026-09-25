@@ -144,6 +144,9 @@ const auditLogSchema = new mongoose.Schema(
         "SELLER_REVIEW_REPLIED",
         "SELLER_REVIEW_REPLY_REMOVED",
 
+        // Notification queue operations (admin)
+        "NOTIFICATION_QUEUE_RETRIED",
+
         // Security events
         "SUSPICIOUS_ACTIVITY_DETECTED",
         "BRUTE_FORCE_ATTEMPT",

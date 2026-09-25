@@ -46,6 +46,8 @@ import {
   getAdminPayoutOverview,
   getAdminPayoutDetail,
   updateAdminPayoutStatus,
+  getAdminNotificationQueue,
+  retryAdminNotificationQueue,
 } from "../adminService";
 import { apiClient } from "../../lib/apiClient";
 
@@ -473,5 +475,50 @@ describe("payout settlement queue", () => {
     await expect(
       updateAdminPayoutStatus("p1", { status: "rejected" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("getAdminNotificationQueue fetches the ledger with state filter and meta", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        summary: { pending: 1, waiting: 2, failed: 3, delivered: 4 },
+        items: [
+          {
+            orderId: "o1",
+            orderNumber: 42,
+            channel: "sms",
+            status: "confirmed",
+            to: "09123456789",
+            message: "پیام",
+            reason: "",
+            delivered: false,
+            attempts: 2,
+            error: "",
+            state: "waiting",
+            at: "2026-09-01T10:00:00.000Z",
+            nextAttemptAt: "2026-09-01T10:02:00.000Z",
+          },
+        ],
+        total: 1,
+        page: 2,
+        limit: 20,
+      }),
+    );
+    const result = await getAdminNotificationQueue({ page: 2, state: "waiting" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/admin/notification-queue", {
+      params: { page: 2, state: "waiting" },
+    });
+    expect(result.summary.pending).toBe(1);
+    expect(result.items[0].state).toBe("waiting");
+    expect(result.items[0].orderNumber).toBe(42);
+    expect(result.meta).toEqual({ page: 2, limit: 20, total: 1, totalPages: 1 });
+  });
+
+  it("retryAdminNotificationQueue posts to the retry endpoint and unwraps summary", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(
+      ok({ summary: { scanned: 5, attempted: 3, delivered: 2, failed: 1, skipped: 2 } }),
+    );
+    const summary = await retryAdminNotificationQueue();
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/admin/notification-queue/retry");
+    expect(summary).toEqual({ scanned: 5, attempted: 3, delivered: 2, failed: 1, skipped: 2 });
   });
 });

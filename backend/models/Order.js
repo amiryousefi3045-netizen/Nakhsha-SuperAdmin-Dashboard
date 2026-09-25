@@ -63,6 +63,12 @@ const OrderNotificationSchema = new mongoose.Schema(
     delivered: { type: Boolean, default: false },
     error: { type: String, default: "", maxlength: 500 },
     at: { type: Date, default: Date.now },
+    // Queue bookkeeping (Phase 19): bumped on every claim attempt; `delivered`
+    // flips only on success. Records with attempts >= the queue limit are left
+    // untouched (no endless retries) and surface in the admin ops view.
+    attempts: { type: Number, default: 0, min: 0 },
+    lastAttemptAt: { type: Date, default: null },
+    nextAttemptAt: { type: Date, default: null },
   },
   { _id: true },
 );

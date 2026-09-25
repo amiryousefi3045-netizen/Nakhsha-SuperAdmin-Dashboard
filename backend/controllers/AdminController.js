@@ -30,6 +30,9 @@ const TotpCredential = require("../models/TotpCredential");
 const TotpService = require("../services/TotpService");
 const FinanceService = require("../services/FinanceService");
 const securityAudit = require("../services/securityAudit");
+const NotificationService = require("../services/NotificationService");
+const notificationQueueService = require("../services/NotificationQueueService");
+const Order = require("../models/Order");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
 const { z } = require("zod");
@@ -2080,6 +2083,140 @@ async function exportAuditLogs(req, res) {
   }
 }
 
+// ── Notification queue (admin ops) ───────────────────────────────────────────
+
+/**
+ * Build the `$switch` expression used to label a ledger record with its machine
+ * state. Mirror of NotificationService.notificationRecordState but evaluated
+ * inside the aggregation pipeline.
+ */
+function notificationStateSwitch(maxAttempts, now) {
+  return {
+    $switch: {
+      branches: [
+        { case: { $eq: ["$notifications.delivered", true] }, then: "delivered" },
+        {
+          case: { $gte: [{ $ifNull: ["$notifications.attempts", 0] }, maxAttempts] },
+          then: "failed",
+        },
+        {
+          case: { $gt: [{ $ifNull: ["$notifications.nextAttemptAt", null] }, now] },
+          then: "waiting",
+        },
+      ],
+      default: "pending",
+    },
+  };
+}
+
+async function listNotificationQueue(req, res) {
+  try {
+    const page = safePage(req.query.page);
+    const limit = Math.min(safePageSize(req.query.limit), 100);
+    const skip = (page - 1) * limit;
+    const state = req.query.state || "";
+    const maxAttempts = NotificationService.maxAttemptsOf();
+    const now = new Date();
+
+    const summaryRows = await Order.aggregate([
+      { $match: { "notifications.0": { $exists: true } } },
+      { $unwind: "$notifications" },
+      {
+        $addFields: {
+          state: notificationStateSwitch(maxAttempts, now),
+        },
+      },
+      { $group: { _id: "$state", count: { $sum: 1 } } },
+    ]);
+    const summary = { pending: 0, waiting: 0, failed: 0, delivered: 0 };
+    for (const row of summaryRows) {
+      if (row._id in summary) summary[row._id] = row.count;
+    }
+
+    const stateFilter = state ? { state } : {};
+    const [facet] = await Order.aggregate([
+      { $match: { "notifications.0": { $exists: true } } },
+      { $unwind: "$notifications" },
+      { $addFields: { state: notificationStateSwitch(maxAttempts, now) } },
+      { $match: stateFilter },
+      {
+        $facet: {
+          total: [{ $count: "count" }],
+          items: [
+            { $sort: { "notifications.at": -1 } },
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $project: {
+                orderId: "$_id",
+                orderNumber: 1,
+                channel: "$notifications.channel",
+                status: "$notifications.status",
+                to: "$notifications.to",
+                message: "$notifications.message",
+                reason: "$notifications.reason",
+                delivered: "$notifications.delivered",
+                attempts: { $ifNull: ["$notifications.attempts", 0] },
+                error: "$notifications.error",
+                at: "$notifications.at",
+                nextAttemptAt: "$notifications.nextAttemptAt",
+                state: 1,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const items = (facet?.items || []).map((r) => ({
+      ...r,
+      orderId: String(r.orderId),
+    }));
+    const total = facet?.total?.[0]?.count ?? 0;
+
+    res.json(createSuccessResponse({ summary, items, total, page, limit }, req.id));
+  } catch (e) {
+    logger.error("Admin listNotificationQueue error", {
+      error: e.message,
+      stack: e.stack,
+      userId: req.user?.id,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/** POST /admin/notification-queue/retry — one manual sweep of the queue. */
+async function retryNotificationQueue(req, res) {
+  try {
+    const summary = await notificationQueueService.triggerRun();
+    await AuditService.log({
+      userId: req.user.id,
+      action: "NOTIFICATION_QUEUE_RETRIED",
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        scanned: summary.scanned,
+        attempted: summary.attempted,
+        delivered: summary.delivered,
+        failed: summary.failed,
+      },
+    });
+    res.json(createSuccessResponse({ summary }, req.id));
+  } catch (e) {
+    logger.error("Admin retryNotificationQueue error", {
+      error: e.message,
+      stack: e.stack,
+      userId: req.user?.id,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 // ── Settings / Health ───────────────────────────────────────────────────────
 
 const SETTINGS_KEYS = [
@@ -2299,4 +2436,6 @@ module.exports = {
   getPayoutOverview,
   getPayoutDetail,
   updatePayoutStatus,
+  listNotificationQueue,
+  retryNotificationQueue,
 };

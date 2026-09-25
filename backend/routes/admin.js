@@ -573,4 +573,29 @@ router.post(
   adminController.disableTotp,
 );
 
+// ---------------------------------------------------------------------------
+// Notification queue (ops)
+//   GET  /api/admin/notification-queue
+//   POST /api/admin/notification-queue/retry
+// ---------------------------------------------------------------------------
+const notificationQueueQuerySchema = z.object({
+  ...paginationSchema,
+  state: z.enum(["pending", "waiting", "failed", "delivered"]).optional(),
+});
+
+router.get(
+  "/notification-queue",
+  requireAuth,
+  requireRole("super_admin"),
+  validate(notificationQueueQuerySchema, "query"),
+  adminController.listNotificationQueue,
+);
+
+router.post(
+  "/notification-queue/retry",
+  requireAuth,
+  requireRole("super_admin"),
+  adminController.retryNotificationQueue,
+);
+
 module.exports = router;

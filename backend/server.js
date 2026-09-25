@@ -13,6 +13,7 @@ const { responseEnricher } = require("./middleware/responseEnricher");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
 const otpCleanupService = require("./services/otpCleanup");
+const notificationQueueService = require("./services/NotificationQueueService");
 
 // Load environment variables
 dotenv.config();
@@ -562,6 +563,16 @@ const connectDB = async () => {
     // Start OTP cleanup service
     otpCleanupService.start();
     logger.info("OTP cleanup service started");
+
+    // Start the notification retry queue (skipped in tests and when explicitly
+    // disabled via NOTIFICATION_QUEUE_ENABLED=false).
+    if (process.env.NODE_ENV === "test") {
+      logger.info("Notification queue service skipped (NODE_ENV=test)");
+    } else if (process.env.NOTIFICATION_QUEUE_ENABLED === "false") {
+      logger.info("Notification queue service skipped (NOTIFICATION_QUEUE_ENABLED=false)");
+    } else {
+      notificationQueueService.start();
+    }
   } catch (error) {
     app.locals.dbReady = false;
     logger.warn("MongoDB not available, continuing without DB (dev mode)", {
@@ -586,6 +597,7 @@ const PORT = process.env.PORT || 5000;
   process.on("SIGTERM", async () => {
     logger.info("SIGTERM received, shutting down gracefully...");
     otpCleanupService.stop();
+    notificationQueueService.stop();
     server.close(() => {
       logger.info("Process terminated");
     });
@@ -594,6 +606,7 @@ const PORT = process.env.PORT || 5000;
   process.on("SIGINT", async () => {
     logger.info("SIGINT received, shutting down gracefully...");
     otpCleanupService.stop();
+    notificationQueueService.stop();
     server.close(() => {
       logger.info("Process terminated");
     });

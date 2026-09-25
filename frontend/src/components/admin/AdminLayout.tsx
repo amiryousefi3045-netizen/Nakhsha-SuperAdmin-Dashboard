@@ -9,6 +9,7 @@ import {
   MessageSquare,
   ScrollText,
   Wallet,
+  BellRing,
   Settings,
   LogOut,
   ExternalLink,
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { to: "/admin/comments", label: "دیدگاه‌ها", icon: MessageSquare },
   { to: "/admin/audit-logs", label: "گزارش عملیات", icon: ScrollText },
   { to: "/admin/payouts", label: "تسویه فروشندگان", icon: Wallet },
+  { to: "/admin/notification-queue", label: "صف اعلان‌ها", icon: BellRing },
   { to: "/admin/settings", label: "تنظیمات", icon: Settings },
 ];
 

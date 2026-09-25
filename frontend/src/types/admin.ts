@@ -342,3 +342,46 @@ export interface UpdateAdminPayoutStatusInput {
   note?: string;
   reference?: string;
 }
+
+// ── Notification queue (ops) ────────────────────────────────────────────────
+
+export type NotificationQueueState = "pending" | "waiting" | "failed" | "delivered";
+
+export interface NotificationQueueSummary {
+  pending: number;
+  waiting: number;
+  failed: number;
+  delivered: number;
+}
+
+/** One ledger record of GET /admin/notification-queue. */
+export interface NotificationQueueRecord {
+  orderId: string;
+  orderNumber: number;
+  channel: "sms" | "email";
+  status: string;
+  to: string;
+  message: string;
+  reason: string;
+  delivered: boolean;
+  attempts: number;
+  error: string;
+  state: NotificationQueueState;
+  at: string;
+  nextAttemptAt: string | null;
+}
+
+export interface ListNotificationQueueParams {
+  page?: number;
+  limit?: number;
+  state?: NotificationQueueState;
+}
+
+/** Result summary of POST /admin/notification-queue/retry. */
+export interface NotificationQueueRunSummary {
+  scanned: number;
+  attempted: number;
+  delivered: number;
+  failed: number;
+  skipped: number;
+}

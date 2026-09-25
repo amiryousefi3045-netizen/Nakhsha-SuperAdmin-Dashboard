@@ -34,8 +34,12 @@ import type {
   ListCommentsParams,
   ListCraftsParams,
   ListListingsParams,
+  ListNotificationQueueParams,
   ListProvidersParams,
   ListUsersParams,
+  NotificationQueueRecord,
+  NotificationQueueRunSummary,
+  NotificationQueueSummary,
   UpdateAdminPayoutStatusInput,
   UserSessionsResult,
 } from "../types/admin";
@@ -402,6 +406,44 @@ export function subscribeAdminLiveEvents(handlers: LiveEventHandlers): () => voi
   })();
 
   return close;
+}
+
+// ── Notification queue (ops) ────────────────────────────────────────────────
+
+/** GET /admin/notification-queue */
+export async function getAdminNotificationQueue(
+  params: ListNotificationQueueParams = {},
+): Promise<{
+  summary: NotificationQueueSummary;
+  items: NotificationQueueRecord[];
+  meta: PaginationMeta;
+}> {
+  const res = await apiClient.get<{
+    summary: NotificationQueueSummary;
+    items: NotificationQueueRecord[];
+    total: number;
+    page: number;
+    limit: number;
+  }>("/admin/notification-queue", { params });
+  const data = unwrap(res);
+  return {
+    summary: data.summary,
+    items: data.items,
+    meta: {
+      page: data.page,
+      limit: data.limit,
+      total: data.total,
+      totalPages: data.limit > 0 ? Math.ceil(data.total / data.limit) : 1,
+    },
+  };
+}
+
+/** POST /admin/notification-queue/retry — one immediate sweep of the queue. */
+export async function retryAdminNotificationQueue(): Promise<NotificationQueueRunSummary> {
+  const res = await apiClient.post<{ summary: NotificationQueueRunSummary }>(
+    "/admin/notification-queue/retry",
+  );
+  return unwrap(res).summary;
 }
 
 // ── Settings & account ─────────────────────────────────────────────────────

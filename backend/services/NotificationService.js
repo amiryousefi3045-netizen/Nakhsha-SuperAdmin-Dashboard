@@ -1,19 +1,28 @@
 /**
- * NotificationService — outbound buyer notifications (Phase 18).
+ * NotificationService — outbound buyer notification engine (Phases 18-19).
  *
  * The pipeline is fire-and-forget by contract: a status transition in
- * OrderService records a PENDING notification on the order (same save), then
- * kicks deliverOrderNotifications off-loop. Delivery state is observable on
- * the order (`notifications[]`) and retryable — `delivered: false` is exactly
- * the set of notifications a future scheduler should re-attempt.
+ * OrderService records a notification on the order (same save), then kicks
+ * deliverOrderNotifications off-loop. The queue scheduler (Notification-
+ * QueueService) later re-attempts records that still have `delivered: false`.
+ *
+ * Delivery ledger per record (subdocument):
+ *   - delivered      true once the provider accepted the send.
+ *   - error          last failure text ("" on success).
+ *   - attempts       incremented atomically on every CLAIM (unique across
+ *                    concurrent dispatchers thanks to an atomic inc on the
+ *                    matched position).
+ *   - lastAttemptAt  when the last attempt ran; nextAttemptAt  when the next
+ *                    retry is allowed (exponential-ish linear backoff).
  *
  * Invariants pinned by tests:
- *   - Only STOREFRONT orders with a real buyer get notifications; seller
- *     hand-entered orders never do.
+ *   - Only STOREFRONT orders with a real buyer get notified; seller-entered
+ *     orders never do.
  *   - Notified statuses: confirmed, processing, shipped, delivered, cancelled,
  *     returned. A fresh `pending` order is never announced.
- *   - A delivery failure NEVER throws out of this service (the notification
- *     record's `error` carries the failure; the caller's reply is unaffected).
+ *   - A delivery failure NEVER throws out of this service.
+ *   - Records past `maxAttempts` are given up on (silently skipped), so a
+ *     permanently failing recipient cannot burn the queue forever.
  */
 const Order = require("../models/Order");
 const logger = require("../utils/logger");
@@ -27,6 +36,18 @@ const STATUS_MESSAGES = {
   cancelled: "سفارش شما لغو شد",
   returned: "سفارش شما مرجوع شد",
 };
+
+function maxAttemptsOf() {
+  const v = Number.parseInt(process.env.NOTIFICATION_MAX_ATTEMPTS || "", 10);
+  if (Number.isInteger(v) && v >= 1) return v;
+  return 3;
+}
+
+function backoffMsOf() {
+  const v = Number.parseInt(process.env.NOTIFICATION_RETRY_BACKOFF_MS || "", 10);
+  if (Number.isInteger(v) && v >= 0) return v;
+  return 60 * 1000;
+}
 
 /**
  * Compose the buyer-facing SMS body for one transition. Returns "" for statuses
@@ -50,18 +71,81 @@ function hasNotificationTarget(order) {
 }
 
 /**
- * Drain every PENDING sms notification on one order (idempotent). Each record
- * is updated atomically by its subdocument _id, so concurrent dispatch cannot
- * clobber other records. Never rejects.
+ * Machine state of one ledger record at a moment in time:
+ *   - "delivered"  → success.
+ *   - "pending"    → not delivered, attempts left, retry time passed (or never
+ *                   attempted) → eligible for dispatch right now.
+ *   - "waiting"    → not delivered, attempts left, retry time in the future
+ *                   (backoff not elapsed yet).
+ *   - "failed"     → gave up (attempts >= maxAttempts), stays visible to ops.
  */
-async function deliverOrderNotifications(orderId) {
+function notificationRecordState(record, opts = {}) {
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const max = opts.maxAttempts ?? maxAttemptsOf();
+  if (record.delivered) return "delivered";
+  const attempts = record.attempts ?? 0;
+  if (attempts >= max) return "failed";
+  const nxt = record.nextAttemptAt ? new Date(record.nextAttemptAt) : null;
+  if (nxt && nxt > now) return "waiting";
+  return "pending";
+}
+
+/**
+ * Attempt every eligible sms notification on one order (idempotent, safe to
+ * call from the transition hook AND the scheduler — claims are atomic, so the
+ * same record never fires twice).
+ *
+ * @param {string} orderId
+ * @param {object} [opts] { now, maxAttempts, backoffMs } — now/maxAttempts/backoffMs
+ *   override the env-backed defaults (used by the queue scheduler).
+ * @returns {Promise<{attempted:number, delivered:number, failed:number, skipped:number}>}
+ *   Never rejects.
+ */
+async function deliverOrderNotifications(orderId, opts = {}) {
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const max = opts.maxAttempts ?? maxAttemptsOf();
+  const backoff = opts.backoffMs ?? backoffMsOf();
+
+  const summary = { attempted: 0, delivered: 0, failed: 0, skipped: 0 };
   try {
     const order = await Order.findById(orderId);
-    if (!order || !hasNotificationTarget(order)) return;
+    if (!order || !hasNotificationTarget(order)) return summary;
 
     for (const n of order.notifications) {
       if (n.delivered || n.channel !== "sms") continue;
       const message = buildOrderStatusMessage(order, n.status, n.reason);
+
+      // CLAIM — atomic inc guards concurrent runners: whoever bumps the count
+      // first owns this attempt; a runner that lost the race matches 0 rows.
+      // Timing (nextAttemptAt) and the retry budget (attempts) are enforced
+      // HERE too, so the engine behaves identically when called directly or
+      // through the scheduler.
+      const claim = await Order.updateOne(
+        {
+          _id: order._id,
+          notifications: {
+            $elemMatch: {
+              _id: n._id,
+              channel: "sms",
+              delivered: false,
+              attempts: { $lt: max },
+              $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $lte: now } }],
+            },
+          },
+        },
+        {
+          $inc: { "notifications.$.attempts": 1 },
+          $set: {
+            "notifications.$.lastAttemptAt": now,
+            "notifications.$.nextAttemptAt": null,
+          },
+        },
+      );
+      if (claim.matchedCount === 0) {
+        summary.skipped += 1;
+        continue;
+      }
+      summary.attempted += 1;
 
       const mark = (patch) =>
         Order.updateOne(
@@ -72,38 +156,38 @@ async function deliverOrderNotifications(orderId) {
       try {
         await sendSms(n.to, message, { kind: "order-status", orderId: String(order._id) });
         await mark({ "notifications.$.delivered": true, "notifications.$.error": "" });
+        summary.delivered += 1;
       } catch (err) {
+        summary.failed += 1;
         logger.warn("Order notification SMS failed", {
           orderId: String(order._id),
           status: n.status,
+          attempts: (n.attempts ?? 0) + 1,
           error: err.message,
         });
-        await mark({ "notifications.$.error": String(err.message || "ارسال ناموفق").slice(0, 500) });
+        const nextRetry = new Date(now.getTime() + ((n.attempts ?? 0) + 1) * backoff);
+        await mark({
+          "notifications.$.delivered": false,
+          "notifications.$.error": String(err.message || "ارسال ناموفق").slice(0, 500),
+          "notifications.$.nextAttemptAt": nextRetry,
+        });
       }
     }
   } catch (err) {
-    logger.error("deliverOrderNotifications failed", { orderId: String(orderId), error: err.message });
+    logger.error("deliverOrderNotifications failed", {
+      orderId: String(orderId),
+      error: err.message,
+    });
   }
-}
-
-/**
- * Retry seam for a future scheduler: drain all pending sms notifications in the
- * system (orders with at least one undelivered storefront notification).
- */
-async function flushPendingNotifications() {
-  const orders = await Order.find({
-    origin: "storefront",
-    "notifications.delivered": false,
-  })
-    .select("_id")
-    .lean();
-  await Promise.all(orders.map((o) => deliverOrderNotifications(o._id)));
+  return summary;
 }
 
 module.exports = {
   STATUS_MESSAGES,
+  maxAttemptsOf,
+  backoffMsOf,
   buildOrderStatusMessage,
   hasNotificationTarget,
+  notificationRecordState,
   deliverOrderNotifications,
-  flushPendingNotifications,
 };
