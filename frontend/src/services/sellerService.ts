@@ -215,6 +215,23 @@ export async function getSellerSalesReport(
   });
 }
 
+/** GET /seller/reports/sales/export — row-level CSV download (Phase 25). */
+export async function exportSellerSalesReportCsv(
+  params: Pick<SalesReportParams, "from" | "to"> = {},
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.rawGet<Blob>("/seller/reports/sales/export", {
+    params,
+    responseType: "blob",
+  });
+
+  const disposition = String(response.headers["content-disposition"] ?? "");
+  const match = /filename="?([^";]+)"?/.exec(disposition);
+  return {
+    blob: response.data,
+    filename: match?.[1] ?? `sales-report-${new Date().toISOString().slice(0, 10)}.csv`,
+  };
+}
+
 // ── Orders ──────────────────────────────────────────────────────────────────
 
 export interface ListSellerOrdersParams {

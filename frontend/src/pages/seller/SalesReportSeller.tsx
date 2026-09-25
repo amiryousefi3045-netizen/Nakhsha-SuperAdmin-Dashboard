@@ -6,9 +6,14 @@ import {
   TrendingUp,
   BadgePercent,
   FileBarChart2,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
-import { getSellerSalesReport } from "../../services/sellerService";
+import {
+  getSellerSalesReport,
+  exportSellerSalesReportCsv,
+} from "../../services/sellerService";
 import { faNumber } from "../../lib/adminFormat";
 import { formatSellerPrice, ORDER_STATUS_LABEL } from "../../lib/sellerFormat";
 import type { OrderStatus } from "../../types/seller";
@@ -24,6 +29,17 @@ function defaultRange(): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to.getTime() - 29 * 86400000);
   return { from: toInputDate(from), to: toInputDate(to) };
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 const STATUS_ORDER: OrderStatus[] = [
@@ -48,6 +64,9 @@ const STATUS_TONE: Record<string, string> = {
 
 export function SalesReportSeller() {
   const [range, setRange] = useState(defaultRange);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDone, setExportDone] = useState(false);
   const { data, isLoading, error, reload } = useSellerFetch(
     () => getSellerSalesReport({ from: range.from, to: range.to }),
     { dependencies: [range.from, range.to] },
@@ -57,6 +76,24 @@ export function SalesReportSeller() {
     () => Math.max(1, ...(data?.daily.map((d) => d.total) ?? [0])),
     [data],
   );
+
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    setExportDone(false);
+    try {
+      const { blob, filename } = await exportSellerSalesReportCsv({
+        from: range.from,
+        to: range.to,
+      });
+      downloadBlob(blob, filename);
+      setExportDone(true);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "خطا در دریافت فایل خروجی");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (error) {
     return (
@@ -86,16 +123,43 @@ export function SalesReportSeller() {
             خلاصه سفارش‌ها در بازه‌ی انتخابی (منبع: سفارش‌های شما)
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          به‌روزرسانی
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+          >
+            {exporting ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            خروجی CSV
+          </button>
+          <button
+            type="button"
+            onClick={reload}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            به‌روزرسانی
+          </button>
+        </div>
       </div>
+
+      {exportError && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {exportError}
+        </p>
+      )}
+      {exportDone && !exportError && (
+        <p className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4" />
+          فایل خروجی دانلود شد.
+        </p>
+      )}
 
       {/* Period filter */}
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--color-border)] bg-white p-4">

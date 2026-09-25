@@ -51,14 +51,8 @@ function addDaysUtc(d, n) {
   return x;
 }
 
-/**
- * @param {import("mongoose").Types.ObjectId|string} sellerId
- * @param {object} [opts]
- * @param {string|Date} [opts.from] inclusive lower bound (ISO)
- * @param {string|Date} [opts.to] inclusive upper bound (ISO)
- * @param {number|string} [opts.top] top-N products by units (default 5, max 20)
- */
-async function salesReport(sellerId, { from, to, top } = {}) {
+/** Shared period parsing/normalisation: throws SalesReportDomainError. */
+function resolveRange({ from, to } = {}) {
   const now = new Date();
   let start = from ? new Date(from) : new Date(now.getTime() - DEFAULT_DAYS * 86400000);
   let end = to ? new Date(to) : new Date(now.getTime());
@@ -83,12 +77,22 @@ async function salesReport(sellerId, { from, to, top } = {}) {
       { field: "from/to" },
     );
   }
-  const topN = parseLimit(top);
 
   // Normalise to whole UTC days so the aggregate window, the chart axis and
-  // the "how many days" guard all agree on the same inclusive calendar range.
-  start = startOfDayUtc(start);
-  end = endOfDayUtc(end);
+  // the guard all agree on the same inclusive calendar range.
+  return { start: startOfDayUtc(start), end: endOfDayUtc(end) };
+}
+
+/**
+ * @param {import("mongoose").Types.ObjectId|string} sellerId
+ * @param {object} [opts]
+ * @param {string|Date} [opts.from] inclusive lower bound (ISO)
+ * @param {string|Date} [opts.to] inclusive upper bound (ISO)
+ * @param {number|string} [opts.top] top-N products by units (default 5, max 20)
+ */
+async function salesReport(sellerId, { from, to, top } = {}) {
+  const { start, end } = resolveRange({ from, to });
+  const topN = parseLimit(top);
 
   const match = {
     sellerId,
@@ -201,8 +205,65 @@ async function salesReport(sellerId, { from, to, top } = {}) {
   };
 }
 
+/**
+ * Row-level CSV export of the same period: one line per order, no aggregates.
+ * RFC-4180 escaping (comma/quote/newline) with BOM handled by the controller.
+ */
+async function salesReportCsv(sellerId, { from, to } = {}) {
+  const { start, end } = resolveRange({ from, to });
+
+  const orders = await Order.find({
+    sellerId,
+    createdAt: { $gte: start, $lte: end },
+  })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const csvCell = (value) => {
+    const s = value === null || value === undefined ? "" : String(value);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const header = [
+    "orderNumber",
+    "orderStatus",
+    "createdAt",
+    "customerName",
+    "customerPhone",
+    "items",
+    "units",
+    "subtotal",
+    "shippingFee",
+    "discount",
+    "total",
+    "currency",
+  ];
+
+  const rows = orders.map((o) =>
+    [
+      o.orderNumber,
+      o.status,
+      o.createdAt.toISOString(),
+      o.customer?.name,
+      o.customer?.phone,
+      o.items?.map((i) => `${i.title} x${i.qty}`).join(" | "),
+      o.items?.reduce((sum, i) => sum + (i.qty || 0), 0),
+      o.subtotal,
+      o.shippingFee,
+      o.discount,
+      o.total,
+      o.currency,
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+
+  return header.map(csvCell).join(",") + "\r\n" + rows.join("\r\n");
+}
+
 module.exports = {
   SalesReportDomainError,
   MAX_RANGE_DAYS,
   salesReport,
+  salesReportCsv,
 };

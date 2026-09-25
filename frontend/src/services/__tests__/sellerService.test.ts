@@ -33,6 +33,7 @@ import {
   getSellerStockHistory,
   getSellerAnalytics,
   getSellerSalesReport,
+  exportSellerSalesReportCsv,
   listSellerOrders,
   getSellerOrder,
   updateSellerOrderStatus,
@@ -336,6 +337,23 @@ describe("seller analytics", () => {
     });
     expect(report.summary.orders).toBe(4);
     expect(report.topProducts[0].revenue).toBe(300000);
+  });
+
+  it("exportSellerSalesReportCsv downloads a blob and picks the filename", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["\uFEFForderNumber,total\r\n"], { type: "text/csv" }),
+      status: 200,
+      statusText: "OK",
+      headers: { "content-disposition": 'attachment; filename="sales-report-2026-09-25.csv"' },
+      config: {},
+    } as never);
+    const file = await exportSellerSalesReportCsv({ from: "2026-08-26", to: "2026-09-25" });
+    expect(vi.mocked(apiClient.rawGet)).toHaveBeenCalledWith("/seller/reports/sales/export", {
+      params: { from: "2026-08-26", to: "2026-09-25" },
+      responseType: "blob",
+    });
+    expect(file.blob.type).toBe("text/csv");
+    expect(file.filename).toBe("sales-report-2026-09-25.csv");
   });
 });
 

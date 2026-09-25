@@ -277,3 +277,36 @@ describe("sales report — filters and ownership", () => {
     expect(report.summary.units).toBe(1);
   });
 });
+
+describe("sales report — CSV export", () => {
+  it("returns a BOM-prefixed CSV with one row per order, sender scoped", async () => {
+    const res = await get("/api/seller/reports/sales/export");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/csv");
+    expect(res.headers["content-disposition"]).toContain("attachment");
+
+    const text = res.text;
+    expect(text.charCodeAt(0)).toBe(0xfeff); // BOM
+    const lines = text.split("\r\n");
+    expect(lines[0].replace(/^\uFEFF/, "")).toBe(
+      "orderNumber,orderStatus,createdAt,customerName,customerPhone,items,units,subtotal,shippingFee,discount,total,currency",
+    );
+    expect(lines).toHaveLength(5); // header + 4 orders (seller B's order excluded)
+    expect(lines.slice(1).join("\n")).not.toContain("88888888");
+    expect(lines[1]).toContain(",delivered,");
+    expect(lines.slice(1).some((l) => l.includes("گلدان x2"))).toBe(true);
+    expect(lines.slice(1).some((l) => l.split(",")[10] === "300000")).toBe(true);
+  });
+
+  it("subtotal/total values stay numeric columns for spreadsheet use", async () => {
+    const res = await get("/api/seller/reports/sales/export");
+    const lines = res.text.split("\r\n");
+    const totals = lines.slice(1).map((l) => l.split(",")[10]);
+    expect([400000, 200000, 150000, 300000].every((t) => totals.includes(String(t)))).toBe(true);
+  });
+
+  it("rejects an invalid range just like the JSON endpoint", async () => {
+    const res = await get("/api/seller/reports/sales/export?from=2026-09-20T00:00:00Z&to=2026-01-01T00:00:00Z");
+    expect(res.status).toBe(400);
+  });
+});

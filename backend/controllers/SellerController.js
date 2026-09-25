@@ -855,6 +855,34 @@ async function getSalesReport(req, res) {
   }
 }
 
+async function exportSalesReport(req, res) {
+  try {
+    const { from, to } = req.query;
+    const csv = await SalesReportService.salesReportCsv(req.seller._id, { from, to });
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="sales-report-${date}.csv"`,
+    );
+    res.write("\uFEFF");
+    res.end(csv);
+  } catch (e) {
+    if (e instanceof SalesReportService.SalesReportDomainError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller exportSalesReport error", { error: e.message, sellerId: req.seller?._id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ORDERS & FULFILLMENT  (real domain — see services/OrderService.js)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1455,6 +1483,7 @@ module.exports = {
   getStockHistory,
   getAnalytics,
   getSalesReport,
+  exportSalesReport,
   listSellerOrders,
   getSellerOrder,
   changeOrderStatus,

@@ -235,4 +235,14 @@ router.get(
   sellerController.getSalesReport,
 );
 
+// ── Reports (Phase 25) — CSV row-level export of the same period ────────────
+router.get(
+  "/reports/sales/export",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireManagerOrOwner,
+  sellerController.exportSalesReport,
+);
+
 module.exports = router;
