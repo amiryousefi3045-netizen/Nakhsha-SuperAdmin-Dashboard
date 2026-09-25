@@ -245,4 +245,14 @@ router.get(
   sellerController.exportSalesReport,
 );
 
+// ── Store activity (Phase 26) — owner + roster audit feed ──────────────────
+router.get(
+  "/activity",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireManagerOrOwner,
+  sellerController.getActivity,
+);
+
 module.exports = router;

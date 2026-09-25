@@ -272,6 +272,37 @@ class AuditService {
   }
 
   /**
+   * Get audit logs for a set of users (a store — its owner plus roster).
+   * Shares the same security shape as `getUserAuditLogs`.
+   */
+  static async getTeamAuditLogs(userIds, options = {}) {
+    const { limit = 25, skip = 0, action } = options;
+
+    const query = { userId: { $in: userIds } };
+    if (action) {
+      query.action = action;
+    }
+
+    try {
+      const logs = await AuditLog.find(query)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .select("-changes.before");
+
+      const total = await AuditLog.countDocuments(query);
+
+      return { logs, total, limit, skip };
+    } catch (error) {
+      logger.error("Failed to get team audit logs", {
+        userIds,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get audit logs for a resource
    */
   static async getResourceAuditLogs(resourceType, resourceId, options = {}) {

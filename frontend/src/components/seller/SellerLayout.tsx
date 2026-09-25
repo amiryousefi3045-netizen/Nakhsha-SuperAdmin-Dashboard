@@ -9,6 +9,7 @@ import {
   Wallet,
   BarChart3,
   FileBarChart2,
+  History,
   Store,
   Settings,
   MessageSquareText,
@@ -39,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/seller/finance", label: "مالی و تسویه", icon: Wallet },
   { to: "/seller/analytics", label: "تحلیل عملکرد", icon: BarChart3 },
   { to: "/seller/reports/sales", label: "گزارش فروش", icon: FileBarChart2 },
+  { to: "/seller/activity", label: "رویدادها", icon: History },
   { to: "/seller/profile", label: "پروفایل فروشگاه", icon: Store },
   { to: "/seller/settings", label: "تنظیمات", icon: Settings },
 ];

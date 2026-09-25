@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const SellerProfile = require("../models/SellerProfile");
+const TeamMember = require("../models/TeamMember");
 const Product = require("../models/Product");
 const StockAdjustment = require("../models/StockAdjustment");
 const Craft = require("../models/Craft");
@@ -883,6 +884,61 @@ async function exportSalesReport(req, res) {
   }
 }
 
+function activityToDTO(log) {
+  const l = log.toObject ? log.toObject({ virtuals: true }) : log;
+  return {
+    id: String(l._id),
+    action: l.action,
+    riskLevel: l.riskLevel,
+    result: l.result,
+    resource: l.resource
+      ? { type: l.resource.type, id: l.resource.id ? String(l.resource.id) : null }
+      : null,
+    after: l.changes?.after ?? null,
+    metadata: l.metadata || {},
+    endpoint: l.requestContext?.endpoint ?? null,
+    createdAt: l.createdAt,
+  };
+}
+
+/**
+ * Seller store activity feed (Phase 26): audit entries of the owner plus all
+ * roster members, newest first. `changes.before` is never exposed (the query
+ * strips it server-side) — a seller watches what happened in their store, not
+ * raw prior state.
+ */
+async function getActivity(req, res) {
+  try {
+    const page = safePage(req.query.page);
+    const limit = safePageSize(req.query.limit);
+
+    const team = await TeamMember.find({ sellerProfileId: req.seller._id })
+      .select("userId role")
+      .lean();
+    const memberIds = (team || [])
+      .map((m) => m.userId)
+      .filter(Boolean);
+    const userIds = [req.seller.userId, ...memberIds];
+
+    const { logs, total } = await AuditService.getTeamAuditLogs(userIds, {
+      limit,
+      skip: (page - 1) * limit,
+    });
+
+    res.json(
+      createSuccessResponse(
+        { items: logs.map(activityToDTO), total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller getActivity error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ORDERS & FULFILLMENT  (real domain — see services/OrderService.js)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1484,6 +1540,7 @@ module.exports = {
   getAnalytics,
   getSalesReport,
   exportSalesReport,
+  getActivity,
   listSellerOrders,
   getSellerOrder,
   changeOrderStatus,

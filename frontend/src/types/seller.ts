@@ -211,6 +211,55 @@ export interface SalesReportParams {
   top?: number;
 }
 
+// ── Store activity feed (Phase 26) ─────────────────────────────────────────
+
+export type SellerActivityAction =
+  | "PRODUCT_CREATED"
+  | "PRODUCT_UPDATED"
+  | "PRODUCT_STATUS_CHANGED"
+  | "PRODUCT_ARCHIVED"
+  | "STOCK_ADJUSTED"
+  | "ORDER_CREATED"
+  | "ORDER_STATUS_CHANGED"
+  | "PAYOUT_REQUESTED"
+  | "PAYOUT_CANCELLED"
+  | "PAYOUT_STATUS_CHANGED"
+  | "SELLER_SETTINGS_UPDATED"
+  | "TEAM_MEMBER_INVITED"
+  | "TEAM_MEMBER_ROLE_CHANGED"
+  | "TEAM_MEMBER_REMOVED"
+  | "REVIEW_VISIBILITY_CHANGED"
+  | "SELLER_REVIEW_REPLIED"
+  | "SELLER_REVIEW_REPLY_REMOVED"
+  | "SELLER_PROFILE_UPDATE"
+  | string;
+
+export type ActivityRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface SellerActivityItem {
+  id: string;
+  action: SellerActivityAction;
+  riskLevel: ActivityRiskLevel;
+  result: "SUCCESS" | "FAILURE" | "PARTIAL";
+  resource: { type: string; id?: string | null } | null;
+  after?: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
+  endpoint?: string | null;
+  createdAt: string;
+}
+
+export interface SellerActivityPage {
+  items: SellerActivityItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SellerActivityParams {
+  page?: number;
+  limit?: number;
+}
+
 // ── Orders & fulfillment ────────────────────────────────────────────────────
 
 /**

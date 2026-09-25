@@ -17,6 +17,8 @@ import type {
   ReviewStatus,
   SalesReportParams,
   SellerAnalytics,
+  SellerActivityParams,
+  SellerActivityPage,
   SellerDashboardData,
   SellerFinanceSummary,
   SellerOrder,
@@ -230,6 +232,16 @@ export async function exportSellerSalesReportCsv(
     blob: response.data,
     filename: match?.[1] ?? `sales-report-${new Date().toISOString().slice(0, 10)}.csv`,
   };
+}
+
+// ── Store activity (Phase 26) ──────────────────────────────────────────────
+
+/** GET /seller/activity?page&limit — owner + roster audit feed, newest first. */
+export async function getSellerActivity(
+  params: SellerActivityParams = {},
+): Promise<SellerActivityPage> {
+  const res = await apiClient.get<SellerActivityPage>("/seller/activity", { params });
+  return unwrap(res, { items: [], total: 0, page: params.page ?? 1, limit: params.limit ?? 25 });
 }
 
 // ── Orders ──────────────────────────────────────────────────────────────────

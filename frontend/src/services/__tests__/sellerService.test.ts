@@ -34,6 +34,7 @@ import {
   getSellerAnalytics,
   getSellerSalesReport,
   exportSellerSalesReportCsv,
+  getSellerActivity,
   listSellerOrders,
   getSellerOrder,
   updateSellerOrderStatus,
@@ -354,6 +355,38 @@ describe("seller analytics", () => {
     });
     expect(file.blob.type).toBe("text/csv");
     expect(file.filename).toBe("sales-report-2026-09-25.csv");
+  });
+});
+
+describe("seller activity feed", () => {
+  it("getSellerActivity GETs /seller/activity with pagination", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        items: [
+          {
+            id: "a1",
+            action: "STOCK_ADJUSTED",
+            riskLevel: "HIGH",
+            result: "SUCCESS",
+            resource: { type: "SELLER_PROFILE", id: "p1" },
+            after: { delta: -3 },
+            metadata: {},
+            endpoint: "/api/seller/inventory/p1/adjust",
+            createdAt: "2026-09-25T10:00:00.000Z",
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+      }),
+    );
+    const page = await getSellerActivity({ page: 1, limit: 20 });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/activity", {
+      params: { page: 1, limit: 20 },
+    });
+    expect(page.total).toBe(1);
+    expect(page.items[0].action).toBe("STOCK_ADJUSTED");
+    expect(page.items[0].after).toEqual({ delta: -3 });
   });
 });
 
