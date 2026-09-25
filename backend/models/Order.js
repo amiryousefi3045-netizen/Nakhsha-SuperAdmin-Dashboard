@@ -50,6 +50,23 @@ const TimelineEntrySchema = new mongoose.Schema(
   { _id: false },
 );
 
+// Notification attempt log (Phase 18). `delivered: false` denotes a pending or
+// failed outbound notification — the dispatcher drains these and flips the
+// flag, so delivery state is observable (buyer receipt UI) and retryable.
+const OrderNotificationSchema = new mongoose.Schema(
+  {
+    channel: { type: String, enum: ["sms", "email"], required: true },
+    status: { type: String, enum: ORDER_STATUSES, required: true },
+    to: { type: String, default: "" },
+    message: { type: String, default: "" },
+    reason: { type: String, default: "", maxlength: 1000 },
+    delivered: { type: Boolean, default: false },
+    error: { type: String, default: "", maxlength: 500 },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: true },
+);
+
 const OrderSchema = new mongoose.Schema(
   {
     sellerId: {
@@ -94,6 +111,7 @@ const OrderSchema = new mongoose.Schema(
     currency: { type: String, default: "IRR", maxlength: 10 },
     status: { type: String, enum: ORDER_STATUSES, default: "pending" },
     timeline: { type: [TimelineEntrySchema], default: [] },
+    notifications: { type: [OrderNotificationSchema], default: [] },
     carrierInfo: {
       carrier: { type: String, default: "", maxlength: 100 },
       trackingCode: { type: String, default: "", maxlength: 200 },

@@ -156,6 +156,16 @@ export interface BuyerOrderTimelineEntry {
   reason: string;
 }
 
+export interface OrderNotification {
+  channel: "sms" | "email";
+  status: BuyerOrderStatus;
+  reason: string;
+  message: string;
+  delivered: boolean;
+  error: string;
+  at: string;
+}
+
 export interface BuyerOrder {
   id: string;
   sellerId: string;
@@ -172,6 +182,7 @@ export interface BuyerOrder {
   status: BuyerOrderStatus;
   itemCount: number;
   timeline: BuyerOrderTimelineEntry[];
+  notifications?: OrderNotification[];
   payment: StorefrontPayment;
   customerNote: string;
   sellerNote: string;

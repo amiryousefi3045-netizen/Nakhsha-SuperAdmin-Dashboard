@@ -1,10 +1,10 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowRight, Package, ReceiptText } from "lucide-react";
+import { ArrowRight, BellRing, Package, ReceiptText } from "lucide-react";
 import { useAsync } from "../../hooks/useAsync";
 import { faNumber } from "../../lib/adminFormat";
 import { formatSellerPrice } from "../../lib/sellerFormat";
 import { getStorefrontOrder } from "../../services/storefrontService";
-import type { BuyerOrder } from "../../types/storefront";
+import type { BuyerOrder, OrderNotification } from "../../types/storefront";
 import {
   PAYMENT_LABELS,
   statusColorClass,
@@ -144,6 +144,47 @@ function Receipt({ order }: { order: BuyerOrder }) {
                       {entry.reason ? ` — ${entry.reason}` : ""}
                     </p>
                   </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {order.notifications && order.notifications.length > 0 ? (
+          <div className="mt-6 border-t border-[var(--color-border)] pt-4">
+            <p className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
+              <BellRing className="h-4 w-4 text-[var(--color-primary)]" />
+              اعلام‌های ارسالی
+            </p>
+            <ul className="mt-3 space-y-3">
+              {order.notifications.map((n: OrderNotification, i) => (
+                <li
+                  key={i}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-[var(--color-text)]">
+                      {statusLabel(n.status)}
+                    </span>
+                    {n.delivered ? (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">
+                        ارسال شد
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                        {n.error ? "ارسال ناموفق" : "در انتظار ارسال"}
+                      </span>
+                    )}
+                  </div>
+                  {n.message ? (
+                    <p className="mt-2 leading-6 text-[var(--color-muted)]">{n.message}</p>
+                  ) : null}
+                  {n.error ? (
+                    <p className="mt-1 text-xs text-red-600">{n.error}</p>
+                  ) : null}
+                  <p className="mt-2 text-xs text-[var(--color-muted)]" dir="ltr">
+                    {new Date(n.at).toLocaleString("fa-IR")}
+                  </p>
                 </li>
               ))}
             </ul>

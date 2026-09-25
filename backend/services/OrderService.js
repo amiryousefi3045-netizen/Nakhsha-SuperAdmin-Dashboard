@@ -18,6 +18,7 @@
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const { nextSequence } = require("../models/AtomicCounter");
+const NotificationService = require("./NotificationService");
 
 // ── State machine ───────────────────────────────────────────────────────────
 
@@ -83,6 +84,15 @@ function orderToDTO(order) {
     payment: o.payment || { status: "unpaid" },
     customerNote: o.customerNote || "",
     sellerNote: o.sellerNote || "",
+    notifications: (o.notifications || []).map((n) => ({
+      channel: n.channel,
+      status: n.status,
+      reason: n.reason || "",
+      message: n.message || "",
+      delivered: n.delivered ?? false,
+      error: n.error || "",
+      at: n.at,
+    })),
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
   };
@@ -333,7 +343,22 @@ async function transitionOrder({
     by: sellerUserId || null,
     reason: reason || "",
   });
+  // Buyer notifications are recorded atomically with the transition so the
+  // state is testable; the actual SMS is dispatched off-loop (never blocks the
+  // seller's changeOrderStatus reply, never throws).
+  if (NotificationService.hasNotificationTarget(order)) {
+    order.notifications.push({
+      channel: "sms",
+      status: nextStatus,
+      to: order.customer.phone,
+      reason: reason || "",
+    });
+  }
   await order.save();
+
+  if (order.notifications.length > 0) {
+    void NotificationService.deliverOrderNotifications(order._id);
+  }
 
   return order;
 }

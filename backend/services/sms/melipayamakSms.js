@@ -28,16 +28,24 @@ const MELIPAYAMAK_TO_FORMAT = process.env.SMS_TO_FORMAT || "09";
 const SMS_TIMEOUT_MS = parseInt(process.env.SMS_TIMEOUT_MS || "4000", 10); // 3-5s recommended
 
 /**
- * Send OTP SMS using MeliPayamak service
+ * Send an SMS via MeliPayamak service. The generic sender for every channel:
+ * OTP messages (sendOtpSms), order status notifications, and future surfaces.
+ *
+ * In mock/dev/test mode the send is simulated (no network) so the pipeline is
+ * fully hermetic without real credentials.
+ *
  * @param {string} phone - Recipient phone number (normalized 09xxxxxxxxx)
- * @param {string} code - OTP code to send
+ * @param {string} message - Plain-text Persian message body
+ * @param {object} [meta] - Optional context for logs (e.g. { kind: "order-status" })
  * @returns {Promise<void>}
- * @throws {Error} If SMS sending fails
+ * @throws {Error} If SMS sending fails (outside mock/dev/test mode)
  */
-async function sendOtpSms(phone, code) {
-  if (!phone || !code) {
-    throw new Error("Phone number and code are required");
+async function sendSms(phone, message, meta = {}) {
+  if (!phone || !message) {
+    throw new Error("Phone number and message are required");
   }
+
+  const kind = meta.kind || "generic";
 
   // Format phone number for provider, applying the configured country-code
   // format (defaults to Iran +98) so SMS reaches the user's entered number.
@@ -53,32 +61,37 @@ async function sendOtpSms(phone, code) {
     input: phone,
     recipient: formattedPhone,
     format: MELIPAYAMAK_TO_FORMAT,
+    kind,
   });
 
-  // Persian OTP message
-  const message = `کد تایید نخشا:
-Code: ${code}
-برای دیگران نفرستید.`;
-
-  // In development mode or when SMS_MOCK is enabled, simulate success
+  // In mock/dev/test mode, simulate success (no network, no credentials).
+  // Tests keep the pipeline hermetic just like getSmsStatus() does.
   if (
     process.env.SMS_MOCK === "true" ||
+    process.env.NODE_ENV === "test" ||
     (process.env.NODE_ENV === "development" &&
       (!MELIPAYAMAK_USERNAME || !MELIPAYAMAK_PASSWORD))
   ) {
     logger.info("SMS mocked (development/testing mode)", {
       phone: formattedPhone,
-      code,
+      kind,
       message: "SMS would be sent in production with valid credentials",
     });
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Test-only seam: force a simulated delivery failure so the outbound
+    // pipeline's failure branch (error accounting, no throw) is fully legible.
+    if (process.env.SMS_MOCK_FAIL === "true") {
+      throw new Error("SMS delivery failed (simulated)");
+    }
+    // Simulate API delay; skip in tests for speed.
+    if (process.env.NODE_ENV !== "test") {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
     return;
   }
 
   // Check credentials only when not in mock mode
   if (!MELIPAYAMAK_USERNAME || !MELIPAYAMAK_PASSWORD) {
-    logger.error("OTP error recorded", {
+    logger.error("SMS send error recorded", {
       error: "MeliPayamak credentials not configured",
       hint: "Set SMS_USERNAME and SMS_PASSWORD environment variables, or enable SMS_MOCK=true for testing",
     });
@@ -297,7 +310,25 @@ async function getSmsStatus() {
 }
 
 module.exports = {
+  sendSms,
   sendOtpSms,
   testConfiguration,
   getSmsStatus,
 };
+
+/**
+ * Send an OTP SMS — thin wrapper over sendSms with the fixed Persian template.
+ * Kept as a public API for the auth flow; the generic sender serves everything
+ * else (order notifications, future channels).
+ */
+async function sendOtpSms(phone, code) {
+  if (!phone || !code) {
+    throw new Error("Phone number and code are required");
+  }
+
+  const message = `کد تایید نخشا:
+Code: ${code}
+برای دیگران نفرستید.`;
+
+  return sendSms(phone, message, { kind: "otp" });
+}
