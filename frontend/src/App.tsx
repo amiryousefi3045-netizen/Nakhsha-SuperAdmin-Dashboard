@@ -53,6 +53,7 @@ const OrdersSeller = lazy(() => import("./pages/seller/OrdersSeller"));
 const OrderDetailSeller = lazy(() => import("./pages/seller/OrderDetailSeller"));
 const FulfillmentSeller = lazy(() => import("./pages/seller/FulfillmentSeller"));
 const FinanceSeller = lazy(() => import("./pages/seller/FinanceSeller"));
+const ReviewsSeller = lazy(() => import("./pages/seller/ReviewsSeller"));
 const SettingsSeller = lazy(() => import("./pages/seller/SettingsSeller"));
 
 const StorefrontPage = lazy(() => import("./pages/storefront/StorefrontPage"));
@@ -456,6 +457,14 @@ function App() {
               element={
                 <SellerPageSuspense>
                   <FulfillmentSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="reviews"
+              element={
+                <SellerPageSuspense>
+                  <ReviewsSeller />
                 </SellerPageSuspense>
               }
             />

@@ -120,6 +120,24 @@ router.get(
   sellerController.getSellerFulfillment,
 );
 
+// ── Reviews (Phase 16) ───────────────────────────────────────────────────────
+// Review moderation is part of the seller write surface (rate-limited). Reads
+// stay unthrottled like the other catalogs; ownership is enforced in the
+// service on the review's sellerId.
+router.get(
+  "/reviews",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.listSellerReviews,
+);
+router.patch(
+  "/reviews/:id/visibility",
+  write,
+  requireManagerOrOwner,
+  sellerController.setReviewVisibility,
+);
+
 // ── Finance ─────────────────────────────────────────────────────────────────
 // Finance reads stay unthrottled; payout mutations are part of the seller
 // write surface (rate-limited like the other mutations).

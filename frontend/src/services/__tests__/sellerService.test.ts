@@ -46,6 +46,8 @@ import {
   inviteSellerTeamMember,
   changeSellerTeamMemberRole,
   removeSellerTeamMember,
+  listSellerReviews,
+  updateSellerReviewVisibility,
 } from "../sellerService";
 import { apiClient } from "../../lib/apiClient";
 
@@ -534,5 +536,49 @@ describe("seller settings & team (live backend)", () => {
     const result = await removeSellerTeamMember("tm1");
     expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith("/seller/team/tm1");
     expect(result.id).toBe("tm1");
+  });
+});
+
+describe("seller reviews (live backend)", () => {
+  const REVIEW = {
+    id: "rv1",
+    productId: "p1",
+    productTitle: "گلدان مسی",
+    rating: 5,
+    comment: "کیفیت فوق‌العاده",
+    buyerName: "خریدار دیدگاه",
+    isAnonymous: false,
+    status: "published",
+    createdAt: "2026-09-01T10:00:00Z",
+    updatedAt: "2026-09-01T10:00:00Z",
+  };
+
+  beforeEach(() => {
+    vi.mocked(apiClient.get).mockReset();
+    vi.mocked(apiClient.patch).mockReset();
+  });
+
+  it("listSellerReviews GETs /seller/reviews with params and unwraps the page", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [REVIEW], total: 1, page: 2, limit: 10 }),
+    );
+    const page = await listSellerReviews({ page: 2, limit: 10, status: "published" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/reviews", {
+      params: { page: 2, limit: 10, status: "published" },
+    });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].productTitle).toBe("گلدان مسی");
+    expect(page.total).toBe(1);
+  });
+
+  it("updateSellerReviewVisibility PATCHes the visibility and returns the review", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ review: { ...REVIEW, status: "hidden" } }),
+    );
+    const review = await updateSellerReviewVisibility("rv1", "hidden");
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/reviews/rv1/visibility", {
+      status: "hidden",
+    });
+    expect(review.status).toBe("hidden");
   });
 });

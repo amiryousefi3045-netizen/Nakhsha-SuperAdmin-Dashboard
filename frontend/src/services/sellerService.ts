@@ -10,9 +10,11 @@ import { apiClient } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
   FulfillmentSummary,
+  ListSellerReviewsParams,
   OrderCounts,
   OrderStatus,
   ProductStatus,
+  ReviewStatus,
   SellerAnalytics,
   SellerDashboardData,
   SellerFinanceSummary,
@@ -22,6 +24,7 @@ import type {
   SellerPayoutListParams,
   SellerProduct,
   SellerProfile,
+  SellerReview,
   SellerSettings,
   SellerSettingsUpdate,
   SellerTeam,
@@ -248,6 +251,28 @@ export async function getSellerFulfillment(): Promise<FulfillmentSummary> {
     needingShipment: 0,
     recent: [],
   });
+}
+
+// ── Reviews (Phase 16) ───────────────────────────────────────────────────────
+
+/** GET /seller/reviews — the store's reviews with product context. */
+export async function listSellerReviews(
+  params: ListSellerReviewsParams = {},
+): Promise<SellerPage<SellerReview>> {
+  const res = await apiClient.get<SellerPage<SellerReview>>("/seller/reviews", { params });
+  return unwrap(res, { items: [], total: 0, page: params.page ?? 1, limit: params.limit ?? 25 });
+}
+
+/** PATCH /seller/reviews/:id/visibility — hide or re-publish a review. */
+export async function updateSellerReviewVisibility(
+  id: string,
+  status: ReviewStatus,
+): Promise<SellerReview> {
+  const res = await apiClient.patch<{ review: SellerReview }>(
+    `/seller/reviews/${id}/visibility`,
+    { status },
+  );
+  return unwrap(res, { review: {} as SellerReview }).review;
 }
 
 // ── Finance & payouts ───────────────────────────────────────────────────────

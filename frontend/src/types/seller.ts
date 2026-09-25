@@ -244,6 +244,32 @@ export interface FulfillmentSummary {
   recent: SellerOrder[];
 }
 
+// ── Reviews (Phase 16) ───────────────────────────────────────────────────────
+
+/** Review visibility states the seller can moderate. */
+export type ReviewStatus = "published" | "hidden";
+
+/** One buyer review as seen by the store owner (real name + product context). */
+export interface SellerReview {
+  id: string;
+  productId: string;
+  productTitle: string;
+  rating: number;
+  comment: string;
+  buyerName: string;
+  isAnonymous: boolean;
+  status: ReviewStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListSellerReviewsParams {
+  page?: number;
+  limit?: number;
+  status?: ReviewStatus;
+  productId?: string;
+}
+
 // ── Finance & payouts ────────────────────────────────────────────────────────
 
 export type PayoutStatus = "requested" | "processing" | "paid" | "cancelled" | "rejected";

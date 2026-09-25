@@ -8,6 +8,7 @@ const OrderService = require("../services/OrderService");
 const FinanceService = require("../services/FinanceService");
 const AuditService = require("../services/AuditService");
 const SettingsService = require("../services/SettingsService");
+const StorefrontReviewService = require("../services/StorefrontReviewService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const logger = require("../utils/logger");
 
@@ -1248,6 +1249,86 @@ async function removeTeamMember(req, res) {
   }
 }
 
+async function listSellerReviews(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const { status, productId, page: pageRaw, limit: limitRaw } = req.query;
+    const page = safePage(pageRaw);
+    const limit = safePageSize(limitRaw);
+
+    if (status && status !== "published" && status !== "hidden") {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "وضعیت دیدگاه نامعتبر است", { field: "status" }, req.id));
+    }
+
+    const result = await StorefrontReviewService.listSellerReviews({
+      sellerId,
+      page,
+      limit,
+      status,
+      productId,
+    });
+
+    res.json(
+      createSuccessResponse(
+        { items: result.items, total: result.total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller listSellerReviews error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function setReviewVisibility(req, res) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه دیدگاه نامعتبر است", { field: "id" }, req.id));
+    }
+
+    const review = await StorefrontReviewService.setReviewVisibility({
+      reviewId: id,
+      sellerId: req.seller._id,
+      status,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "REVIEW_VISIBILITY_CHANGED",
+      resource: { type: "REVIEW", id: String(review.id) },
+      result: "SUCCESS",
+      riskLevel: status === "hidden" ? "MEDIUM" : "LOW",
+      requestContext: req,
+      metadata: { status },
+    });
+
+    res.json(createSuccessResponse({ review }, req.id));
+  } catch (e) {
+    if (e instanceof StorefrontReviewService.StorefrontReviewError) {
+      const statusMap = {
+        VALIDATION_ERROR: 400,
+        REVIEW_NOT_FOUND: 404,
+      };
+      return res
+        .status(statusMap[e.code] || 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller setReviewVisibility error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 module.exports = {
   getDashboard,
   getProfile,
@@ -1276,4 +1357,6 @@ module.exports = {
   inviteTeam,
   changeTeamRole,
   removeTeamMember,
+  listSellerReviews,
+  setReviewVisibility,
 };

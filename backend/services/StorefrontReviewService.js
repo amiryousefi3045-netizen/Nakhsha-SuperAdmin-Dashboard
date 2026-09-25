@@ -117,6 +117,27 @@ function reviewToPublicDTO(review) {
 }
 
 /**
+ * Seller-facing DTO — the store owner sees the real buyer name snapshot (the
+ * anonymity flag only masks the PUBLIC surface) plus moderation state and the
+ * product the review belongs to (joined by the caller).
+ */
+function reviewToSellerDTO(review) {
+  const product = review.productId;
+  return {
+    id: String(review._id),
+    productId: String(product?._id ?? review.productId),
+    productTitle: product?.title || "",
+    rating: review.rating,
+    comment: review.comment || "",
+    buyerName: review.buyerName || "خریدار",
+    isAnonymous: Boolean(review.isAnonymous),
+    status: review.status,
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+  };
+}
+
+/**
  * Create or update a buyer's review of a product.
  *
  * @param {object} params
@@ -243,6 +264,75 @@ async function listProductReviews({ productId, page = 1, limit = 10 }) {
   };
 }
 
+/**
+ * Seller-facing, paginated review list for one store. The seller sees every
+ * review (published and hidden) across the store's products with the real
+ * buyer name snapshot — anonymity only hides the name from the PUBLIC list.
+ *
+ * @param {object} params
+ * @param {string} params.sellerId
+ * @param {number} [params.page] 1-based
+ * @param {number} [params.limit]
+ * @param {string} [params.status] "published" | "hidden" (all when omitted)
+ * @param {string} [params.productId] filter down to one product
+ */
+async function listSellerReviews({ sellerId, page = 1, limit = 10, status, productId }) {
+  const filter = { sellerId: toObjectId(sellerId) };
+  if (status === "published" || status === "hidden") filter.status = status;
+  if (productId) filter.productId = toObjectId(productId);
+
+  const skip = Math.max(0, (page - 1) * limit);
+  const [items, total] = await Promise.all([
+    Review.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("productId", "title")
+      .lean(),
+    Review.countDocuments(filter),
+  ]);
+
+  return {
+    items: items.map(reviewToSellerDTO).map((dto) => ({
+      ...dto,
+      productId: String(dto.productId),
+    })),
+    total,
+    page,
+    limit,
+  };
+}
+
+/**
+ * Moderate one review: hide or re-publish it. Ownership is enforced on the
+ * review's sellerId, so a seller can never touch another store's reviews.
+ * Aggregates are recomputed afterwards because the public/product aggregates
+ * only ever count `published` reviews.
+ */
+async function setReviewVisibility({ reviewId, sellerId, status }) {
+  if (status !== "published" && status !== "hidden") {
+    throw new StorefrontReviewError("VALIDATION_ERROR", "وضعیت دیدگاه نامعتبر است");
+  }
+  const review = await Review.findOneAndUpdate(
+    { _id: toObjectId(reviewId), sellerId: toObjectId(sellerId) },
+    { $set: { status } },
+    { new: true },
+  )
+    .populate("productId", "title")
+    .lean();
+  if (!review) {
+    throw new StorefrontReviewError("REVIEW_NOT_FOUND", "دیدگاه یافت نشد");
+  }
+
+  await refreshProductRating(review.productId?._id || review.productId);
+  await refreshSellerRating(sellerId);
+
+  return {
+    ...reviewToSellerDTO(review),
+    productId: String(review.productId?._id ?? review.productId),
+  };
+}
+
 module.exports = {
   StorefrontReviewError,
   ANONYMOUS_NAME,
@@ -250,4 +340,6 @@ module.exports = {
   submitReview,
   getMyReview,
   listProductReviews,
+  listSellerReviews,
+  setReviewVisibility,
 };
