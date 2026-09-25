@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, RefreshCw, ShoppingCart, Eye, ArrowRight, Package } from "lucide-react";
+import { Search, RefreshCw, ShoppingCart, Eye, ArrowRight, Package, SlidersHorizontal } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { useDebounce } from "../../hooks/useDebounce";
 import { listSellerOrders } from "../../services/sellerService";
@@ -29,6 +29,11 @@ export function OrdersSeller() {
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 350);
   const [status, setStatus] = useState("");
+  const [payment, setPayment] = useState<"" | "paid" | "unpaid">("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [minTotal, setMinTotal] = useState("");
+  const [maxTotal, setMaxTotal] = useState("");
   const [page, setPage] = useState(1);
 
   const fetcher = useCallback(
@@ -38,16 +43,21 @@ export function OrdersSeller() {
         limit: 15,
         q: debouncedQ || undefined,
         status: (status as OrderStatus) || undefined,
+        payment: payment || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        minTotal: minTotal === "" ? undefined : Number(minTotal),
+        maxTotal: maxTotal === "" ? undefined : Number(maxTotal),
       }),
-    [page, debouncedQ, status],
+    [page, debouncedQ, status, payment, from, to, minTotal, maxTotal],
   );
   const { data, isLoading, error } = useSellerFetch(fetcher, {
-    dependencies: [page, debouncedQ, status],
+    dependencies: [page, debouncedQ, status, payment, from, to, minTotal, maxTotal],
   });
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ]);
+  }, [debouncedQ, status, payment, from, to, minTotal, maxTotal]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.limit)) : 1;
 
@@ -91,6 +101,79 @@ export function OrdersSeller() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <select
+          value={payment}
+          onChange={(e) => {
+            setPayment(e.target.value as "" | "paid" | "unpaid");
+            setPage(1);
+          }}
+          className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)]"
+        >
+          <option value="">همه پرداخت‌ها</option>
+          <option value="paid">پرداخت‌شده</option>
+          <option value="unpaid">پرداخت‌نشده</option>
+        </select>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--color-border)] bg-white p-3">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-muted)]">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          فیلترهای بیشتر
+        </span>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[10px] font-medium text-[var(--color-muted)]">از تاریخ</span>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[10px] font-medium text-[var(--color-muted)]">تا تاریخ</span>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[10px] font-medium text-[var(--color-muted)]">حداقل مبلغ (تومان)</span>
+          <input
+            type="number"
+            min={0}
+            value={minTotal}
+            onChange={(e) => setMinTotal(e.target.value)}
+            placeholder="مثلاً 500000"
+            className="w-36 rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[10px] font-medium text-[var(--color-muted)]">حداکثر مبلغ (تومان)</span>
+          <input
+            type="number"
+            min={0}
+            value={maxTotal}
+            onChange={(e) => setMaxTotal(e.target.value)}
+            placeholder="مثلاً 2000000"
+            className="w-36 rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+          />
+        </label>
+        {(from || to || minTotal || maxTotal) && (
+          <button
+            type="button"
+            onClick={() => {
+              setFrom("");
+              setTo("");
+              setMinTotal("");
+              setMaxTotal("");
+            }}
+            className="ms-auto rounded-lg px-3 py-1.5 text-xs text-[var(--color-primary)] hover:bg-[var(--color-muted)]/10"
+          >
+            پاک کردن فیلترها
+          </button>
+        )}
       </div>
 
       {error ? (

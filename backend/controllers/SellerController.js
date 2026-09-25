@@ -948,11 +948,31 @@ const ORDER_STATUSES = Order.ORDER_STATUSES;
 async function listSellerOrders(req, res) {
   try {
     const sellerId = req.seller._id;
-    const { status, q, page: pageRaw, limit: limitRaw } = req.query;
+    const {
+      status,
+      q,
+      page: pageRaw,
+      limit: limitRaw,
+      from,
+      to,
+      payment,
+      minTotal,
+      maxTotal,
+    } = req.query;
     const page = safePage(pageRaw);
     const limit = safePageSize(limitRaw);
 
-    const result = await OrderService.listOrders(sellerId, { page, limit, status, q });
+    const result = await OrderService.listOrders(sellerId, {
+      page,
+      limit,
+      status,
+      q,
+      from,
+      to,
+      payment,
+      minTotal,
+      maxTotal,
+    });
 
     res.json(
       createSuccessResponse(

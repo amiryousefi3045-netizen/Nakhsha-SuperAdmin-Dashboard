@@ -403,6 +403,30 @@ describe("seller orders & fulfillment (real domains)", () => {
     expect(page.total).toBe(1);
   });
 
+  it("listSellerOrders forwards advanced filters (date/payment/amount)", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({ items: [ORDER], total: 1, page: 1, limit: 25 }),
+    );
+    await listSellerOrders({
+      page: 1,
+      from: "2026-09-01",
+      to: "2026-09-25",
+      payment: "paid",
+      minTotal: 1000000,
+      maxTotal: 6000000,
+    });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/orders", {
+      params: {
+        page: 1,
+        from: "2026-09-01",
+        to: "2026-09-25",
+        payment: "paid",
+        minTotal: 1000000,
+        maxTotal: 6000000,
+      },
+    });
+  });
+
   it("getSellerOrder unwraps the order detail", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ order: ORDER }));
     const order = await getSellerOrder("o1");

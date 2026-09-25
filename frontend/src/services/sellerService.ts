@@ -251,6 +251,11 @@ export interface ListSellerOrdersParams {
   limit?: number;
   q?: string;
   status?: OrderStatus;
+  from?: string;
+  to?: string;
+  payment?: "paid" | "unpaid";
+  minTotal?: number;
+  maxTotal?: number;
 }
 
 const EMPTY_ORDER_COUNTS: OrderCounts = {

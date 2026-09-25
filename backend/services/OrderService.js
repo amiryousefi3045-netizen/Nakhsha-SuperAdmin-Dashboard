@@ -394,7 +394,22 @@ async function transitionOrder({
  * List orders for a seller. `status` filters by workflow state; `q` searches
  * customer name/phone or the numeric order number.
  */
-async function listOrders(sellerId, { page = 1, limit = 25, status, q } = {}) {
+/**
+ * Lenient numeric filter value: empty/blank becomes undefined, non-numeric
+ * stays undefined, everything else becomes a finite number.
+ */
+function numericFilter(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+// ── Query ──────────────────────────────────────────────────────────────────
+
+async function listOrders(
+  sellerId,
+  { page = 1, limit = 25, status, q, from, to, payment, minTotal, maxTotal } = {},
+) {
   const filter = { sellerId };
   if (status && Order.ORDER_STATUSES.includes(status)) {
     filter.status = status;
@@ -412,6 +427,29 @@ async function listOrders(sellerId, { page = 1, limit = 25, status, q } = {}) {
       filter.$or.push({ orderNumber: num });
     }
   }
+
+  const since = from ? new Date(from) : null;
+  const until = to ? new Date(to) : null;
+  const hasSince = since && !Number.isNaN(since.getTime());
+  const hasUntil = until && !Number.isNaN(until.getTime());
+  if (hasSince || hasUntil) {
+    filter.createdAt = {};
+    if (hasSince) filter.createdAt.$gte = since;
+    if (hasUntil) filter.createdAt.$lte = until;
+  }
+
+  if (payment && ["paid", "unpaid"].includes(payment)) {
+    filter["payment.status"] = payment;
+  }
+
+  const min = numericFilter(minTotal);
+  const max = numericFilter(maxTotal);
+  if (min !== undefined || max !== undefined) {
+    filter.total = {};
+    if (min !== undefined) filter.total.$gte = min;
+    if (max !== undefined) filter.total.$lte = max;
+  }
+
   const skip = (page - 1) * limit;
   const [orders, total] = await Promise.all([
     Order.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
