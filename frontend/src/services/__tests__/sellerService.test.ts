@@ -310,17 +310,38 @@ describe("seller inventory", () => {
 });
 
 describe("seller analytics", () => {
-  it("getSellerAnalytics GETs /seller/analytics", async () => {
+  it("getSellerAnalytics GETs /seller/analytics with period params", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce(
       ok({
         inventory: { totalOnHand: 40, totalReserved: 4, available: 36, products: 4 },
         byStatus: { draft: 2, active: 2 },
-        note: "",
+        sales: {
+          period: { from: "2026-08-26T00:00:00Z", to: "2026-09-25T23:59:59Z" },
+          days: 31,
+          current: {
+            orders: 4,
+            units: 9,
+            subtotal: 1050000,
+            shippingFee: 0,
+            discount: 0,
+            total: 1050000,
+            avgOrderValue: 262500,
+            byStatus: [{ status: "delivered", count: 2, total: 600000 }],
+          },
+          previous: { orders: 2, units: 5, total: 500000 },
+          daily: [{ day: "2026-08-26", orders: 0, total: 0 }],
+          currency: "IRR",
+        },
       }),
     );
-    const analytics = await getSellerAnalytics();
-    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/analytics");
+    const analytics = await getSellerAnalytics({ from: "2026-08-26", to: "2026-09-25" });
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/analytics", {
+      params: { from: "2026-08-26", to: "2026-09-25" },
+    });
     expect(analytics.inventory.available).toBe(36);
+    expect(analytics.sales.current.total).toBe(1050000);
+    expect(analytics.sales.previous.orders).toBe(2);
+    expect(analytics.sales.daily[0].day).toBe("2026-08-26");
   });
 
   it("getSellerSalesReport GETs /seller/reports/sales with period params", async () => {

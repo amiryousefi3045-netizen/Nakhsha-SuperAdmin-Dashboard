@@ -154,6 +154,34 @@ export interface StockAdjustmentHistory {
   limit: number;
 }
 
+export interface AnalyticsOrderStatusRow {
+  status: OrderStatus;
+  count: number;
+  total: number;
+}
+
+export interface AnalyticsSalesBlock {
+  period: { from: string; to: string };
+  days: number;
+  current: {
+    orders: number;
+    units: number;
+    subtotal: number;
+    shippingFee: number;
+    discount: number;
+    total: number;
+    avgOrderValue: number;
+    byStatus: AnalyticsOrderStatusRow[];
+  };
+  previous: {
+    orders: number;
+    units: number;
+    total: number;
+  };
+  daily: SalesReportDay[];
+  currency: "IRR";
+}
+
 export interface SellerAnalytics {
   inventory: {
     totalOnHand: number;
@@ -162,7 +190,12 @@ export interface SellerAnalytics {
     products: number;
   };
   byStatus: Partial<Record<ProductStatus, number>>;
-  note: string;
+  sales: AnalyticsSalesBlock;
+}
+
+export interface AnalyticsParams {
+  from?: string;
+  to?: string;
 }
 
 // ── Sales report (Phase 24) ────────────────────────────────────────────────

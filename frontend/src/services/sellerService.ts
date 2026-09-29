@@ -9,6 +9,7 @@
 import { apiClient } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
+  AnalyticsParams,
   FulfillmentSummary,
   ListSellerReviewsParams,
   OrderCounts,
@@ -197,9 +198,29 @@ export async function getSellerStockHistory(
 // ── Analytics ───────────────────────────────────────────────────────────────
 
 /** GET /seller/analytics */
-export async function getSellerAnalytics(): Promise<SellerAnalytics> {
-  const res = await apiClient.get<SellerAnalytics>("/seller/analytics");
-  return unwrap(res, {} as SellerAnalytics);
+export async function getSellerAnalytics(params: AnalyticsParams = {}): Promise<SellerAnalytics> {
+  const res = await apiClient.get<SellerAnalytics>("/seller/analytics", { params });
+  return unwrap(res, {
+    inventory: { totalOnHand: 0, totalReserved: 0, available: 0, products: 0 },
+    byStatus: {},
+    sales: {
+      period: { from: "", to: "" },
+      days: 30,
+      current: {
+        orders: 0,
+        units: 0,
+        subtotal: 0,
+        shippingFee: 0,
+        discount: 0,
+        total: 0,
+        avgOrderValue: 0,
+        byStatus: [],
+      },
+      previous: { orders: 0, units: 0, total: 0 },
+      daily: [],
+      currency: "IRR",
+    },
+  });
 }
 
 // ── Reports (Phase 24) ──────────────────────────────────────────────────────

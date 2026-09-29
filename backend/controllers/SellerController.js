@@ -12,7 +12,7 @@ const AuditService = require("../services/AuditService");
 const SettingsService = require("../services/SettingsService");
 const StorefrontReviewService = require("../services/StorefrontReviewService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
-const { ReportRangeError } = require("../utils/reportRange");
+const { ReportRangeError, resolveRange, dayKey, addDaysUtc } = require("../utils/reportRange");
 const logger = require("../utils/logger");
 
 const MAX_PAGE_SIZE = 100;
@@ -787,11 +787,27 @@ async function getStockHistory(req, res) {
 // ANALYTICS
 // ════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Seller analytics (Phase 29, P1-01/P1-03): real product/inventory aggregates
+ * PLUS a sales performance block computed from the live order ledger for the
+ * selected window (default last 30 days) with a full period-over-period
+ * comparison against the equally-long preceding window, and a continuous
+ * daily revenue series. Window handling reuses utils/reportRange so charts,
+ * validation and the JSON payload always agree on the same UTC days.
+ */
 async function getAnalytics(req, res) {
   try {
     const sellerId = req.seller._id;
 
-    const [inventory, statusDist] = await Promise.all([
+    const { start, end } = resolveRange({ from: req.query.from, to: req.query.to });
+    const windowMs = end.getTime() - start.getTime() + 1;
+    const days = Math.round(windowMs / 86400000);
+    const prevStart = new Date(start.getTime() - windowMs);
+    const prevEnd = new Date(start.getTime() - 1);
+
+    const orderMatch = (from, to) => ({ sellerId, createdAt: { $gte: from, $lte: to } });
+
+    const [inventory, statusDist, current, previous, dailyRows] = await Promise.all([
       Product.aggregate([
         { $match: { sellerId } },
         {
@@ -808,9 +824,92 @@ async function getAnalytics(req, res) {
         { $match: { sellerId } },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
+      Order.aggregate([
+        { $match: orderMatch(start, end) },
+        {
+          $facet: {
+            orders: [
+              {
+                $group: {
+                  _id: null,
+                  count: { $sum: 1 },
+                  subtotal: { $sum: "$subtotal" },
+                  shippingFee: { $sum: "$shippingFee" },
+                  discount: { $sum: "$discount" },
+                  total: { $sum: "$total" },
+                },
+              },
+            ],
+            units: [
+              { $unwind: "$items" },
+              { $group: { _id: null, qty: { $sum: "$items.qty" } } },
+            ],
+            byStatus: [
+              { $group: { _id: "$status", count: { $sum: 1 }, total: { $sum: "$total" } } },
+            ],
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: orderMatch(prevStart, prevEnd) },
+        {
+          $facet: {
+            orders: [
+              { $group: { _id: null, count: { $sum: 1 }, total: { $sum: "$total" } } },
+            ],
+            units: [
+              { $unwind: "$items" },
+              { $group: { _id: null, qty: { $sum: "$items.qty" } } },
+            ],
+          },
+        },
+      ]),
+      Order.aggregate([
+        { $match: orderMatch(start, end) },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" } },
+            orders: { $sum: 1 },
+            total: { $sum: "$total" },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
     ]);
 
     const inventoryRow = inventory[0] || { totalOnHand: 0, totalReserved: 0, products: 0, soldUnits: 0 };
+
+    const cOrders = current[0]?.orders?.[0] || {
+      count: 0,
+      subtotal: 0,
+      shippingFee: 0,
+      discount: 0,
+      total: 0,
+    };
+    const cUnits = current[0]?.units?.[0]?.qty || 0;
+
+    const statusMap = {};
+    for (const row of current[0]?.byStatus || []) statusMap[row._id] = row;
+    const byOrderStatus = (Order.ORDER_STATUSES || []).map((s) => ({
+      status: s,
+      count: statusMap[s]?.count || 0,
+      total: statusMap[s]?.total || 0,
+    }));
+
+    const dailyMap = {};
+    for (const row of dailyRows) dailyMap[row._id] = row;
+    const daily = [];
+    for (let d = new Date(start); d <= end; d = addDaysUtc(d, 1)) {
+      const key = dayKey(d);
+      daily.push({
+        day: key,
+        orders: dailyMap[key]?.orders || 0,
+        total: dailyMap[key]?.total || 0,
+      });
+    }
+
+    const pOrders = previous[0]?.orders?.[0] || { count: 0, total: 0 };
+    const pUnits = previous[0]?.units?.[0]?.qty || 0;
 
     res.json(
       createSuccessResponse(
@@ -822,12 +921,37 @@ async function getAnalytics(req, res) {
             products: inventoryRow.products,
           },
           byStatus: Object.fromEntries(statusDist.map((s) => [s._id, s.count])),
-          note: "گزارش متن کامل مالی و فروش به‌محض پیاده‌سازی دامنه سفارش/پرداخت فعال می‌شود.",
+          sales: {
+            period: { from: start, to: end },
+            days,
+            current: {
+              orders: cOrders.count,
+              units: cUnits,
+              subtotal: cOrders.subtotal,
+              shippingFee: cOrders.shippingFee,
+              discount: cOrders.discount,
+              total: cOrders.total,
+              avgOrderValue: cOrders.count > 0 ? Math.round(cOrders.total / cOrders.count) : 0,
+              byStatus: byOrderStatus,
+            },
+            previous: {
+              orders: pOrders.count,
+              units: pUnits,
+              total: pOrders.total,
+            },
+            daily,
+            currency: "IRR",
+          },
         },
         req.id,
       ),
     );
   } catch (e) {
+    if (e instanceof ReportRangeError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
     logger.error("Seller getAnalytics error", { error: e.message, sellerId: req.seller?._id });
     res
       .status(500)
