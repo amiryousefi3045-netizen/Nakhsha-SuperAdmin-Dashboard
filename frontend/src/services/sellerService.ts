@@ -6,7 +6,7 @@
  * backend; the token is injected automatically by the apiClient interceptor.
  */
 
-import { apiClient } from "../lib/apiClient";
+import { apiClient, API_BASE_URL, TokenManager } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
   AnalyticsParams,
@@ -21,6 +21,9 @@ import type {
   SellerAnalytics,
   SellerActivityParams,
   SellerActivityPage,
+  SellerLiveEvent,
+  SellerLiveEventPayload,
+  SellerLiveEventType,
   SellerDashboardData,
   SellerFinanceSummary,
   SellerOrder,
@@ -315,6 +318,87 @@ export async function getSellerActivity(
 /** GET /seller/activity/export — row-level CSV download (Phase 30, P1-02). */
 export async function exportSellerActivityCsv(): Promise<{ blob: Blob; filename: string }> {
   return downloadCsv("/seller/activity/export", {}, "store-activity");
+}
+
+// ── Live store events (Phase 31, P1-05) ────────────────────────────────────
+
+/** Parses one raw `event:`/`data:` frame of the seller SSE stream. */
+function parseSellerLiveEvent(chunk: string): SellerLiveEvent | null {
+  const eventMatch = /^event:\s*(\S+)$/m.exec(chunk);
+  const dataMatch = /^data:\s*([\s\S]+)$/m.exec(chunk);
+  if (!eventMatch || !dataMatch) return null;
+  try {
+    const payload = JSON.parse(dataMatch[1].trim());
+    return {
+      type: eventMatch[1] as SellerLiveEventType,
+      payload: payload as SellerLiveEventPayload,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface SellerLiveEventHandlers {
+  onEvent: (event: SellerLiveEvent) => void;
+  onError?: (err: Error) => void;
+  onClose?: () => void;
+}
+
+/**
+ * Subscribes to /seller/events/live over fetch+ReadableStream. EventSource can't
+ * send an Authorization header, so a raw stream is used instead (same approach
+ * as the admin live feed). Returns an unsubscribe function.
+ */
+export function subscribeSellerLiveEvents(handlers: SellerLiveEventHandlers): () => void {
+  const controller = new AbortController();
+  const token = TokenManager.get();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let buffer = "";
+  let closed = false;
+
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    controller.abort();
+    handlers.onClose?.();
+  };
+
+  (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/seller/events/live`, {
+        headers,
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`SSE connection failed with status ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const event = parseSellerLiveEvent(part);
+          if (event) handlers.onEvent(event);
+        }
+      }
+    } catch (err) {
+      if ((err as Error)?.name !== "AbortError") {
+        handlers.onError?.(err as Error);
+      }
+    } finally {
+      closed = true;
+    }
+  })();
+
+  return close;
 }
 
 // ── Orders ──────────────────────────────────────────────────────────────────

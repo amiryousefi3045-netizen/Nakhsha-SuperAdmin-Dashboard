@@ -19,6 +19,8 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 const { nextSequence } = require("../models/AtomicCounter");
 const NotificationService = require("./NotificationService");
+const sellerEventHub = require("./SellerEventHub");
+const logger = require("../utils/logger");
 
 // ── State machine ───────────────────────────────────────────────────────────
 
@@ -288,8 +290,32 @@ async function createOrder({
     payment: { status: "unpaid" },
   });
 
+  // A brand-new order is the single most important seller notification
+  // (storefront checkout included), so it is published with `from: null`.
+  publishOrderEvent(order, null);
+
   return order;
-}
+  }
+
+  /**
+   * Live store event (P1-05) so open dashboards refetch without polling.
+   * Never throws: a live update must not fail the write path that triggered it.
+   */
+  function publishOrderEvent(order, fromStatus) {
+    try {
+      sellerEventHub.publish(order.sellerId, "order", {
+        id: String(order._id),
+        orderNumber: order.orderNumber,
+        from: fromStatus || null,
+        status: order.status,
+        total: order.total,
+        currency: order.currency || "IRR",
+        at: new Date().toISOString(),
+      });
+    } catch (e) {
+      logger.warn("Failed to publish seller order event", { error: e.message });
+    }
+  }
 
 /**
  * Move an order through the validated state machine.
@@ -382,6 +408,9 @@ async function transitionOrder({
     });
   }
   await order.save();
+
+  // Live store event (P1-05) so open dashboards refetch without polling.
+  publishOrderEvent(order, fromStatus);
 
   if (order.notifications.length > 0) {
     void NotificationService.deliverOrderNotifications(order._id);

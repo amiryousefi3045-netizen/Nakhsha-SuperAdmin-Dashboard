@@ -11,6 +11,7 @@ const SalesReportService = require("../services/SalesReportService");
 const AuditService = require("../services/AuditService");
 const SettingsService = require("../services/SettingsService");
 const StorefrontReviewService = require("../services/StorefrontReviewService");
+const sellerEventHub = require("../services/SellerEventHub");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
 const { toCsv, sendCsv } = require("../utils/csv");
 const { ReportRangeError, resolveRange, dayKey, addDaysUtc } = require("../utils/reportRange");
@@ -66,7 +67,7 @@ function productToDTO(product) {
   };
 }
 
-function sellerProfileToDTO(profile) {
+function sellerProfileToDTO(profile, myRole) {
   return {
     id: String(profile._id),
     userId: String(profile.userId),
@@ -87,6 +88,10 @@ function sellerProfileToDTO(profile) {
     finance: profile.finance || { commissionPercent: 0, payoutMinimum: 0, holdDays: 0 },
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
+    // The caller's own roster role ("owner" for the profile holder). The
+    // dashboard hides surfaces the caller cannot use, so the client needs it
+    // to match what `requireOwnerOnly` / `requireManagerOrOwner` allow.
+    myRole: myRole || "owner",
   };
 }
 
@@ -168,7 +173,7 @@ async function getDashboard(req, res) {
             total: (revenueByStatus.shipped || 0) + (revenueByStatus.delivered || 0),
           },
           recentProducts: recentProducts.map(productToDTO),
-          profile: sellerProfileToDTO(req.seller),
+          profile: sellerProfileToDTO(req.seller, req.sellerMember?.role),
         },
         req.id,
       ),
@@ -187,7 +192,9 @@ async function getDashboard(req, res) {
 
 async function getProfile(req, res) {
   try {
-    res.json(createSuccessResponse({ profile: sellerProfileToDTO(req.seller) }, req.id));
+    res.json(
+      createSuccessResponse({ profile: sellerProfileToDTO(req.seller, req.sellerMember?.role) }, req.id),
+    );
   } catch (e) {
     logger.error("Seller getProfile error", { error: e.message, sellerId: req.seller?._id });
     res
@@ -238,7 +245,9 @@ async function updateProfile(req, res) {
       metadata: { updatedFields: Object.keys(updates) },
     });
 
-    res.json(createSuccessResponse({ profile: sellerProfileToDTO(profile) }, req.id));
+    res.json(
+      createSuccessResponse({ profile: sellerProfileToDTO(profile, req.sellerMember?.role) }, req.id),
+    );
   } catch (e) {
     logger.error("Seller updateProfile error", { error: e.message, sellerId: req.seller?._id });
     res
@@ -1214,6 +1223,59 @@ async function exportActivity(req, res) {
   }
 }
 
+// ── Live events (SSE, Phase 31, P1-05) ─────────────────────────────────────
+
+/**
+ * Server-Sent Events stream of store activity + order/payout changes. Clients
+ * are bound to the authenticated seller profile, so an event published for
+ * another store is never delivered here. Mirrors the admin live-events
+ * contract (event names: `initial`, `activity`, `order`, `payout`, `heartbeat`).
+ */
+function streamSellerEvents(req, res) {
+  // Capacity is checked first: once the event-stream headers are on the wire
+  // the only honest answer left is a truncated stream, so a refusal has to
+  // happen while we can still send a clean JSON 503.
+  if (!sellerEventHub.canAccept(req.seller._id)) {
+    return res
+      .status(503)
+      .json(
+        createErrorResponse(
+          "TOO_MANY_CONNECTIONS",
+          "تعداد اتصال‌های زنده بیش از حد مجاز است؛ لطفاً بعداً دوباره تلاش کنید",
+          null,
+          req.id,
+        ),
+      );
+  }
+
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const { id, unsubscribe } = sellerEventHub.subscribe(res, {
+    sellerId: req.seller._id,
+    userId: req.user.id,
+    initialPayload: { at: new Date().toISOString() },
+  });
+
+  // One timer per stream, pinging only its own connection (a shared hub-wide
+  // ping would multiply traffic by the number of open tabs).
+  const heartbeat = setInterval(() => sellerEventHub.heartbeat(id), 25000);
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
+  };
+  req.on("close", close);
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ORDERS & FULFILLMENT  (real domain — see services/OrderService.js)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1889,6 +1951,7 @@ module.exports = {
   exportPayoutReport,
   getActivity,
   exportActivity,
+  streamSellerEvents,
   listSellerOrders,
   exportOrders,
   getSellerOrder,

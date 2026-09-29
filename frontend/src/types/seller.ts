@@ -72,6 +72,8 @@ export interface SellerProfile {
   };
   createdAt: string;
   updatedAt: string;
+  /** The caller's own roster role; "owner" for the profile holder. */
+  myRole?: "owner" | "manager" | "staff";
 }
 
 export interface ProductStock {
@@ -325,6 +327,64 @@ export interface SellerActivityPage {
 export interface SellerActivityParams {
   page?: number;
   limit?: number;
+}
+
+// ── Live store events (Phase 31, P1-05) ────────────────────────────────────
+
+export type SellerLiveEventType =
+  | "initial"
+  | "heartbeat"
+  | "activity"
+  | "order"
+  | "payout";
+
+export interface SellerLiveActivityPayload {
+  id: string;
+  action: string;
+  riskLevel: ActivityRiskLevel;
+  result: "SUCCESS" | "FAILURE" | "PARTIAL";
+  resourceType: string | null;
+  resourceId: string | null;
+  createdAt: string;
+}
+
+export interface SellerLiveOrderPayload {
+  id: string;
+  orderNumber: number;
+  from: OrderStatus | null;
+  status: OrderStatus;
+  total: number;
+  currency: string;
+  at: string;
+}
+
+export interface SellerLivePayoutPayload {
+  id: string;
+  from: string | null;
+  status: string;
+  amount: number;
+  currency: string;
+  at: string;
+}
+
+export type SellerLiveEventPayload =
+  | { at: string }
+  | SellerLiveActivityPayload
+  | SellerLiveOrderPayload
+  | SellerLivePayoutPayload;
+
+export interface SellerLiveEvent {
+  type: SellerLiveEventType;
+  payload: SellerLiveEventPayload;
+}
+
+/** A toast raised by the live bell for one store event. */
+export interface SellerLiveAlert {
+  id: string;
+  type: "activity" | "order" | "payout";
+  title: string;
+  body: string;
+  at: string;
 }
 
 // ── Orders & fulfillment ────────────────────────────────────────────────────

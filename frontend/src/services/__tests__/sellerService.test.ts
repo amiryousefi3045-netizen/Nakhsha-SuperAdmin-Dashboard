@@ -58,8 +58,9 @@ import {
   updateSellerReviewVisibility,
   updateSellerReviewReply,
   deleteSellerReviewReply,
+  subscribeSellerLiveEvents,
 } from "../sellerService";
-import { apiClient } from "../../lib/apiClient";
+import { apiClient, TokenManager } from "../../lib/apiClient";
 
 const ok = <T>(data: T) => ({ success: true as const, data });
 
@@ -844,5 +845,84 @@ describe("seller CSV row exports (Phase 30, P1-02)", () => {
     } as never);
     const file = await exportSellerActivityCsv();
     expect(file.filename).toBe(`store-activity-${new Date().toISOString().slice(0, 10)}.csv`);
+  });
+});
+
+describe("seller live events (Phase 31, P1-05)", () => {
+  const encoder = new TextEncoder();
+
+  function mockStream(chunks: string[]) {
+    let index = 0;
+    const reader = {
+      read: vi.fn().mockImplementation(() => {
+        if (index >= chunks.length) return Promise.resolve({ done: true, value: undefined });
+        const value = encoder.encode(chunks[index]);
+        index += 1;
+        return Promise.resolve({ done: false, value });
+      }),
+    };
+    return {
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+    } as unknown as Response;
+  }
+
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("parses event frames and forwards them to the handler", async () => {
+    vi.mocked(TokenManager.get).mockReturnValue("tok-1");
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      mockStream([
+        'event: initial\ndata: {"at":"2026-09-25T10:00:00Z"}\n\n',
+        'event: order\ndata: {"id":"o1","orderNumber":7001,"from":"pending","status":"confirmed","total":300000,"currency":"IRR","at":"2026-09-25T10:00:01Z"}\n\n',
+      ]),
+    ) as never;
+
+    const events: unknown[] = [];
+    const unsubscribe = subscribeSellerLiveEvents({ onEvent: (e) => events.push(e) });
+    await flush();
+    await flush();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/seller/events/live"),
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok-1" },
+      }),
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ type: "initial" });
+    expect(events[1]).toMatchObject({ type: "order" });
+    expect((events[1] as { payload: { orderNumber: number } }).payload.orderNumber).toBe(7001);
+    unsubscribe();
+  });
+
+  it("reassembles a frame split across two chunks and ignores malformed ones", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      mockStream([
+        'event: payout\ndata: {"id":"p1","from":"requested","status":"paid","amount":250000,',
+        '"currency":"IRR","at":"2026-09-25T10:00:02Z"}\n\nevent: bogus\ndata: not-json\n\n',
+      ]),
+    ) as never;
+
+    const events: Array<{ type: string }> = [];
+    subscribeSellerLiveEvents({ onEvent: (e) => events.push(e) });
+    await flush();
+    await flush();
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("payout");
+  });
+
+  it("reports a failed stream response through onError", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 403 } as Response) as never;
+
+    const errors: Error[] = [];
+    subscribeSellerLiveEvents({ onEvent: () => {}, onError: (e) => errors.push(e) });
+    await flush();
+    await flush();
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("403");
   });
 });

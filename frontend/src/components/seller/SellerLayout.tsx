@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../../hooks/useAuth";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { getSellerProfile } from "../../services/sellerService";
+import { SellerLiveBell } from "./SellerLiveBell";
 import cn from "classnames";
 
 interface NavItem {
@@ -151,6 +152,10 @@ export function SellerLayout() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* The live stream (and this bell) is manager/owner only — the API
+                answers 403 for staff, so a staff member would only ever see a
+                permanently "offline" bell. */}
+            {profile?.myRole !== "staff" ? <SellerLiveBell /> : null}
             <div className="hidden text-end sm:block">
               <p className="text-sm font-semibold text-[var(--color-text)]">{storeName}</p>
               <p className="text-xs text-[var(--color-muted)]">{user?.role === "seller" ? "فروشنده" : ""}</p>

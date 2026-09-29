@@ -23,6 +23,8 @@ const Payout = require("../models/Payout");
 const Order = require("../models/Order");
 const SellerProfile = require("../models/SellerProfile");
 const { resolveRange } = require("../utils/reportRange");
+const sellerEventHub = require("./SellerEventHub");
+const logger = require("../utils/logger");
 
 // ── Custom domain errors (controller maps these to HTTP) ────────────────────
 
@@ -77,6 +79,27 @@ function adminPayoutToDTO(payout, seller = null) {
 /** Regex-escape user input before embedding in a query (re DOS). */
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ── Live store events (P1-05) ───────────────────────────────────────────────
+
+/**
+ * Push a settlement event to the owning store's live subscribers. Best-effort:
+ * a dead/failed SSE client must never break the payout write path.
+ */
+function publishPayout(sellerId, payout, from) {
+  try {
+    sellerEventHub.publish(sellerId, "payout", {
+      id: String(payout._id),
+      from: from || null,
+      status: payout.status,
+      amount: payout.amount,
+      currency: payout.currency || "IRR",
+      at: new Date().toISOString(),
+    });
+  } catch (e) {
+    logger.warn("Failed to publish seller payout event", { error: e.message });
+  }
 }
 
 // ── Balance computation (single source of truth) ────────────────────────────
@@ -269,6 +292,7 @@ async function requestPayout({ sellerId, sellerUserId, amount, method, note }) {
   });
 
   await enforceBudgetLimit(sellerId, payout._id);
+  publishPayout(sellerId, payout, null);
   return payout;
 }
 
@@ -299,6 +323,7 @@ async function cancelPayout({ sellerId, payoutId, sellerUserId, note }) {
     note: note || "",
   });
   await payout.save();
+  publishPayout(sellerId, payout, "requested");
   return payout;
 }
 
@@ -590,6 +615,7 @@ async function updatePayoutStatus({ payoutId, adminUserId, to, note, reference }
     note: trimmedNote,
   });
   await payout.save();
+  publishPayout(payout.sellerId, payout, from);
 
   return { payout, from };
 }

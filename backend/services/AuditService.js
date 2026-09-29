@@ -17,6 +17,7 @@
 const AuditLog = require("../models/AuditLog");
 const logger = require("../utils/logger");
 const adminEventHub = require("./AdminEventHub");
+const sellerEventHub = require("./SellerEventHub");
 
 class AuditService {
   /**
@@ -104,6 +105,32 @@ class AuditService {
         });
       } catch (publishError) {
         logger.warn("Failed to publish admin live event", { error: publishError.message });
+      }
+
+      // Push a store-scoped live event to the seller's own dashboard (P1-05).
+      // The audience is the store the request was authenticated for
+      // (`req.seller`, attached by requireSellerProfile), so every seller
+      // audit reaches its own dashboard without each call site repeating the
+      // store id. `metadata.sellerProfileId` stays as the explicit escape
+      // hatch for non-HTTP publishers. Audits with no store (admin, buyer,
+      // system) simply have no seller audience.
+      const storeId = metadata?.sellerProfileId || requestContext?.seller?._id;
+      if (storeId) {
+        try {
+          sellerEventHub.publish(storeId, "activity", {
+            id: String(auditLog._id),
+            action,
+            riskLevel: assessedRiskLevel,
+            result,
+            resourceType: resource?.type || null,
+            resourceId: resource?.id ? String(resource.id) : null,
+            createdAt: auditLog.createdAt,
+          });
+        } catch (sellerPublishError) {
+          logger.warn("Failed to publish seller live event", {
+            error: sellerPublishError.message,
+          });
+        }
       }
 
       // Log high-risk events immediately

@@ -191,6 +191,18 @@ router.patch(
   sellerController.cancelPayout,
 );
 
+// ── Live events (SSE, Phase 31, P1-05) ──────────────────────────────────────
+// Store-scoped event stream. Same auth as the dashboard; every subscriber is
+// bound to its own seller profile, so events never cross stores.
+router.get(
+  "/events/live",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireManagerOrOwner,
+  sellerController.streamSellerEvents,
+);
+
 // ── Settings & team ─────────────────────────────────────────────────────────
 // Settings writes and the entire team roster are owner-only. Settings reads
 // stay open to members so the dashboard can render store prefs read-only.
