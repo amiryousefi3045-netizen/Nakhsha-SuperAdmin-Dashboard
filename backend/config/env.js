@@ -5,7 +5,7 @@ const { cleanEnv, str, port, url, num, bool } = require("envalid");
  * اعتبارسنجی و تایپ چک متغیرهای محیطی
  */
 const validateEnv = () => {
-  return cleanEnv(process.env, {
+  const env = cleanEnv(process.env, {
     // Server
     NODE_ENV: str({
       choices: ["development", "production", "test"],
@@ -81,7 +81,81 @@ const validateEnv = () => {
       default: 5242880, // 5MB
       desc: "حداکثر سایز فایل به بایت",
     }),
+
+    // ── Observability (stage 34) ─────────────────────────────────────────
+  // METRICS_ENABLED gates the /metrics route entirely. It is opt-in so that
+  // the operational surface of a deployment is always an explicit decision.
+  METRICS_ENABLED: bool({
+    default: false,
+    desc: "فعال‌سازی مسیر /metrics (پیش‌فرض غیرفعال)",
+  }),
+
+  // When metrics are enabled, a scraper token is mandatory. Exposing an
+  // operational endpoint without authentication is a reconnaissance leak,
+  // so the app refuses to boot rather than serving it unauthenticated.
+  METRICS_TOKEN: str({
+    default: "",
+    desc: "توکن Bearer برای اسکرپ /metrics (در صورت فعال بودن الزامی)",
+  }),
+
+  // Optional Sentry DSN. Absent => error monitoring is a no-op by design.
+  SENTRY_DSN: str({
+    default: "",
+    desc: "DSN سرویس Sentry برای پایش خطا (خالی = غیرفعال)",
+  }),
+
+  SENTRY_TRACES_SAMPLE_RATE: num({
+    default: 0.1,
+    desc: "نمونه‌برداری تریس Sentry (۰ تا ۱)",
+  }),
+
+  // ── MongoDB automated backup (stage 34) ────────────────────────────────
+  BACKUP_DIR: str({
+    default: "./backups",
+    desc: "مسیر ذخیرهٔ آرشیو پشتیبان MongoDB",
+  }),
+
+  BACKUP_RETENTION_DAYS: num({
+    default: 7,
+    desc: "تعداد روز نگهداری آرشیو پشتیبان پیش از حذف چرخشی",
+  }),
+
+  // Minimum acceptable free disk, in megabytes, before a backup is attempted.
+  // A backup that fills the disk is an outage, not a safeguard.
+  BACKUP_MIN_FREE_MB: num({
+    default: 512,
+    desc: "حداقل فضای آزاد دیسک (مگابایت) برای اجازهٔ اجرای پشتیبان‌گیری",
+  }),
+
+  // ── External uptime probe (stage 34) ───────────────────────────────────
+  UPTIME_URL: str({
+    default: "",
+    desc: "آدرس کامل endpoint آمادگی برای مانیتور بیرونی",
+  }),
+
+  UPTIME_TIMEOUT_MS: num({
+    default: 5000,
+    desc: "مهلت پاسخ مانیتور آپ‌تایم به میلی‌ثانیه",
+  }),
   });
+
+  // ── Cross-field validation ─────────────────────────────────────────────
+  // A metrics endpoint without a token would be an unauthenticated
+  // reconnaissance surface. Fail fast at boot instead of shipping it.
+  if (env.METRICS_ENABLED && !env.METRICS_TOKEN) {
+    throw new Error(
+      "METRICS_ENABLED=true requires METRICS_TOKEN to be set. Refusing to expose an unauthenticated /metrics endpoint.",
+    );
+  }
+
+  if (env.SENTRY_DSN) {
+    const rate = env.SENTRY_TRACES_SAMPLE_RATE;
+    if (rate < 0 || rate > 1) {
+      throw new Error("SENTRY_TRACES_SAMPLE_RATE must be between 0 and 1.");
+    }
+  }
+
+  return env;
 };
 
 module.exports = validateEnv;

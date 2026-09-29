@@ -1,8 +1,15 @@
 /**
  * OTP metrics and monitoring service
+ *
+ * PRIVACY: phone numbers and client IPs are NEVER recorded verbatim. Both are
+ * personal data, and a log stream is replicated into third-party monitoring
+ * services. Operators still need to correlate ("all failures for this number
+ * in the last hour"), so identifiers are stored as keyed digests and IPs are
+ * coarsened to a /24 network. See utils/pii.js.
  */
 
 const logger = require("../utils/logger");
+const { phoneDigest, networkOf, digest } = require("../utils/pii");
 
 class OtpMetrics {
   constructor() {
@@ -54,8 +61,9 @@ class OtpMetrics {
     this.updateDailyStats("requests");
 
     logger.debug("OTP request recorded", {
-      phone,
-      clientIP,
+      phoneDigest: phoneDigest(phone),
+      clientNetwork: networkOf(clientIP),
+      userAgent,
       totalRequests: this.stats.totalOtpRequests,
     });
   }
@@ -69,28 +77,35 @@ class OtpMetrics {
     if (success) {
       this.stats.smsSuccesses++;
       this.updateDailyStats("smsSuccess");
+      logger.debug("SMS attempt recorded", {
+        phoneDigest: phoneDigest(phone),
+        success: true,
+        successRate: this.getSmsSuccessRate(),
+        duration,
+      });
     } else {
       this.stats.smsFailures++;
       this.updateDailyStats("smsFailure");
 
       if (error) {
-        this.recordError("sms", error, { phone, duration });
+        this.recordError("sms", error, {
+          phoneDigest: phoneDigest(phone),
+          duration,
+        });
       }
+      logger.debug("SMS attempt recorded", {
+        phoneDigest: phoneDigest(phone),
+        success: false,
+        successRate: this.getSmsSuccessRate(),
+        duration,
+      });
     }
-
-    logger.debug("SMS attempt recorded", {
-      phone,
-      success,
-      successRate: this.getSmsSuccessRate(),
-      duration,
-    });
   }
 
   /**
    * Record OTP verification attempt
    */
   recordVerificationAttempt(phone, success, duration, clientIP, attempts = 1) {
-    const startTime = Date.now();
     this.stats.totalOtpVerifications++;
 
     if (success) {
@@ -112,8 +127,8 @@ class OtpMetrics {
     }
 
     logger.debug("OTP verification recorded", {
-      phone,
-      clientIP,
+      phoneDigest: phoneDigest(phone),
+      clientNetwork: networkOf(clientIP),
       success,
       duration,
       attempts,
@@ -130,8 +145,8 @@ class OtpMetrics {
 
     logger.warn("Rate limit hit recorded", {
       type,
-      identifier,
-      clientIP,
+      identifierDigest: digest(identifier, "ratelimit-id"),
+      clientNetwork: networkOf(clientIP),
       totalHits: this.stats.rateLimitHits,
     });
   }
@@ -145,10 +160,9 @@ class OtpMetrics {
 
     logger.warn("Suspicious activity recorded", {
       indicators,
-      phone,
-      clientIP,
+      clientNetwork: networkOf(clientIP),
       userAgent,
-      totalBlocks: this.stats.suspiciousActivityBlocks,
+      totalBlocks: this.stats.suspiciousBlocks,
     });
   }
 
@@ -203,7 +217,7 @@ class OtpMetrics {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const cutoffDate = sevenDaysAgo.toISOString().split("T")[0];
 
-    for (const [date, stats] of this.stats.dailyStats.entries()) {
+    for (const date of this.stats.dailyStats.keys()) {
       if (date < cutoffDate) {
         this.stats.dailyStats.delete(date);
       }
@@ -233,7 +247,6 @@ class OtpMetrics {
    */
   getMetrics() {
     const uptime = Date.now() - this.stats.startTime;
-    const lastReset = Date.now() - this.stats.lastResetTime;
 
     return {
       summary: {

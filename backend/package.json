@@ -11,7 +11,12 @@
     "test:watch": "cross-env NODE_ENV=test jest --runInBand --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --runInBand --coverage",
     "test:api": "node scripts/api-smoke.js",
-    "monitor": "node scripts/otp-monitor.js"
+    "monitor": "node scripts/otp-monitor.js",
+    "backup": "node scripts/mongo-backup.js",
+    "backup:dry": "cross-env BACKUP_DRY_RUN=true node scripts/mongo-backup.js",
+    "backup:list": "node scripts/mongo-restore.js --list",
+    "backup:restore": "node scripts/mongo-restore.js",
+    "uptime:check": "node scripts/uptime-check.js"
   },
   "keywords": [],
   "author": "",

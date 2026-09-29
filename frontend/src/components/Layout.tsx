@@ -1,15 +1,15 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState, type FC } from "react";
-import { checkHealth } from "../services/health";
+import { getServiceStatus, type ServiceStatus } from "../services/health";
 import Navbar from "./Navbar";
 
 const Layout: FC = () => {
-  const [apiUp, setApiUp] = useState(true);
+  const [status, setStatus] = useState<ServiceStatus>("online");
   useEffect(() => {
     let stop = false;
     const run = async () => {
-      const ok = await checkHealth();
-      if (!stop) setApiUp(ok);
+      const next = await getServiceStatus();
+      if (!stop) setStatus(next);
     };
     run();
     const t = setInterval(run, 10000);
@@ -23,7 +23,13 @@ const Layout: FC = () => {
   return (
     <div className="min-h-screen bg-nakhsha-bg">
       <Navbar />
-      {!apiUp && (
+      {status === "degraded" && (
+        <div className="bg-amber-500 text-white text-center text-sm py-1">
+          سرویس با اختلال کار می‌کند: پایگاه داده در دسترس نیست. ثبت و
+          پرداخت تا اتصال دوباره برقرار شود ممکن است انجام نشود.
+        </div>
+      )}
+      {status === "offline" && (
         <div className="bg-red-600 text-white text-center text-sm py-1">
           اتصال به سرور برقرار نیست. برخی قابلیت‌ها غیرفعال‌اند.
         </div>

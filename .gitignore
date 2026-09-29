@@ -56,3 +56,11 @@ coverage/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# MongoDB backups (stage 34) - archive data must never reach git
+backups/
+**/backups/
+*.archive.gz
+# Temporary credential files written by mongo-backup/mongo-restore
+.mongodump-*.conf
+.mongorestore-*.conf

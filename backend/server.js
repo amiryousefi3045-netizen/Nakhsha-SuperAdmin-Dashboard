@@ -25,6 +25,10 @@ dotenv.config();
 const monitoring = require("./utils/monitoring");
 monitoring.init();
 
+// Metrics registry + graceful-shutdown state (stage 34).
+const { httpMetricsMiddleware } = require("./utils/metrics");
+const lifecycle = require("./utils/lifecycle");
+
 // Validate environment variables
 const validateEnv = require("./config/env");
 const env = validateEnv();
@@ -61,6 +65,12 @@ app.use(monitoring.requestContextMiddleware);
 
 // Enrich inline error responses with success:false and reqId automatically
 app.use(responseEnricher);
+
+// Observe request count, latency and 5xx totals for every request. Mounted
+// here — after the response enricher so the final status code is observed —
+// and before the routers so no route escapes measurement. The middleware
+// skips its own /metrics path so scraping cannot inflate the series it reads.
+app.use(httpMetricsMiddleware);
 
 // Custom morgan format with request ID
 morgan.token("reqId", (req) => req.id);
@@ -375,6 +385,14 @@ app.use(express.static(path.join(__dirname, "public")));
 // Routes
 app.use("/health", healthRoutes);
 app.use("/api/health", healthRoutes);
+
+// Prometheus scrape endpoint — opt-in, and refuses to boot without a token
+// (see config/env.js). The route itself also enforces bearer-token or
+// super-admin access, so an unauthenticated scan never sees operational data.
+if (String(process.env.METRICS_ENABLED) === "true") {
+  app.use("/metrics", require("./routes/metrics"));
+  logger.info("Metrics endpoint enabled at /metrics (token-protected)");
+}
 app.use("/auth", authRoutes);
 app.use("/api/auth", authRoutes);
 // Mount canonical crafts API first
@@ -604,26 +622,69 @@ const PORT = process.env.PORT || 5000;
     logger.info(`Server is running on port ${PORT}`);
   });
 
-  // Graceful shutdown
-  process.on("SIGTERM", async () => {
-    logger.info("SIGTERM received, shutting down gracefully...");
-    otpCleanupService.stop();
-    paymentReminderService.stop();
-    notificationQueueService.stop();
-    server.close(() => {
-      logger.info("Process terminated");
-    });
-  });
+  // ── Graceful shutdown ───────────────────────────────────────────────────
+  // Previously both handlers called server.close() and then relied on the
+  // event loop draining on its own. That never happens: the Mongoose
+  // connection keeps a socket open, so the process stayed alive until the
+  // orchestrator's SIGKILL landed, turning every deploy/restart into a
+  // hard kill mid-request. The sequence below is the correct order:
+  //   1. flag draining  → readiness starts returning 503, LB stops sending
+  //   2. stop background schedulers so no new work is queued
+  //   3. stop accepting new connections, let in-flight ones finish
+  //   4. close the database pool
+  //   5. exit — with a hard deadline so a stuck socket cannot hang forever
+  let shuttingDown = false;
 
-  process.on("SIGINT", async () => {
-    logger.info("SIGINT received, shutting down gracefully...");
-    otpCleanupService.stop();
-    paymentReminderService.stop();
-    notificationQueueService.stop();
-    server.close(() => {
+  const SHUTDOWN_DEADLINE_MS = Number(process.env.SHUTDOWN_DEADLINE_MS || 10000);
+
+  const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    logger.info(`${signal} received, shutting down gracefully...`);
+    lifecycle.setDraining(true);
+
+    // Never let a wedged connection outlive the grace period.
+    const forceTimer = setTimeout(() => {
+      logger.error("Graceful shutdown timed out, forcing exit", {
+        deadlineMs: SHUTDOWN_DEADLINE_MS,
+      });
+      process.exit(1);
+    }, SHUTDOWN_DEADLINE_MS);
+    forceTimer.unref();
+
+    try {
+      otpCleanupService.stop();
+      paymentReminderService.stop();
+      notificationQueueService.stop();
+    } catch (err) {
+      logger.error("Error stopping background services", { error: err.message });
+    }
+
+    server.close(async (err) => {
+      if (err) {
+        logger.error("Error closing HTTP server", { error: err.message });
+        process.exit(1);
+        return;
+      }
+
+      logger.info("HTTP server closed, draining in-flight requests");
+
+      try {
+        await mongoose.connection.close(false);
+        logger.info("MongoDB connection closed");
+      } catch (dbErr) {
+        logger.error("Error closing MongoDB connection", { error: dbErr.message });
+      }
+
+      clearTimeout(forceTimer);
       logger.info("Process terminated");
+      process.exit(0);
     });
-  });
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })();
 
 module.exports = app;
