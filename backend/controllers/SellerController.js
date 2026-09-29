@@ -7,6 +7,7 @@ const StockAdjustment = require("../models/StockAdjustment");
 const Craft = require("../models/Craft");
 const Order = require("../models/Order");
 const OrderService = require("../services/OrderService");
+const ReturnService = require("../services/ReturnService");
 const FinanceService = require("../services/FinanceService");
 const SalesReportService = require("../services/SalesReportService");
 const AuditService = require("../services/AuditService");
@@ -1708,6 +1709,234 @@ async function bulkUpdateOrderStatus(req, res) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// RETURNS / RMA (Phase 33, P1-04)
+// ════════════════════════════════════════════════════════════════════════════
+
+/** HTTP mapping for the RMA domain errors (mirrors the order domain mapping). */
+function returnErrorStatus(code) {
+  switch (code) {
+    case "ORDER_NOT_FOUND":
+    case "RETURN_NOT_FOUND":
+      return 404;
+    // A second claim on an order that already has one is a conflict, not a
+    // malformed request — the caller can act on it by reading the open RMA.
+    case "RETURN_ALREADY_OPEN":
+    case "INVALID_RETURN_TRANSITION":
+      return 409;
+    default:
+      return 400;
+  }
+}
+
+function sendReturnError(res, e, req) {
+  return res
+    .status(returnErrorStatus(e.code))
+    .json(createErrorResponse(e.code, e.message, e.details, req.id));
+}
+
+/**
+ * GET /api/seller/returns — the RMA queue. `counts` rides along so the page's
+ * status tabs do not need a second round trip.
+ */
+async function listReturns(req, res) {
+  try {
+    const page = safePage(req.query.page);
+    const limit = safePageSize(req.query.limit);
+    const [result, counts] = await Promise.all([
+      ReturnService.listSellerReturns(req.seller._id, {
+        page,
+        limit,
+        status: req.query.status,
+      }),
+      ReturnService.countByStatus(req.seller._id),
+    ]);
+    res.json(createSuccessResponse({ ...result, counts }, req.id));
+  } catch (e) {
+    if (e instanceof ReturnService.ReturnDomainError) return sendReturnError(res, e, req);
+    logger.error("Seller listReturns error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/** GET /api/seller/returns/:id */
+async function getReturn(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه مرجوعی نامعتبر است", { field: "id" }, req.id));
+    }
+    const ret = await ReturnService.getSellerReturn(req.seller._id, req.params.id);
+    if (!ret) {
+      return res
+        .status(404)
+        .json(createErrorResponse("RETURN_NOT_FOUND", "درخواست مرجوعی یافت نشد", null, req.id));
+    }
+    res.json(createSuccessResponse({ return: ret }, req.id));
+  } catch (e) {
+    logger.error("Seller getReturn error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * POST /api/seller/returns — file a return on the buyer's behalf (a walk-in
+ * return, or a request the buyer cannot file online). Filed straight into
+ * `approved`: the seller is the approver, so nothing is left to wait for.
+ */
+async function createReturn(req, res) {
+  try {
+    const { orderId, reason } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه سفارش نامعتبر است", { field: "orderId" }, req.id));
+    }
+
+    const ret = await ReturnService.createSellerReturnRequest({
+      sellerId: req.seller._id,
+      orderId,
+      reason,
+      sellerUserId: req.user.id,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "RETURN_FILED",
+      resource: { type: "TRANSACTION", id: String(ret._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        rmaNumber: ret.rmaNumber,
+        orderId: String(ret.orderId),
+        orderNumber: ret.orderNumber,
+        total: ret.items.reduce((sum, item) => sum + item.price * item.qty, 0),
+        currency: ret.refundCurrency,
+        filedBy: "seller",
+      },
+    });
+
+    res.status(201).json(createSuccessResponse({ return: ReturnService.returnToDTO(ret) }, req.id));
+  } catch (e) {
+    if (e instanceof ReturnService.ReturnDomainError) return sendReturnError(res, e, req);
+    logger.error("Seller createReturn error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/** PATCH /api/seller/returns/:id/status — approve / reject / receive / cancel. */
+async function changeReturnStatus(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه مرجوعی نامعتبر است", { field: "id" }, req.id));
+    }
+    const { status, note } = req.body || {};
+
+    const ret = await ReturnService.transitionReturn({
+      sellerId: req.seller._id,
+      returnId: req.params.id,
+      nextStatus: status,
+      sellerUserId: req.user.id,
+      note: typeof note === "string" ? note : "",
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "RETURN_STATUS_CHANGED",
+      resource: { type: "TRANSACTION", id: String(ret._id) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        rmaNumber: ret.rmaNumber,
+        orderNumber: ret.orderNumber,
+        from: ret.timeline[ret.timeline.length - 2]?.status || null,
+        to: ret.status,
+        note: ret.resolutionNote,
+      },
+    });
+
+    res.json(createSuccessResponse({ return: ReturnService.returnToDTO(ret) }, req.id));
+  } catch (e) {
+    if (e instanceof ReturnService.ReturnDomainError) return sendReturnError(res, e, req);
+    logger.error("Seller changeReturnStatus error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * POST /api/seller/returns/:id/refund — the money movement. Guarded by
+ * `requireOwnerOnly` at the route: refunding is a payout in the opposite
+ * direction and belongs to the account holder, not to a manager or staff.
+ */
+async function refundReturn(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسه مرجوعی نامعتبر است", { field: "id" }, req.id));
+    }
+    const { refundAmount, note } = req.body || {};
+
+    const { ret, order } = await ReturnService.refundReturn({
+      sellerId: req.seller._id,
+      returnId: req.params.id,
+      refundAmount: Number(refundAmount),
+      sellerUserId: req.user.id,
+      note: typeof note === "string" ? note : "",
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "REFUND_ISSUED",
+      resource: { type: "TRANSACTION", id: String(ret._id) },
+      result: "SUCCESS",
+      riskLevel: "HIGH",
+      requestContext: req,
+      metadata: {
+        rmaNumber: ret.rmaNumber,
+        orderId: String(order._id),
+        orderNumber: order.orderNumber,
+        amount: ret.refundAmount,
+        currency: ret.refundCurrency,
+        orderTotal: order.total,
+      },
+    });
+
+    res.json(
+      createSuccessResponse(
+        { return: ReturnService.returnToDTO(ret), order: OrderService.orderToDTO(order) },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    if (e instanceof ReturnService.ReturnDomainError) return sendReturnError(res, e, req);
+    // The order transition runs before the refund write; a domain failure there
+    // must still reach the caller as a domain error, not a 500.
+    if (e instanceof OrderService.OrderDomainError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller refundReturn error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 async function getSellerFulfillment(req, res) {
   try {
     const sellerId = req.seller._id;
@@ -2209,6 +2438,11 @@ module.exports = {
   getSellerOrder,
   changeOrderStatus,
   bulkUpdateOrderStatus,
+  listReturns,
+  getReturn,
+  createReturn,
+  changeReturnStatus,
+  refundReturn,
   getSellerFulfillment,
   getFinance,
   getPayouts,

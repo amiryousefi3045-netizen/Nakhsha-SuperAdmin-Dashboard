@@ -137,6 +137,11 @@ const OrderSchema = new mongoose.Schema(
       provider: { type: String, default: "", maxlength: 50 },
       refId: { type: String, default: "", maxlength: 100 },
       paidAt: { type: Date, default: null },
+      // Return/refund ledger (Phase 33, P1-04). The amount is what was actually
+      // returned to the buyer, which may be less than `total` (damage
+      // deduction, partial refund) — never assume it equals the order total.
+      refundedAmount: { type: Number, default: 0, min: 0 },
+      refundedAt: { type: Date, default: null },
     },
     customerNote: { type: String, default: "", maxlength: 2000 },
     sellerNote: { type: String, default: "", maxlength: 2000 },

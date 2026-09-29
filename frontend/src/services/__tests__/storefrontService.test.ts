@@ -30,6 +30,9 @@ import {
   submitStorefrontReview,
   getMyStorefrontReview,
   listStorefronts,
+  getStorefrontOrderDetail,
+  createBuyerReturn,
+  listBuyerReturns,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -500,6 +503,80 @@ describe("storefrontService", () => {
         hasDeliveredPurchase: false,
         review: null,
       });
+    });
+  });
+});
+
+describe("buyer returns / RMA (Phase 33, P1-04)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("exposes the receipt with the return affordance the server decided", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({
+        order: { id: "o1", orderNumber: 501 },
+        returns: [{ id: "r1", status: "requested", isOpen: true }],
+        returnEligible: true,
+        returnDeadline: "2026-01-01T00:00:00.000Z",
+      }) as never,
+    );
+
+    const detail = await getStorefrontOrderDetail("o1");
+
+    // Eligibility is never computed on the client: a stale clock must not be
+    // able to offer a return the store would refuse.
+    expect(detail.returnEligible).toBe(true);
+    expect(detail.returns).toHaveLength(1);
+    expect(detail.order.orderNumber).toBe(501);
+  });
+
+  it("still returns the plain order from the legacy helper", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({
+        order: { id: "o2", orderNumber: 502 },
+        returns: [],
+        returnEligible: false,
+        returnDeadline: null,
+      }) as never,
+    );
+
+    const order = await getStorefrontOrder("o2");
+
+    expect(order.id).toBe("o2");
+  });
+
+  it("posts a return request against the order", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({ return: { id: "r2", rmaNumber: 9, status: "requested" } }) as never,
+    );
+
+    const created = await createBuyerReturn("o3", { reason: "???? ????? ????" });
+
+    expect(apiClient.post).toHaveBeenCalledWith("/storefront/orders/o3/returns", {
+      reason: "???? ????? ????",
+    });
+    expect(created.rmaNumber).toBe(9);
+  });
+
+  it("surfaces a closed window instead of pretending it is open", async () => {
+    const err = { code: "RETURN_WINDOW_CLOSED", message: "???? ?????? ?? ????? ????? ???" };
+    vi.mocked(apiClient.post).mockResolvedValue({ success: false, error: err } as never);
+
+    await expect(createBuyerReturn("o4", { reason: "????????" })).rejects.toMatchObject({
+      code: "RETURN_WINDOW_CLOSED",
+    });
+  });
+
+  it("lists the buyer's own claims with pagination", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({ items: [], total: 0, page: 1, limit: 10 }) as never,
+    );
+
+    await listBuyerReturns({ page: 1, limit: 10 });
+
+    expect(apiClient.get).toHaveBeenCalledWith("/storefront/returns", {
+      params: { page: 1, limit: 10 },
     });
   });
 });

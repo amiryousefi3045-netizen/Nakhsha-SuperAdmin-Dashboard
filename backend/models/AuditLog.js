@@ -128,6 +128,11 @@ const auditLogSchema = new mongoose.Schema(
         "ORDER_CREATED",
         "ORDER_STATUS_CHANGED",
 
+        // Returns / RMA domain
+        "RETURN_REQUESTED",
+        "RETURN_FILED",
+        "RETURN_STATUS_CHANGED",
+
         // Seller finance & settlement domain
         "PAYOUT_REQUESTED",
         "PAYOUT_CANCELLED",

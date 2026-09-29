@@ -9,6 +9,7 @@ import {
   PackageIcon,
   Box,
   Eye,
+  Undo2,
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { getSellerFulfillment, updateSellerOrderStatus } from "../../services/sellerService";
@@ -17,7 +18,15 @@ import { StatusBadge } from "../../components/admin/StatusBadge";
 import { faNumber } from "../../lib/adminFormat";
 import { formatSellerPrice, ORDER_STATUS_LABEL, ORDER_STATUS_TONE } from "../../lib/sellerFormat";
 
-/** The next workflow step for the fulfillment queue (same as backend matrix). */
+/**
+ * The next workflow step for the fulfillment queue (same as backend matrix).
+ *
+ * There is deliberately NO `delivered → returned` entry. Once a return is
+ * approved by the RMA flow and the refund is issued, the order becomes
+ * `returned` as a side effect of the refund. A quick "mark returned" button
+ * here would let a seller flip that status with no reason, no amount and no
+ * audit row — so delivered orders point at the returns queue instead.
+ */
 const NEXT_STEP: Partial<Record<OrderStatus, { to: OrderStatus; label: string; icon: typeof Box }>> = {
   pending: { to: "confirmed", label: "تأیید", icon: CheckCircle2 },
   confirmed: { to: "processing", label: "آماده‌سازی", icon: Box },
@@ -187,6 +196,16 @@ export function FulfillmentSeller() {
                                 )}
                                 <span className="hidden xl:inline">{step.label}</span>
                               </button>
+                            ) : null}
+                            {o.status === "delivered" ? (
+                              <Link
+                                to="/seller/returns"
+                                title="ثبت یا پیگیری درخواست مرجوعی"
+                                className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+                              >
+                                <Undo2 className="h-3.5 w-3.5" />
+                                <span className="hidden xl:inline">مرجوعی</span>
+                              </Link>
                             ) : null}
                             <Link
                               to={`/seller/orders/${o.id}`}

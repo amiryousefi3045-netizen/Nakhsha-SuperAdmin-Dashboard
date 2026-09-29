@@ -1,17 +1,231 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowRight, BellRing, Package, ReceiptText } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, BellRing, Package, ReceiptText, Undo2, Loader2 } from "lucide-react";
 import { useAsync } from "../../hooks/useAsync";
 import { faNumber } from "../../lib/adminFormat";
 import { formatSellerPrice } from "../../lib/sellerFormat";
-import { getStorefrontOrder } from "../../services/storefrontService";
-import type { BuyerOrder, OrderNotification } from "../../types/storefront";
+import {
+  getStorefrontOrderDetail,
+  createBuyerReturn,
+} from "../../services/storefrontService";
+import type {
+  BuyerOrder,
+  BuyerReturn,
+  OrderNotification,
+} from "../../types/storefront";
+import { RETURN_STATUS_LABELS } from "../../types/returns";
 import {
   PAYMENT_LABELS,
   statusColorClass,
   statusLabel,
 } from "./orderLabels";
 
-function Receipt({ order }: { order: BuyerOrder }) {
+/**
+ * The buyer's side of the RMA (Phase 33, P1-04).
+ *
+ * Eligibility and the deadline come from the server with the receipt, so this
+ * component never decides on its own whether a window is still open — a stale
+ * client clock cannot offer a return the store would have to refuse. The list
+ * of claims is kept locally and updated from the POST response, which is the
+ * same document the store will see.
+ */
+function ReturnSection({
+  orderId,
+  initial,
+  eligible,
+  deadline,
+}: {
+  orderId: string;
+  initial: BuyerReturn[];
+  eligible: boolean;
+  deadline: string | null;
+}) {
+  const [claims, setClaims] = useState<BuyerReturn[]>(initial);
+  const [isFormOpen, setFormOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const openClaim = claims.find((c) => c.isOpen);
+  const closedClaims = claims.filter((c) => !c.isOpen);
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createBuyerReturn(orderId, { reason: reason.trim() });
+      setClaims((prev) => [created, ...prev]);
+      setReason("");
+      setFormOpen(false);
+      setDone(
+        `درخواست مرجوعی شما با شماره ${faNumber(created.rmaNumber)} ثبت شد و پس از بررسی فروشنده نتیجه اعلام می‌شود.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ثبت درخواست مرجوعی ناموفق بود");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Nothing to offer and nothing to show: stay out of the buyer's way.
+  if (claims.length === 0 && !eligible) return null;
+
+  return (
+    <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-white p-6">
+      <h2 className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
+        <Undo2 className="h-4 w-4 text-[var(--color-primary)]" />
+        مرجوعی و استرداد وجه
+      </h2>
+
+      {done ? (
+        <p className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+          {done}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+
+      {openClaim ? (
+        <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-[var(--color-text)]">
+              درخواست #{faNumber(openClaim.rmaNumber)}
+            </p>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[var(--color-text)]">
+              {RETURN_STATUS_LABELS[openClaim.status]}
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">
+            علت ثبت‌شده: {openClaim.reason}
+          </p>
+          {openClaim.status === "approved" ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--color-text)]">
+              درخواست شما تأیید شد. لطفاً کالا را مطابق راهنمای فروشنده ارسال کنید تا پس از
+              دریافت، مبلغ استرداد داده شود.
+            </p>
+          ) : null}
+          {openClaim.status === "received" ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--color-text)]">
+              کالا دریافت شد و مبلغ در حال استرداد است.
+            </p>
+          ) : null}
+          {openClaim.resolutionNote ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">
+              پاسخ فروشنده: {openClaim.resolutionNote}
+            </p>
+          ) : null}
+          <ul className="mt-3 space-y-1 border-t border-[var(--color-border)] pt-3">
+            {openClaim.timeline.map((t, i) => (
+              <li key={`${t.status}-${i}`} className="text-[11px] text-[var(--color-muted)]">
+                {RETURN_STATUS_LABELS[t.status]} — {new Date(t.at).toLocaleString("fa-IR")}
+                {t.note ? ` — ${t.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {closedClaims.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {closedClaims.map((c) => (
+            <li
+              key={c.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] p-3 text-xs"
+            >
+              <span className="text-[var(--color-text)]">درخواست #{faNumber(c.rmaNumber)}</span>
+              <span className="text-[var(--color-muted)]">
+                {RETURN_STATUS_LABELS[c.status]}
+                {c.status === "refunded"
+                  ? ` — ${formatSellerPrice(c.refundAmount, c.refundCurrency)}`
+                  : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!openClaim && eligible && !done ? (
+        isFormOpen ? (
+          <div className="mt-4">
+            <label
+              className="block text-sm font-medium text-[var(--color-text)]"
+              htmlFor="return-reason"
+            >
+              علت درخواست مرجوعی
+            </label>
+            <textarea
+              id="return-reason"
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="مشکل کالا را توضیح دهید تا فروشنده بتواند درخواست را بررسی کند."
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            />
+            {deadline ? (
+              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                مهلت ثبت درخواست: {new Date(deadline).toLocaleDateString("fa-IR")}
+              </p>
+            ) : null}
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFormOpen(false)}
+                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                disabled={busy || reason.trim().length < 5}
+                onClick={() => void submit()}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                ثبت درخواست
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4">
+            <p className="text-xs leading-5 text-[var(--color-muted)]">
+              اگر کالا با سفارش شما مطابقت ندارد یا ایرادی دارد، می‌توانید درخواست مرجوعی ثبت
+              کنید. نتیجه بررسی فروشنده از همین صفحه اعلام می‌شود.
+            </p>
+            {deadline ? (
+              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                مهلت ثبت درخواست: {new Date(deadline).toLocaleDateString("fa-IR")}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setFormOpen(true)}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+            >
+              <Undo2 className="h-4 w-4" />
+              درخواست مرجوعی
+            </button>
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function Receipt({
+  order,
+  returns = [],
+  returnEligible = false,
+  returnDeadline = null,
+}: {
+  order: BuyerOrder;
+  returns?: BuyerReturn[];
+  returnEligible?: boolean;
+  returnDeadline?: string | null;
+}) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex items-center justify-between">
@@ -203,6 +417,13 @@ function Receipt({ order }: { order: BuyerOrder }) {
         ) : null}
       </div>
 
+      <ReturnSection
+        orderId={order.id}
+        initial={returns}
+        eligible={returnEligible}
+        deadline={returnDeadline}
+      />
+
       <Link
         to="/"
         className="mt-6 inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-bg)]"
@@ -217,8 +438,8 @@ function Receipt({ order }: { order: BuyerOrder }) {
 export function BuyerOrderPage() {
   const { orderId = "" } = useParams<{ orderId: string }>();
 
-  const { data: order, loading, error } = useAsync(
-    () => getStorefrontOrder(orderId),
+  const { data, loading, error } = useAsync(
+    () => getStorefrontOrderDetail(orderId),
     [orderId],
   );
 
@@ -230,7 +451,7 @@ export function BuyerOrderPage() {
     );
   }
 
-  if (error || !order) {
+  if (error || !data) {
     const notFound = (error as { code?: string } | null)?.code === "NOT_FOUND";
     return (
       <div className="mx-auto min-h-[60vh] max-w-2xl px-4 py-16 text-center">
@@ -254,7 +475,14 @@ export function BuyerOrderPage() {
     );
   }
 
-  return <Receipt order={order} />;
+  return (
+    <Receipt
+      order={data.order}
+      returns={data.returns}
+      returnEligible={data.returnEligible}
+      returnDeadline={data.returnDeadline}
+    />
+  );
 }
 
 export default BuyerOrderPage;

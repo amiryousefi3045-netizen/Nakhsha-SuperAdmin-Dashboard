@@ -5,6 +5,8 @@
  * status, stock, sku, finance or verification data are ever exposed).
  */
 
+import type { ReturnItem, ReturnStatus, ReturnTimelineEntry } from "./returns";
+
 export interface StorefrontStats {
   totalProducts: number;
   averageRating: number;
@@ -137,6 +139,13 @@ export interface StorefrontPayment {
   provider?: string;
   refId?: string;
   paidAt?: string;
+  /**
+   * What the store actually gave back (Phase 33). Optional because it only
+   * exists once an RMA is settled, and a partial refund must never be shown
+   * as the order total.
+   */
+  refundedAmount?: number;
+  refundedAt?: string | null;
 }
 
 export interface BuyerOrderItem {
@@ -214,6 +223,54 @@ export interface ListBuyerOrdersParams {
   page?: number;
   limit?: number;
   status?: BuyerOrderStatus;
+}
+
+// ── Returns / RMA (Phase 33, P1-04) ─────────────────────────────────────────
+
+/**
+ * The buyer's view of a return. Mirrors the seller RMA minus the fields that
+ * are store-internal (the store id, the acting user ids). `isOpen` is what
+ * lets the UI say "under review" without re-deriving the state machine.
+ */
+export interface BuyerReturn {
+  id: string;
+  orderId: string;
+  orderNumber: number;
+  rmaNumber: number;
+  status: ReturnStatus;
+  isOpen: boolean;
+  reason: string;
+  resolutionNote: string;
+  items: ReturnItem[];
+  refundAmount: number;
+  refundCurrency: string;
+  refundedAt: string | null;
+  timeline: ReturnTimelineEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BuyerReturnsPage {
+  items: BuyerReturn[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * The order receipt plus the return affordance. Eligibility and the deadline
+ * are decided server-side: the client must never be the one deciding whether a
+ * buyer's return window is still open.
+ */
+export interface BuyerOrderDetail {
+  order: BuyerOrder;
+  returns: BuyerReturn[];
+  returnEligible: boolean;
+  returnDeadline: string | null;
+}
+
+export interface CreateBuyerReturnInput {
+  reason: string;
 }
 
 export interface BuyerOrdersPage {

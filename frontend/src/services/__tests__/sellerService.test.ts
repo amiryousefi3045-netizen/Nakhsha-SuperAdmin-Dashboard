@@ -61,6 +61,11 @@ import {
   subscribeSellerLiveEvents,
   bulkUpdateSellerProductStatus,
   bulkUpdateSellerOrderStatus,
+  listSellerReturns,
+  getSellerReturn,
+  createSellerReturn,
+  updateSellerReturnStatus,
+  refundSellerReturn,
 } from "../sellerService";
 import { apiClient, TokenManager } from "../../lib/apiClient";
 
@@ -999,6 +1004,106 @@ describe("seller bulk actions (Phase 32, P1-06)", () => {
     expect(apiClient.patch).toHaveBeenCalledWith("/seller/orders/bulk-status", {
       ids: ["o9"],
       status: "confirmed",
+    });
+  });
+});
+
+describe("seller returns / RMA (Phase 33, P1-04)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("asks for the RMA queue with the status filter and page", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(ok({ items: [], total: 0, page: 2, limit: 20 }) as never);
+
+    await listSellerReturns({ page: 2, limit: 20, status: "requested" });
+
+    expect(apiClient.get).toHaveBeenCalledWith("/seller/returns", {
+      params: { page: 2, limit: 20, status: "requested" },
+    });
+  });
+
+  it("falls back to a full zeroed count object when the server omits it", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(ok({ items: [], total: 0, page: 1, limit: 20 }) as never);
+
+    const result = await listSellerReturns();
+
+    // A missing `counts` must not make the dashboard crash on `.counts.open`.
+    expect(result.counts.awaitingDecision).toBe(0);
+    expect(result.counts.open).toBe(0);
+  });
+
+  it("unwraps a single RMA from the detail endpoint", async () => {
+    const row = { id: "r1", rmaNumber: 7, status: "requested", orderTotal: 100000 };
+    vi.mocked(apiClient.get).mockResolvedValue(ok({ return: row }) as never);
+
+    const result = await getSellerReturn("r1");
+
+    expect(apiClient.get).toHaveBeenCalledWith("/seller/returns/r1");
+    expect(result.rmaNumber).toBe(7);
+  });
+
+  it("files a walk-in return with the order id and reason", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(ok({ return: { id: "r2" } }) as never);
+
+    await createSellerReturn({ orderId: "o1", reason: "?????? ?????" });
+
+    expect(apiClient.post).toHaveBeenCalledWith("/seller/returns", {
+      orderId: "o1",
+      reason: "?????? ?????",
+    });
+  });
+
+  it("sends the note when one is given", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValue(ok({ return: { id: "r3" } }) as never);
+
+    await updateSellerReturnStatus("r3", "rejected", "?????? ????? ???");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/returns/r3/status", {
+      status: "rejected",
+      note: "?????? ????? ???",
+    });
+  });
+
+  it("omits the note entirely when approving without one", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValue(ok({ return: { id: "r4" } }) as never);
+
+    await updateSellerReturnStatus("r4", "approved");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/returns/r4/status", {
+      status: "approved",
+    });
+  });
+
+  it("posts the refund amount and returns both the RMA and the order", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({ return: { id: "r5", refundAmount: 60000 }, order: { id: "o5", status: "returned" } }) as never,
+    );
+
+    const result = await refundSellerReturn("r5", { refundAmount: 60000, note: "??? ?????" });
+
+    expect(apiClient.post).toHaveBeenCalledWith("/seller/returns/r5/refund", {
+      refundAmount: 60000,
+      note: "??? ?????",
+    });
+    // The order comes back so the page can show that it is now `returned`
+    // instead of guessing at the side effect.
+    expect(result.order.status).toBe("returned");
+    expect(result.return.refundAmount).toBe(60000);
+  });
+
+  it("propagates a domain error instead of swallowing it", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      success: false as const,
+      error: {
+        code: "INVALID_RETURN_TRANSITION",
+        message: "استرداد تنها پس از دریافت کالا ممکن است",
+        status: 409,
+      },
+    });
+
+    await expect(refundSellerReturn("r6", { refundAmount: 100 })).rejects.toMatchObject({
+      code: "INVALID_RETURN_TRANSITION",
     });
   });
 });

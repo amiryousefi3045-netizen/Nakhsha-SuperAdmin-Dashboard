@@ -143,6 +143,46 @@ router.get(
   sellerController.getSellerFulfillment,
 );
 
+// ── Returns / RMA (Phase 33, P1-04) ──────────────────────────────────────────
+// Reading the queue is open to any team member; deciding and paying are not.
+//   - requireManagerOrOwner  -> approve / reject / receive / file on behalf of
+//     the buyer. A staff member physically handing a parcel back still cannot
+//     adjudicate the claim, same rule as the order status endpoint.
+//   - requireOwnerOnly       -> issuing a refund. Money leaves the store, so it
+//     is reserved for the account holder (same tier as payouts).
+router.get(
+  "/returns",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.listReturns,
+);
+router.get(
+  "/returns/:id",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.getReturn,
+);
+router.post(
+  "/returns",
+  write,
+  requireManagerOrOwner,
+  sellerController.createReturn,
+);
+router.patch(
+  "/returns/:id/status",
+  write,
+  requireManagerOrOwner,
+  sellerController.changeReturnStatus,
+);
+router.post(
+  "/returns/:id/refund",
+  write,
+  requireOwnerOnly,
+  sellerController.refundReturn,
+);
+
 // ── Reviews (Phase 16) ───────────────────────────────────────────────────────
 // Review moderation is part of the seller write surface (rate-limited). Reads
 // stay unthrottled like the other catalogs; ownership is enforced in the

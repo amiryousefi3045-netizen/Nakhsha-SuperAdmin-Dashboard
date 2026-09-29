@@ -11,11 +11,16 @@ import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
   AnalyticsParams,
   BulkActionResult,
+  CreateReturnInput,
   FulfillmentSummary,
   ListSellerReviewsParams,
+  ListSellerReturnsParams,
   OrderCounts,
   OrderStatus,
   ProductStatus,
+  RefundReturnInput,
+  ReturnCounts,
+  ReturnStatus,
   ReviewStatus,
   PayoutReportParams,
   SalesReportParams,
@@ -34,6 +39,7 @@ import type {
   SellerPayoutReport,
   SellerProduct,
   SellerProfile,
+  SellerReturn,
   SellerReview,
   SellerSalesReport,
   SellerSettings,
@@ -470,6 +476,81 @@ export async function updateSellerOrderStatus(
     reason ? { status, reason } : { status },
   );
   return unwrap(res, { order: {} as SellerOrder }).order;
+}
+
+// ── Returns / RMA (Phase 33, P1-04) ─────────────────────────────────────────
+
+/** Zeroed count block, used so a response without `counts` still satisfies the type. */
+const EMPTY_RETURN_COUNTS: ReturnCounts = {
+  requested: 0,
+  approved: 0,
+  rejected: 0,
+  received: 0,
+  refunded: 0,
+  cancelled: 0,
+  awaitingDecision: 0,
+  open: 0,
+};
+
+/** GET /seller/returns — the store's RMA queue, newest first. */
+export async function listSellerReturns(
+  params: ListSellerReturnsParams = {},
+): Promise<SellerPage<SellerReturn> & { counts: ReturnCounts }> {
+  const res = await apiClient.get<SellerPage<SellerReturn> & { counts: ReturnCounts }>(
+    "/seller/returns",
+    { params },
+  );
+  const page = unwrap(res, { items: [], total: 0, page: 1, limit: 0, counts: EMPTY_RETURN_COUNTS });
+  // `unwrap` hands back `res.data` untouched, so a response that omits `counts`
+  // would leave the dashboard reading `.counts.open` off undefined. The return
+  // type promises a full block, so supply the missing half here.
+  return { ...page, counts: { ...EMPTY_RETURN_COUNTS, ...(page.counts ?? {}) } };
+}
+
+/** GET /seller/returns/:id (404 for another store's request) */
+export async function getSellerReturn(id: string): Promise<SellerReturn> {
+  const res = await apiClient.get<{ return: SellerReturn }>(`/seller/returns/${id}`);
+  return unwrap(res, { return: {} as SellerReturn }).return;
+}
+
+/**
+ * POST /seller/returns — file a return on the buyer's behalf (walk-in or
+ * phone). Lands directly in `approved`: the seller is the approver.
+ */
+export async function createSellerReturn(
+  input: CreateReturnInput,
+): Promise<SellerReturn> {
+  const res = await apiClient.post<{ return: SellerReturn }>("/seller/returns", input);
+  return unwrap(res, { return: {} as SellerReturn }).return;
+}
+
+/** PATCH /seller/returns/:id/status (approve / reject / receive / cancel) */
+export async function updateSellerReturnStatus(
+  id: string,
+  status: ReturnStatus,
+  note?: string,
+): Promise<SellerReturn> {
+  const res = await apiClient.patch<{ return: SellerReturn }>(
+    `/seller/returns/${id}/status`,
+    note ? { status, note } : { status },
+  );
+  return unwrap(res, { return: {} as SellerReturn }).return;
+}
+
+/**
+ * POST /seller/returns/:id/refund — the only call that moves money, and the
+ * only one restricted to the account owner. Requires the goods to be in, and
+ * returns the updated RMA plus the order it just returned.
+ */
+export async function refundSellerReturn(
+  id: string,
+  input: RefundReturnInput,
+): Promise<{ return: SellerReturn; order: SellerOrder }> {
+  const res = await apiClient.post<{ return: SellerReturn; order: SellerOrder }>(
+    `/seller/returns/${id}/refund`,
+    input,
+  );
+  return unwrap(res, { return: {} as SellerReturn, order: {} as SellerOrder });
 }
 
 /**

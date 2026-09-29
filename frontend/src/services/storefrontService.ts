@@ -10,9 +10,13 @@ import { apiClient } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
   BuyerOrder,
+  BuyerOrderDetail,
   BuyerOrdersPage,
+  BuyerReturn,
+  BuyerReturnsPage,
   CheckoutInput,
   CheckoutResponse,
+  CreateBuyerReturnInput,
   ListBuyerOrdersParams,
   ListStorefrontProductsParams,
   ListStorefrontsParams,
@@ -124,10 +128,53 @@ export async function submitStorefrontPayment(
 
 /** GET /storefront/orders/:orderId — the buyer's own order receipt. */
 export async function getStorefrontOrder(orderId: string): Promise<BuyerOrder> {
-  const res = await apiClient.get<{ order: BuyerOrder }>(
-    `/storefront/orders/${orderId}`,
+  const detail = await getStorefrontOrderDetail(orderId);
+  return detail.order;
+}
+
+/**
+ * GET /storefront/orders/:orderId — the receipt plus the return affordance.
+ *
+ * `returnEligible` / `returnDeadline` come from the server, so the "request a
+ * return" button can never be shown for a window that has already closed.
+ */
+export async function getStorefrontOrderDetail(orderId: string): Promise<BuyerOrderDetail> {
+  const res = await apiClient.get<BuyerOrderDetail>(`/storefront/orders/${orderId}`);
+  return unwrap(res, {
+    order: {} as BuyerOrder,
+    returns: [],
+    returnEligible: false,
+    returnDeadline: null,
+  });
+}
+
+/**
+ * POST /storefront/orders/:orderId/returns — open a return on a delivered
+ * order. The server owns the window and the one-open-request rule; a rejected
+ * attempt comes back as a domain error (400/409) with a Persian message.
+ */
+export async function createBuyerReturn(
+  orderId: string,
+  input: CreateBuyerReturnInput,
+): Promise<BuyerReturn> {
+  const res = await apiClient.post<{ return: BuyerReturn }>(
+    `/storefront/orders/${orderId}/returns`,
+    input,
   );
-  return unwrap(res, { order: {} as BuyerOrder }).order;
+  return unwrap(res, { return: {} as BuyerReturn }).return;
+}
+
+/** GET /storefront/returns — the buyer's own claims, newest first. */
+export async function listBuyerReturns(
+  params: { page?: number; limit?: number } = {},
+): Promise<BuyerReturnsPage> {
+  const res = await apiClient.get<BuyerReturnsPage>("/storefront/returns", { params });
+  return unwrap(res, {
+    items: [],
+    total: 0,
+    page: params.page ?? 1,
+    limit: params.limit ?? 10,
+  });
 }
 
 /** GET /storefront/orders — paginated "my orders" for the signed-in buyer. */

@@ -9,6 +9,8 @@ const {
   paymentCallback,
   listBuyerOrders,
   getBuyerOrder,
+  createBuyerReturn,
+  listBuyerReturns,
 } = require("../controllers/StorefrontOrderController");
 
 /**
@@ -59,6 +61,28 @@ const listOrdersQuerySchema = z.object({
   status: z
     .enum(ORDER_STATUSES, { errorMap: () => ({ message: "وضعیت سفارش نامعتبر است" }) })
     .optional(),
+});
+
+const returnBodySchema = z.object({
+  reason: z
+    .string({ required_error: "علت مرجوعی الزامی است" })
+    .trim()
+    .min(5, "علت مرجوعی را کمی کامل‌تر بنویسید")
+    .max(1000, "علت مرجوعی نامعتبر است"),
+});
+
+const listReturnsQuerySchema = z.object({
+  page: z
+    .coerce.number()
+    .int("صفحه باید عدد صحیح مثبت باشد")
+    .min(1, "صفحه باید عدد صحیح مثبت باشد")
+    .default(1),
+  limit: z
+    .coerce.number()
+    .int("تعداد در هر صفحه باید بین ۱ تا ۵۰ باشد")
+    .min(1, "تعداد در هر صفحه باید بین ۱ تا ۵۰ باشد")
+    .max(50, "تعداد در هر صفحه باید بین ۱ تا ۵۰ باشد")
+    .default(10),
 });
 
 const checkoutBodySchema = z.object({
@@ -145,6 +169,25 @@ router.get(
   requireAuth,
   validate(orderParamsSchema, "params"),
   getBuyerOrder,
+);
+
+// Return requests (Phase 33, P1-04). Declared after `/orders/:orderId` because
+// they extend that path; the one-segment `/returns` list is safe because this
+// router is mounted BEFORE the catalog router (which owns a `/:slug` GET).
+router.post(
+  "/orders/:orderId/returns",
+  requireAuth,
+  heavyLimiter,
+  validate(orderParamsSchema, "params"),
+  validate(returnBodySchema, "body"),
+  createBuyerReturn,
+);
+
+router.get(
+  "/returns",
+  requireAuth,
+  validate(listReturnsQuerySchema, "query"),
+  listBuyerReturns,
 );
 
 module.exports = router;

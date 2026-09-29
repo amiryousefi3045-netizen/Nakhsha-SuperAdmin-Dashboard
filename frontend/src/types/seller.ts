@@ -387,15 +387,28 @@ export interface SellerLiveAlert {
   at: string;
 }
 
-/** Outcome of one row inside a bulk action (Phase 32, P1-06). */
-export type BulkRowOutcome = { id: string; reason: string } | { id: string; orderNumber?: number };
+/**
+ * Outcome of one row inside a bulk action (Phase 32, P1-06).
+ *
+ * Typed per bucket because the server is: a row the seller actually changed
+ * comes back as a bare id (plus the order number for orders, so the UI can
+ * name it), while a row that was skipped or failed ALWAYS carries the reason
+ * it did not happen. Collapsing these into one loose union would make
+ * `failed[0].reason` a type error even though the server guarantees it.
+ */
+export type BulkSucceededRow = { id: string; orderNumber?: number };
+export type BulkSkippedRow = { id: string; reason: string; orderNumber?: number };
+export type BulkFailedRow = { id: string; reason: string; orderNumber?: number };
+
+/** Any row from any bucket — what the bulk result bar renders. */
+export type BulkRowOutcome = BulkSucceededRow | BulkSkippedRow | BulkFailedRow;
 
 export interface BulkActionResult {
   batchId: string;
   summary: { total: number; succeeded: number; skipped: number; failed: number };
-  succeeded: BulkRowOutcome[];
-  skipped: BulkRowOutcome[];
-  failed: BulkRowOutcome[];
+  succeeded: BulkSucceededRow[];
+  skipped: BulkSkippedRow[];
+  failed: BulkFailedRow[];
 }
 
 // ── Orders & fulfillment ────────────────────────────────────────────────────
@@ -452,7 +465,16 @@ export interface SellerOrder {
   itemCount: number;
   timeline: OrderTimelineEntry[];
   carrierInfo: Record<string, unknown>;
-  payment: { status: string };
+  /**
+   * The refund snapshot written when an RMA is settled (Phase 33). Both fields
+   * are absent until a refund is actually issued, so they are optional: a
+   * partial refund must never be rendered as the order total.
+   */
+  payment: {
+    status: string;
+    refundedAmount?: number;
+    refundedAt?: string | null;
+  };
   customerNote?: string;
   sellerNote?: string;
   createdAt: string;
@@ -475,6 +497,82 @@ export interface FulfillmentSummary {
   needAction: number;
   needingShipment: number;
   recent: SellerOrder[];
+}
+
+// ── Returns / RMA (Phase 33, P1-04) ─────────────────────────────────────────
+
+/**
+ * The RMA state machine itself lives in `types/returns.ts` because the buyer
+ * and the seller describe the same return. It is re-exported here so the rest
+ * of the seller dashboard can keep importing from one place.
+ */
+export {
+  RETURN_STATUSES,
+  RETURN_STATUS_ACTIONS,
+  RETURN_TERMINAL_STATUSES,
+  RETURN_STATUS_LABELS,
+  isOpenReturn,
+} from "./returns";
+export type { ReturnStatus, ReturnItem, ReturnTimelineEntry } from "./returns";
+
+import type { ReturnItem, ReturnStatus, ReturnTimelineEntry } from "./returns";
+
+export interface SellerReturn {
+  id: string;
+  sellerId: string;
+  orderId: string;
+  orderNumber: number;
+  rmaNumber: number;
+  /** Null for a seller-filed (walk-in) request: there is no claiming buyer. */
+  buyerUserId: string | null;
+  status: ReturnStatus;
+  isOpen: boolean;
+  reason: string;
+  resolutionNote: string;
+  customerName: string;
+  customerPhone: string;
+  items: ReturnItem[];
+  refundAmount: number;
+  refundCurrency: string;
+  refundedAt: string | null;
+  /**
+   * What the buyer actually paid for this order. The refund input is bounded
+   * by THIS, not by the sum of the item lines — those disagree as soon as a
+   * discount is involved. Null only if the order was deleted underneath.
+   */
+  orderTotal: number | null;
+  orderCurrency: string;
+  timeline: ReturnTimelineEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReturnCounts {
+  requested: number;
+  approved: number;
+  rejected: number;
+  received: number;
+  refunded: number;
+  cancelled: number;
+  /** Needs the seller's decision or their physical receipt: the work queue. */
+  awaitingDecision: number;
+  open: number;
+}
+
+export interface ListSellerReturnsParams {
+  page?: number;
+  limit?: number;
+  status?: ReturnStatus;
+}
+
+export interface CreateReturnInput {
+  orderId: string;
+  reason: string;
+}
+
+export interface RefundReturnInput {
+  refundAmount: number;
+  note?: string;
 }
 
 // ── Reviews (Phase 16) ───────────────────────────────────────────────────────
