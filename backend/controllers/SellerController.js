@@ -1,3 +1,4 @@
+const { randomUUID } = require("crypto");
 const mongoose = require("mongoose");
 const SellerProfile = require("../models/SellerProfile");
 const TeamMember = require("../models/TeamMember");
@@ -34,6 +35,32 @@ function safePage(raw) {
 
 function escapeRegex(text) {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ── Bulk actions (P1-06) ─────────────────────────────────────────────────────
+// Same contract as the admin bulk endpoints: every selected id is reported
+// individually so one bad row can never hide the fate of the rest.
+
+const BATCH_MAX_IDS = 50;
+
+/**
+ * Deduplicate, cap and validate an array of ids for a bulk operation.
+ * Returns `null` when there is nothing to process or an id is malformed.
+ */
+function normalizeBatchIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  const unique = [...new Set(ids.map((i) => String(i).trim()).filter(Boolean))];
+  if (unique.length === 0 || unique.some((id) => !mongoose.Types.ObjectId.isValid(id))) return null;
+  return unique.slice(0, BATCH_MAX_IDS);
+}
+
+function batchSummary(succeeded, skipped, failed) {
+  return {
+    total: succeeded.length + skipped.length + failed.length,
+    succeeded: succeeded.length,
+    skipped: skipped.length,
+    failed: failed.length,
+  };
 }
 
 function productToDTO(product) {
@@ -586,6 +613,111 @@ async function updateProductStatus(req, res) {
     res.json(createSuccessResponse({ product: productToDTO(product) }, req.id));
   } catch (e) {
     logger.error("Seller updateProductStatus error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * Bulk status change for products (P1-06). Reused by the inventory page: a
+ * merchant pausing a batch of out-of-stock items is the same write.
+ *
+ * Ownership is enforced by the `sellerId` filter, so an id belonging to
+ * another store is reported as NOT_FOUND and never modified — the response
+ * cannot be used to probe for foreign ids.
+ */
+async function bulkUpdateProductStatus(req, res) {
+  try {
+    const { ids, status } = req.body || {};
+
+    const batchIds = normalizeBatchIds(ids);
+    if (!batchIds) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "شناسه معتبری ارائه نشده است",
+            { field: "ids", max: BATCH_MAX_IDS },
+            req.id,
+          ),
+        );
+    }
+    if (!status || !PRODUCT_STATUSES.includes(status)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "وضعیت مورد نظر نامعتبر است",
+            { field: "status", allowed: PRODUCT_STATUSES },
+            req.id,
+          ),
+        );
+    }
+
+    const batchId = randomUUID();
+    const products = await Product.find({ _id: { $in: batchIds }, sellerId: req.seller._id });
+    const byId = new Map(products.map((p) => [String(p._id), p]));
+    const succeeded = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of batchIds) {
+      const product = byId.get(id);
+      if (!product) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      if (product.status === status) {
+        skipped.push({ id, reason: "UNCHANGED" });
+        continue;
+      }
+      try {
+        product.status = status;
+        product.rejectionReason = "";
+        await product.save();
+        succeeded.push({ id: String(product._id) });
+      } catch (e) {
+        logger.warn("Bulk product status change failed", { productId: id, error: e.message });
+        failed.push({ id, reason: "ERROR" });
+      }
+    }
+
+    // One audit row per bulk gesture, not one per product: a 50-item selection
+    // would otherwise flood the very activity feed the seller reads.
+    if (succeeded.length > 0) {
+      await AuditService.log({
+        userId: req.user.id,
+        action: "DATA_BULK_OPERATION",
+        result: "SUCCESS",
+        riskLevel: "MEDIUM",
+        requestContext: req,
+        metadata: {
+          batch: batchId,
+          operation: "PRODUCT_STATUS_CHANGE",
+          status,
+          affectedCount: succeeded.length,
+          ids: succeeded.map((s) => s.id),
+        },
+      });
+    }
+
+    res.json(
+      createSuccessResponse(
+        {
+          batchId,
+          summary: batchSummary(succeeded, skipped, failed),
+          succeeded,
+          skipped,
+          failed,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller bulkUpdateProductStatus error", { error: e.message, sellerId: req.seller?._id });
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
@@ -1457,6 +1589,125 @@ async function changeOrderStatus(req, res) {
   }
 }
 
+/**
+ * Bulk order status change (P1-06).
+ *
+ * A selection almost never sits in one status ("confirm all"), so each order
+ * is driven through the normal `transitionOrder` state machine and reported
+ * on its own: a row that cannot legally move is `failed` with the domain
+ * reason while its neighbours still succeed. Side effects (stock restore,
+ * buyer notifications, live events) therefore stay identical to the
+ * single-order path instead of being re-implemented here.
+ */
+async function bulkUpdateOrderStatus(req, res) {
+  try {
+    const { ids, status, reason } = req.body || {};
+
+    const batchIds = normalizeBatchIds(ids);
+    if (!batchIds) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "VALIDATION_ERROR",
+            "شناسه معتبری ارائه نشده است",
+            { field: "ids", max: BATCH_MAX_IDS },
+            req.id,
+          ),
+        );
+    }
+    if (!status || !ORDER_STATUSES.includes(status)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("VALIDATION_ERROR", "وضعیت سفارش نامعتبر است", { field: "status" }, req.id),
+        );
+    }
+
+    const batchId = randomUUID();
+    const reasonText = typeof reason === "string" ? reason : "";
+    const orders = await Order.find({ _id: { $in: batchIds }, sellerId: req.seller._id }).select(
+      "status orderNumber",
+    );
+    const byId = new Map(orders.map((o) => [String(o._id), o]));
+    const succeeded = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of batchIds) {
+      const existing = byId.get(id);
+      if (!existing) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      if (existing.status === status) {
+        skipped.push({ id, reason: "UNCHANGED" });
+        continue;
+      }
+      try {
+        await OrderService.transitionOrder({
+          orderId: id,
+          sellerId: req.seller._id,
+          nextStatus: status,
+          sellerUserId: req.user.id,
+          reason: reasonText,
+        });
+        succeeded.push({ id, orderNumber: existing.orderNumber });
+      } catch (e) {
+        if (e instanceof OrderService.OrderDomainError) {
+          // INVALID_TRANSITION / INSUFFICIENT_STOCK are expected outcomes of a
+          // mixed selection, not server faults.
+          logger.info("Bulk order transition rejected", {
+            orderId: id,
+            from: existing.status,
+            to: status,
+            reason: e.code,
+          });
+          failed.push({ id, reason: e.code });
+          continue;
+        }
+        logger.warn("Bulk order status change failed", { orderId: id, error: e.message });
+        failed.push({ id, reason: "ERROR" });
+      }
+    }
+
+    if (succeeded.length > 0) {
+      await AuditService.log({
+        userId: req.user.id,
+        action: "DATA_BULK_OPERATION",
+        result: "SUCCESS",
+        riskLevel: status === "cancelled" || status === "returned" ? "HIGH" : "MEDIUM",
+        requestContext: req,
+        metadata: {
+          batch: batchId,
+          operation: "ORDER_STATUS_CHANGE",
+          status,
+          affectedCount: succeeded.length,
+          orderNumbers: succeeded.map((s) => s.orderNumber),
+        },
+      });
+    }
+
+    res.json(
+      createSuccessResponse(
+        {
+          batchId,
+          summary: batchSummary(succeeded, skipped, failed),
+          succeeded,
+          skipped,
+          failed,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller bulkUpdateOrderStatus error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 async function getSellerFulfillment(req, res) {
   try {
     const sellerId = req.seller._id;
@@ -1940,6 +2191,7 @@ module.exports = {
   updateProduct,
   deleteProduct,
   updateProductStatus,
+  bulkUpdateProductStatus,
   listInventory,
   exportInventory,
   adjustStock,
@@ -1956,6 +2208,7 @@ module.exports = {
   exportOrders,
   getSellerOrder,
   changeOrderStatus,
+  bulkUpdateOrderStatus,
   getSellerFulfillment,
   getFinance,
   getPayouts,

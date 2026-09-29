@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -14,12 +14,23 @@ import {
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { useDebounce } from "../../hooks/useDebounce";
+import { useRowSelection } from "../../hooks/useRowSelection";
 import {
   listSellerProducts,
   deleteSellerProduct,
   updateSellerProductStatus,
+  bulkUpdateSellerProductStatus,
 } from "../../services/sellerService";
-import type { SellerProduct, ProductStatus } from "../../types/seller";
+import type {
+  SellerProduct,
+  ProductStatus,
+  BulkActionResult,
+} from "../../types/seller";
+import {
+  BulkActionBar,
+  BulkActionButton,
+  BulkResultNotice,
+} from "../../components/seller/BulkActionBar";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { Pagination } from "../../components/admin/Pagination";
 import { faNumber, formatDateTime } from "../../lib/adminFormat";
@@ -79,6 +90,11 @@ export function ProductsSeller() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<SellerProduct | null>(null);
 
+  // Bulk selection (Phase 32, P1-06).
+  const selection = useRowSelection();
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
+
   const fetcher = useCallback(
     () =>
       listSellerProducts({
@@ -99,6 +115,34 @@ export function ProductsSeller() {
   }, [debouncedQ]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.limit)) : 1;
+
+  // A bulk action must never fire against a stale selection: reset it whenever
+  // the visible page or its filters change.
+  useEffect(() => {
+    selection.clear();
+    setBulkResult(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedQ, status, category]);
+
+  const pageIds = useMemo(() => (data?.items ?? []).map((p) => p.id), [data]);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selection.isSelected(id));
+
+  const handleBulkStatus = async (nextStatus: ProductStatus) => {
+    if (selection.count === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkResult(null);
+    try {
+      const result = await bulkUpdateSellerProductStatus([...selection.selected], nextStatus);
+      setBulkResult(result);
+      selection.clear();
+      reload();
+    } catch (e) {
+      setSuccessMsg(null);
+      setActionError((e as Error)?.message || "عملیات گروهی ناموفق بود");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const clearMessages = () => {
     setActionError(null);
@@ -208,6 +252,27 @@ export function ProductsSeller() {
         </div>
       ) : null}
 
+      {/* Bulk selection toolbar + last result */}
+      <BulkResultNotice result={bulkResult} onDismiss={() => setBulkResult(null)} />
+      <BulkActionBar
+        count={selection.count}
+        title="محصول"
+        busy={bulkBusy}
+        onCancel={() => {
+          selection.clear();
+          setBulkResult(null);
+        }}
+      >
+        <BulkActionButton label="فعال‌سازی" busy={bulkBusy} onClick={() => void handleBulkStatus("active")} />
+        <BulkActionButton label="توقف فروش" busy={bulkBusy} onClick={() => void handleBulkStatus("paused")} />
+        <BulkActionButton
+          label="بایگانی"
+          busy={bulkBusy}
+          tone="danger"
+          onClick={() => void handleBulkStatus("archived")}
+        />
+      </BulkActionBar>
+
       {/* Table */}
       {isLoading ? (
         <LoadingSkeleton />
@@ -229,6 +294,14 @@ export function ProductsSeller() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)] text-xs font-semibold text-[var(--color-muted)]">
+                <th className="w-10 px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="انتخاب همه‌ی محصولات صفحه"
+                    checked={allPageSelected}
+                    onChange={() => selection.toggleAll(pageIds, allPageSelected)}
+                  />
+                </th>
                 <th className="px-4 py-3 text-start">محصول</th>
                 <th className="px-4 py-3 text-center">قیمت</th>
                 <th className="px-4 py-3 text-center">موجودی</th>
@@ -245,6 +318,8 @@ export function ProductsSeller() {
                   busy={busyId === p.id}
                   onStatusChange={handleStatusChange}
                   onArchiveRequest={setConfirmArchive}
+                  checked={selection.isSelected(p.id)}
+                  onToggle={() => selection.toggle(p.id)}
                 />
               ))}
             </tbody>
@@ -301,16 +376,23 @@ function ProductRow({
   busy,
   onStatusChange,
   onArchiveRequest,
+  checked,
+  onToggle,
 }: {
   product: SellerProduct;
   busy: boolean;
   onStatusChange: (product: SellerProduct, status: ProductStatus) => void;
   onArchiveRequest: (product: SellerProduct) => void;
+  checked: boolean;
+  onToggle: () => void;
 }) {
   const transitions = TRANSITIONS[p.status] ?? [];
 
   return (
     <tr className="transition-colors hover:bg-[var(--color-primary)]/5">
+      <td className="px-4 py-3 text-center">
+        <input type="checkbox" aria-label={`انتخاب ${p.title}`} checked={checked} onChange={onToggle} />
+      </td>
       <td className="px-4 py-3">
         <Link to={`/seller/products/${p.id}`} className="flex items-center gap-3">
           {p.images?.[0] ? (

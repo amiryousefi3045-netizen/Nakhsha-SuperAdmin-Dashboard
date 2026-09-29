@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, RefreshCw, ShoppingCart, Eye, ArrowRight, Package, SlidersHorizontal, Download, CheckCircle2 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { useDebounce } from "../../hooks/useDebounce";
-import { listSellerOrders, exportSellerOrdersCsv } from "../../services/sellerService";
-import type { OrderStatus, SellerOrder } from "../../types/seller";
+import { useRowSelection } from "../../hooks/useRowSelection";
+import {
+  listSellerOrders,
+  exportSellerOrdersCsv,
+  bulkUpdateSellerOrderStatus,
+} from "../../services/sellerService";
+import type { OrderStatus, SellerOrder, BulkActionResult } from "../../types/seller";
+import {
+  BulkActionBar,
+  BulkActionButton,
+  BulkResultNotice,
+} from "../../components/seller/BulkActionBar";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { Pagination } from "../../components/admin/Pagination";
 import { faNumber, formatDateTime } from "../../lib/adminFormat";
@@ -40,6 +50,12 @@ export function OrdersSeller() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportDone, setExportDone] = useState(false);
 
+  // Bulk selection (Phase 32, P1-06).
+  const selection = useRowSelection();
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
   const fetcher = useCallback(
     () =>
       listSellerOrders({
@@ -64,6 +80,34 @@ export function OrdersSeller() {
   }, [debouncedQ, status, payment, from, to, minTotal, maxTotal]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.limit)) : 1;
+
+  // Reset selection when the visible page or its filters change so a bulk
+  // action never fires against stale ids.
+  useEffect(() => {
+    selection.clear();
+    setBulkResult(null);
+    setBulkError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedQ, status, payment, from, to, minTotal, maxTotal]);
+
+  const pageIds = useMemo(() => (data?.items ?? []).map((o) => o.id), [data]);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selection.isSelected(id));
+
+  const handleBulkStatus = async (nextStatus: OrderStatus) => {
+    if (selection.count === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkResult(null);
+    setBulkError(null);
+    try {
+      const result = await bulkUpdateSellerOrderStatus([...selection.selected], nextStatus);
+      setBulkResult(result);
+      selection.clear();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "عملیات گروهی ناموفق بود");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   async function handleExport() {
     setExporting(true);
@@ -234,6 +278,33 @@ export function OrdersSeller() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}
 
+      {bulkError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{bulkError}</div>
+      ) : null}
+
+      {/* Bulk selection toolbar + last result */}
+      <BulkResultNotice result={bulkResult} onDismiss={() => setBulkResult(null)} />
+      <BulkActionBar
+        count={selection.count}
+        title="سفارش"
+        busy={bulkBusy}
+        onCancel={() => {
+          selection.clear();
+          setBulkResult(null);
+          setBulkError(null);
+        }}
+      >
+        <BulkActionButton label="تأیید سفارش‌ها" busy={bulkBusy} onClick={() => void handleBulkStatus("confirmed")} />
+        <BulkActionButton label="آماده‌سازی" busy={bulkBusy} onClick={() => void handleBulkStatus("processing")} />
+        <BulkActionButton label="ثبت ارسال" busy={bulkBusy} onClick={() => void handleBulkStatus("shipped")} />
+        <BulkActionButton
+          label="لغو سفارش‌ها"
+          busy={bulkBusy}
+          tone="danger"
+          onClick={() => void handleBulkStatus("cancelled")}
+        />
+      </BulkActionBar>
+
       {isLoading ? (
         <LoadingSkeleton />
       ) : (data?.items ?? []).length === 0 ? (
@@ -249,6 +320,14 @@ export function OrdersSeller() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)] text-xs font-semibold text-[var(--color-muted)]">
+                <th className="w-10 px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="انتخاب همه‌ی سفارش‌های صفحه"
+                    checked={allPageSelected}
+                    onChange={() => selection.toggleAll(pageIds, allPageSelected)}
+                  />
+                </th>
                 <th className="px-4 py-3 text-start">سفارش</th>
                 <th className="px-4 py-3 text-center">مشتری</th>
                 <th className="px-4 py-3 text-center">اقلام</th>
@@ -260,7 +339,12 @@ export function OrdersSeller() {
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
               {(data?.items ?? []).map((o) => (
-                <OrderRow key={o.id} order={o} />
+                <OrderRow
+                  key={o.id}
+                  order={o}
+                  checked={selection.isSelected(o.id)}
+                  onToggle={() => selection.toggle(o.id)}
+                />
               ))}
             </tbody>
           </table>
@@ -279,9 +363,20 @@ export function OrdersSeller() {
   );
 }
 
-function OrderRow({ order: o }: { order: SellerOrder }) {
+function OrderRow({
+  order: o,
+  checked,
+  onToggle,
+}: {
+  order: SellerOrder;
+  checked: boolean;
+  onToggle: () => void;
+}) {
   return (
     <tr className="transition-colors hover:bg-[var(--color-primary)]/5">
+      <td className="px-4 py-3 text-center">
+        <input type="checkbox" aria-label={`انتخاب سفارش #${o.orderNumber}`} checked={checked} onChange={onToggle} />
+      </td>
       <td className="px-4 py-3">
         <Link to={`/seller/orders/${o.id}`} className="block">
           <p className="font-semibold text-[var(--color-text)]">#{faNumber(o.orderNumber)}</p>

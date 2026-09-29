@@ -59,6 +59,8 @@ import {
   updateSellerReviewReply,
   deleteSellerReviewReply,
   subscribeSellerLiveEvents,
+  bulkUpdateSellerProductStatus,
+  bulkUpdateSellerOrderStatus,
 } from "../sellerService";
 import { apiClient, TokenManager } from "../../lib/apiClient";
 
@@ -924,5 +926,79 @@ describe("seller live events (Phase 31, P1-05)", () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("403");
+  });
+});
+
+describe("seller bulk actions (Phase 32, P1-06)", () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.patch).mockClear();
+  });
+
+  it("bulkUpdateSellerProductStatus PATCHes /seller/products/bulk-status with ids and status", async () => {
+    const payload = {
+      success: true,
+      data: {
+        batchId: "b1",
+        summary: { total: 2, succeeded: 2, skipped: 0, failed: 0 },
+        succeeded: [{ id: "p1" }, { id: "p2" }],
+        skipped: [],
+        failed: [],
+      },
+    };
+    vi.mocked(apiClient.patch).mockResolvedValue(payload as never);
+
+    const result = await bulkUpdateSellerProductStatus(["p1", "p2"], "paused");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/products/bulk-status", {
+      ids: ["p1", "p2"],
+      status: "paused",
+    });
+    expect(result.summary.succeeded).toBe(2);
+    expect(result.failed).toHaveLength(0);
+  });
+
+  it("bulkUpdateSellerOrderStatus forwards a reason and keeps partial failures", async () => {
+    const payload = {
+      success: true,
+      data: {
+        batchId: "b2",
+        summary: { total: 3, succeeded: 1, skipped: 1, failed: 1 },
+        succeeded: [{ id: "o1", orderNumber: 1001 }],
+        skipped: [{ id: "o2", orderNumber: 1002 }],
+        failed: [{ id: "o3", orderNumber: 1003, reason: "INVALID_TRANSITION" }],
+      },
+    };
+    vi.mocked(apiClient.patch).mockResolvedValue(payload as never);
+
+    const result = await bulkUpdateSellerOrderStatus(["o1", "o2", "o3"], "shipped", "personal pickup");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/orders/bulk-status", {
+      ids: ["o1", "o2", "o3"],
+      status: "shipped",
+      reason: "personal pickup",
+    });
+    expect(result.summary.failed).toBe(1);
+    expect(result.failed[0].reason).toBe("INVALID_TRANSITION");
+  });
+
+  it("omits the reason from the orders bulk payload when none is given", async () => {
+    const payload = {
+      success: true,
+      data: {
+        batchId: "b3",
+        summary: { total: 1, succeeded: 1, skipped: 0, failed: 0 },
+        succeeded: [{ id: "o9", orderNumber: 1009 }],
+        skipped: [],
+        failed: [],
+      },
+    };
+    vi.mocked(apiClient.patch).mockResolvedValue(payload as never);
+
+    await bulkUpdateSellerOrderStatus(["o9"], "confirmed");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/orders/bulk-status", {
+      ids: ["o9"],
+      status: "confirmed",
+    });
   });
 });

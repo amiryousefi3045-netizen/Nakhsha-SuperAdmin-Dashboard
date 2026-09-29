@@ -10,6 +10,7 @@ import { apiClient, API_BASE_URL, TokenManager } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
   AnalyticsParams,
+  BulkActionResult,
   FulfillmentSummary,
   ListSellerReviewsParams,
   OrderCounts,
@@ -171,6 +172,18 @@ export async function updateSellerProductStatus(
     { status },
   );
   return unwrap(res, { product: {} as SellerProduct }).product;
+}
+
+/** PATCH /seller/products/bulk-status — one status write over many ids (P1-06). */
+export async function bulkUpdateSellerProductStatus(
+  ids: string[],
+  status: ProductStatus,
+): Promise<BulkActionResult> {
+  const res = await apiClient.patch<BulkActionResult>("/seller/products/bulk-status", {
+    ids,
+    status,
+  });
+  return unwrap(res, {} as BulkActionResult);
 }
 
 // ── Inventory ───────────────────────────────────────────────────────────────
@@ -457,6 +470,24 @@ export async function updateSellerOrderStatus(
     reason ? { status, reason } : { status },
   );
   return unwrap(res, { order: {} as SellerOrder }).order;
+}
+
+/**
+ * PATCH /seller/orders/bulk-status (P1-06). Each order is driven through the
+ * same state machine as the single-row action, so illegal transitions come
+ * back per row instead of failing the whole selection.
+ */
+export async function bulkUpdateSellerOrderStatus(
+  ids: string[],
+  status: OrderStatus,
+  reason?: string,
+): Promise<BulkActionResult> {
+  const res = await apiClient.patch<BulkActionResult>("/seller/orders/bulk-status", {
+    ids,
+    status,
+    ...(reason ? { reason } : {}),
+  });
+  return unwrap(res, {} as BulkActionResult);
 }
 
 /** GET /seller/fulfillment */

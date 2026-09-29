@@ -57,6 +57,9 @@ router.get(
   sellerController.listProducts,
 );
 router.post("/products", write, sellerController.createProduct);
+// Bulk status must be declared BEFORE "/products/:id" or Express would match
+// the literal path against the :id parameter route.
+router.patch("/products/bulk-status", write, sellerController.bulkUpdateProductStatus);
 router.get(
   "/products/:id",
   requireAuth,
@@ -112,6 +115,12 @@ router.get(
   requireRole("seller"),
   requireSellerProfile,
   sellerController.exportOrders,
+);
+router.patch(
+  "/orders/bulk-status",
+  write,
+  requireManagerOrOwner,
+  sellerController.bulkUpdateOrderStatus,
 );
 router.get(
   "/orders/:id",

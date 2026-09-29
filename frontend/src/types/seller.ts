@@ -387,6 +387,17 @@ export interface SellerLiveAlert {
   at: string;
 }
 
+/** Outcome of one row inside a bulk action (Phase 32, P1-06). */
+export type BulkRowOutcome = { id: string; reason: string } | { id: string; orderNumber?: number };
+
+export interface BulkActionResult {
+  batchId: string;
+  summary: { total: number; succeeded: number; skipped: number; failed: number };
+  succeeded: BulkRowOutcome[];
+  skipped: BulkRowOutcome[];
+  failed: BulkRowOutcome[];
+}
+
 // ── Orders & fulfillment ────────────────────────────────────────────────────
 
 /**
