@@ -50,6 +50,24 @@ function unwrap<T>(res: ApiResult<T>, expected: T): T {
   return res.data ?? expected;
 }
 
+/**
+ * Downloads a CSV endpoint and resolves the blob with the server-suggested
+ * filename (falls back to `<fallback>-<date>.csv` when the header is missing).
+ */
+async function downloadCsv<P extends object>(
+  path: string,
+  params: P,
+  fallback: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.rawGet<Blob>(path, { params, responseType: "blob" });
+  const disposition = String(response.headers["content-disposition"] ?? "");
+  const match = /filename="?([^";]+)"?/.exec(disposition);
+  return {
+    blob: response.data,
+    filename: match?.[1] ?? `${fallback}-${new Date().toISOString().slice(0, 10)}.csv`,
+  };
+}
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
 /** GET /seller/dashboard */
@@ -171,6 +189,13 @@ export async function listSellerInventory(
   return unwrap(res, { items: [], total: 0, page: 1, limit: 0 });
 }
 
+/** GET /seller/inventory/export — row-level CSV of tracked stock (P1-02). */
+export async function exportSellerInventoryCsv(
+  params: ListSellerInventoryParams = {},
+): Promise<{ blob: Blob; filename: string }> {
+  return downloadCsv("/seller/inventory/export", params, "inventory");
+}
+
 /** PATCH /seller/inventory/:productId (atomic, non-negativity enforced) */
 export async function adjustSellerStock(
   productId: string,
@@ -244,17 +269,7 @@ export async function getSellerSalesReport(
 export async function exportSellerSalesReportCsv(
   params: Pick<SalesReportParams, "from" | "to"> = {},
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await apiClient.rawGet<Blob>("/seller/reports/sales/export", {
-    params,
-    responseType: "blob",
-  });
-
-  const disposition = String(response.headers["content-disposition"] ?? "");
-  const match = /filename="?([^";]+)"?/.exec(disposition);
-  return {
-    blob: response.data,
-    filename: match?.[1] ?? `sales-report-${new Date().toISOString().slice(0, 10)}.csv`,
-  };
+  return downloadCsv("/seller/reports/sales/export", params, "sales-report");
 }
 
 // ── Settlement report (Phase 28, P0-04) ────────────────────────────────────
@@ -284,17 +299,7 @@ export async function getSellerPayoutReport(
 export async function exportSellerPayoutReportCsv(
   params: PayoutReportParams = {},
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await apiClient.rawGet<Blob>("/seller/reports/payouts/export", {
-    params,
-    responseType: "blob",
-  });
-
-  const disposition = String(response.headers["content-disposition"] ?? "");
-  const match = /filename="?([^";]+)"?/.exec(disposition);
-  return {
-    blob: response.data,
-    filename: match?.[1] ?? `payout-report-${new Date().toISOString().slice(0, 10)}.csv`,
-  };
+  return downloadCsv("/seller/reports/payouts/export", params, "payout-report");
 }
 
 // ── Store activity (Phase 26) ──────────────────────────────────────────────
@@ -305,6 +310,11 @@ export async function getSellerActivity(
 ): Promise<SellerActivityPage> {
   const res = await apiClient.get<SellerActivityPage>("/seller/activity", { params });
   return unwrap(res, { items: [], total: 0, page: params.page ?? 1, limit: params.limit ?? 25 });
+}
+
+/** GET /seller/activity/export — row-level CSV download (Phase 30, P1-02). */
+export async function exportSellerActivityCsv(): Promise<{ blob: Blob; filename: string }> {
+  return downloadCsv("/seller/activity/export", {}, "store-activity");
 }
 
 // ── Orders ──────────────────────────────────────────────────────────────────
@@ -337,6 +347,13 @@ export async function listSellerOrders(
 ): Promise<SellerPage<SellerOrder>> {
   const res = await apiClient.get<SellerPage<SellerOrder>>("/seller/orders", { params });
   return unwrap(res, { items: [], total: 0, page: 1, limit: 0 });
+}
+
+/** GET /seller/orders/export — row-level CSV of the filtered order list (P1-02). */
+export async function exportSellerOrdersCsv(
+  params: Omit<ListSellerOrdersParams, "page" | "limit"> = {},
+): Promise<{ blob: Blob; filename: string }> {
+  return downloadCsv("/seller/orders/export", params, "orders");
 }
 
 /** GET /seller/orders/:id */

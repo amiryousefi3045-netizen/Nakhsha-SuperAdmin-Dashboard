@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { RefreshCw, History, ShieldAlert, ShieldCheck, CalendarClock } from "lucide-react";
+import { RefreshCw, History, ShieldAlert, ShieldCheck, CalendarClock, Download, CheckCircle2 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
-import { getSellerActivity } from "../../services/sellerService";
+import { getSellerActivity, exportSellerActivityCsv } from "../../services/sellerService";
 import { faNumber, formatDateTime } from "../../lib/adminFormat";
+import { downloadBlob } from "../../lib/download";
 import type { ActivityRiskLevel, SellerActivityItem } from "../../types/seller";
 import cn from "classnames";
 
@@ -57,10 +58,28 @@ function resourceLabel(item: SellerActivityItem): string {
 
 export function ActivitySeller() {
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDone, setExportDone] = useState(false);
   const { data, isLoading, error, reload } = useSellerFetch(
     () => getSellerActivity({ page, limit: PAGE_SIZE }),
     { dependencies: [page] },
   );
+
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    setExportDone(false);
+    try {
+      const { blob, filename } = await exportSellerActivityCsv();
+      downloadBlob(blob, filename);
+      setExportDone(true);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "خطا در دریافت فایل خروجی");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (error) {
     return (
@@ -92,16 +111,43 @@ export function ActivitySeller() {
             فعالیت مالک و همکاران فروشگاه — از جدیدترین به قدیمی‌ترین
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          به‌روزرسانی
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+          >
+            {exporting ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            خروجی CSV
+          </button>
+          <button
+            type="button"
+            onClick={reload}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            به‌روزرسانی
+          </button>
+        </div>
       </div>
+
+      {exportError && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {exportError}
+        </p>
+      )}
+      {exportDone && !exportError && (
+        <p className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4" />
+          فایل خروجی دانلود شد.
+        </p>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">

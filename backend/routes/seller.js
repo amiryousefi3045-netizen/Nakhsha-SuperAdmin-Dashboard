@@ -76,6 +76,13 @@ router.get(
   requireSellerProfile,
   sellerController.listInventory,
 );
+router.get(
+  "/inventory/export",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.exportInventory,
+);
 router.patch(
   "/inventory/:productId",
   write,
@@ -98,6 +105,13 @@ router.get(
   requireRole("seller"),
   requireSellerProfile,
   sellerController.listSellerOrders,
+);
+router.get(
+  "/orders/export",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.exportOrders,
 );
 router.get(
   "/orders/:id",
@@ -273,6 +287,14 @@ router.get(
   requireSellerProfile,
   requireManagerOrOwner,
   sellerController.getActivity,
+);
+router.get(
+  "/activity/export",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireManagerOrOwner,
+  sellerController.exportActivity,
 );
 
 module.exports = router;

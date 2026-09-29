@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, RefreshCw, ShoppingCart, Eye, ArrowRight, Package, SlidersHorizontal } from "lucide-react";
+import { Search, RefreshCw, ShoppingCart, Eye, ArrowRight, Package, SlidersHorizontal, Download, CheckCircle2 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { useDebounce } from "../../hooks/useDebounce";
-import { listSellerOrders } from "../../services/sellerService";
+import { listSellerOrders, exportSellerOrdersCsv } from "../../services/sellerService";
 import type { OrderStatus, SellerOrder } from "../../types/seller";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { Pagination } from "../../components/admin/Pagination";
 import { faNumber, formatDateTime } from "../../lib/adminFormat";
+import { downloadBlob } from "../../lib/download";
 import {
   formatSellerPrice,
   ORDER_STATUS_LABEL,
@@ -35,6 +36,9 @@ export function OrdersSeller() {
   const [minTotal, setMinTotal] = useState("");
   const [maxTotal, setMaxTotal] = useState("");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDone, setExportDone] = useState(false);
 
   const fetcher = useCallback(
     () =>
@@ -61,6 +65,29 @@ export function OrdersSeller() {
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.limit)) : 1;
 
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    setExportDone(false);
+    try {
+      const { blob, filename } = await exportSellerOrdersCsv({
+        q: debouncedQ || undefined,
+        status: (status as OrderStatus) || undefined,
+        payment: payment || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        minTotal: minTotal === "" ? undefined : Number(minTotal),
+        maxTotal: maxTotal === "" ? undefined : Number(maxTotal),
+      });
+      downloadBlob(blob, filename);
+      setExportDone(true);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "خطا در دریافت فایل خروجی");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -68,15 +95,42 @@ export function OrdersSeller() {
           <h2 className="text-lg font-bold text-[var(--color-text)]">سفارش‌ها</h2>
           <p className="text-sm text-[var(--color-muted)]">مدیریت سفارش‌ها و وضعیت ارسال</p>
         </div>
-        <Link
-          to="/seller/fulfillment"
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
-        >
-          <Package className="h-4 w-4" />
-          <span className="hidden sm:inline">مرکز ارسال</span>
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+          >
+            {exporting ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            خروجی CSV
+          </button>
+          <Link
+            to="/seller/fulfillment"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+          >
+            <Package className="h-4 w-4" />
+            <span className="hidden sm:inline">مرکز ارسال</span>
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
+
+      {exportError && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {exportError}
+        </p>
+      )}
+      {exportDone && !exportError && (
+        <p className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4" />
+          فایل خروجی دانلود شد.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">

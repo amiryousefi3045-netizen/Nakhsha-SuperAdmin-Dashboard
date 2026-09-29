@@ -15,6 +15,7 @@ import {
   exportSellerSalesReportCsv,
 } from "../../services/sellerService";
 import { faNumber } from "../../lib/adminFormat";
+import { downloadBlob } from "../../lib/download";
 import { formatSellerPrice, ORDER_STATUS_LABEL } from "../../lib/sellerFormat";
 import type { OrderStatus } from "../../types/seller";
 
@@ -29,17 +30,6 @@ function defaultRange(): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to.getTime() - 29 * 86400000);
   return { from: toInputDate(from), to: toInputDate(to) };
-}
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }
 
 const STATUS_ORDER: OrderStatus[] = [

@@ -406,9 +406,9 @@ function numericFilter(value) {
 
 // ── Query ──────────────────────────────────────────────────────────────────
 
-async function listOrders(
+function buildOrderFilter(
   sellerId,
-  { page = 1, limit = 25, status, q, from, to, payment, minTotal, maxTotal } = {},
+  { status, q, from, to, payment, minTotal, maxTotal } = {},
 ) {
   const filter = { sellerId };
   if (status && Order.ORDER_STATUSES.includes(status)) {
@@ -450,12 +450,39 @@ async function listOrders(
     if (max !== undefined) filter.total.$lte = max;
   }
 
+  return filter;
+}
+
+async function listOrders(
+  sellerId,
+  { page = 1, limit = 25, status, q, from, to, payment, minTotal, maxTotal } = {},
+) {
+  const filter = buildOrderFilter(sellerId, { status, q, from, to, payment, minTotal, maxTotal });
+
   const skip = (page - 1) * limit;
   const [orders, total] = await Promise.all([
     Order.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     Order.countDocuments(filter),
   ]);
   return { items: orders.map(orderToDTO), total, page, limit };
+}
+
+/**
+ * Row-level CSV export payload: every order matching the same filters as
+ * `listOrders`, newest first, sorted stable (secondary SKU order). The 50k cap
+ * prevents a memory blow-up on accidentally unconstrained windows; exports of
+ * this size are far beyond any seller dashboard use-case.
+ */
+async function exportOrders(
+  sellerId,
+  { status, q, from, to, payment, minTotal, maxTotal } = {},
+) {
+  const filter = buildOrderFilter(sellerId, { status, q, from, to, payment, minTotal, maxTotal });
+  const orders = await Order.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(50000)
+    .lean();
+  return orders;
 }
 
 async function getOrder(sellerId, orderId) {
@@ -482,6 +509,7 @@ module.exports = {
   createOrder,
   transitionOrder,
   listOrders,
+  exportOrders,
   getOrder,
   countsByStatus,
 };

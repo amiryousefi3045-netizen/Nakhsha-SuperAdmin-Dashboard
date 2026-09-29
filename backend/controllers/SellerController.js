@@ -12,6 +12,7 @@ const AuditService = require("../services/AuditService");
 const SettingsService = require("../services/SettingsService");
 const StorefrontReviewService = require("../services/StorefrontReviewService");
 const { createErrorResponse, createSuccessResponse } = require("../utils/response");
+const { toCsv, sendCsv } = require("../utils/csv");
 const { ReportRangeError, resolveRange, dayKey, addDaysUtc } = require("../utils/reportRange");
 const logger = require("../utils/logger");
 
@@ -586,6 +587,24 @@ async function updateProductStatus(req, res) {
 // INVENTORY
 // ════════════════════════════════════════════════════════════════════════════
 
+function buildInventoryFilter(sellerId, { status, q } = {}) {
+  const filter = { sellerId, stockPolicy: "tracked" };
+  if (status === "low") {
+    filter.$expr = {
+      $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, "$lowStockThreshold"],
+    };
+  } else if (status === "out") {
+    filter.$expr = {
+      $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, 0],
+    };
+  }
+  if (q && String(q).trim()) {
+    const safe = escapeRegex(String(q).trim());
+    filter.$or = [{ title: { $regex: safe, $options: "i" } }, { sku: { $regex: safe, $options: "i" } }];
+  }
+  return filter;
+}
+
 async function listInventory(req, res) {
   try {
     const sellerId = req.seller._id;
@@ -594,20 +613,7 @@ async function listInventory(req, res) {
     const limit = safePageSize(limitRaw);
     const skip = (page - 1) * limit;
 
-    const filter = { sellerId, stockPolicy: "tracked" };
-    if (status === "low") {
-      filter.$expr = {
-        $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, "$lowStockThreshold"],
-      };
-    } else if (status === "out") {
-      filter.$expr = {
-        $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, 0],
-      };
-    }
-    if (q && String(q).trim()) {
-      const safe = escapeRegex(String(q).trim());
-      filter.$or = [{ title: { $regex: safe, $options: "i" } }, { sku: { $regex: safe, $options: "i" } }];
-    }
+    const filter = buildInventoryFilter(sellerId, { status, q });
 
     const [products, total] = await Promise.all([
       Product.find(filter)
@@ -627,6 +633,49 @@ async function listInventory(req, res) {
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function exportInventory(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const { status, q } = req.query;
+    const filter = buildInventoryFilter(sellerId, { status, q });
+
+    const products = await Product.find(filter)
+      .select("title sku price currency images stock stockPolicy lowStockThreshold status createdAt updatedAt")
+      .sort({ updatedAt: -1 })
+      .limit(50000)
+      .lean();
+
+    const rows = products.map((p) => [
+      p.sku ?? "",
+      p.title ?? "",
+      p.price ?? 0,
+      p.currency ?? "IRR",
+      p.status ?? "",
+      p.stockPolicy ?? "tracked",
+      p.stock?.onHand ?? 0,
+      p.stock?.reserved ?? 0,
+      p.stock?.incoming ?? 0,
+      Math.max(0, (p.stock?.onHand ?? 0) - (p.stock?.reserved ?? 0)),
+      p.lowStockThreshold ?? 0,
+      (p.createdAt || new Date(0)).toISOString(),
+      (p.updatedAt || new Date(0)).toISOString(),
+    ]);
+
+    const csv = toCsv([
+      ["sku", "title", "price", "currency", "status", "stockPolicy", "onHand", "reserved", "incoming", "available", "lowStockThreshold", "createdAt", "updatedAt"],
+      ...rows,
+    ]);
+    sendCsv(res, "inventory", csv);
+  } catch (e) {
+    logger.error("Seller exportInventory error", { error: e.message, sellerId: req.seller?._id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
   }
 }
 
@@ -1115,6 +1164,56 @@ async function getActivity(req, res) {
   }
 }
 
+/**
+ * Row-level CSV export of the store activity feed (Phase 30, P1-02): newest
+ * first, capped so the payload stays reasonable. Same ownership scoping and
+ * `changes.before` stripping as the paginated feed.
+ */
+async function exportActivity(req, res) {
+  try {
+    const team = await TeamMember.find({ sellerProfileId: req.seller._id })
+      .select("userId role")
+      .lean();
+    const memberIds = (team || [])
+      .map((m) => m.userId)
+      .filter(Boolean);
+    const userIds = [req.seller.userId, ...memberIds];
+
+    const { logs } = await AuditService.getTeamAuditLogs(userIds, {
+      limit: 5000,
+      skip: 0,
+    });
+
+    const rows = logs.map((log) => {
+      const dto = activityToDTO(log);
+      return [
+        dto.id,
+        dto.createdAt.toISOString(),
+        dto.action ?? "",
+        dto.riskLevel ?? "",
+        dto.result ?? "",
+        (dto.resource && dto.resource.type) || "",
+        dto.resource && dto.resource.id ? dto.resource.id : "",
+        dto.endpoint ?? "",
+        JSON.stringify(dto.after ?? {}),
+      ];
+    });
+
+    const csv = toCsv([
+      ["id", "createdAt", "action", "riskLevel", "result", "resourceType", "resourceId", "endpoint", "after"],
+      ...rows,
+    ]);
+    sendCsv(res, "store-activity", csv);
+  } catch (e) {
+    logger.error("Seller exportActivity error", { error: e.message, sellerId: req.seller?._id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ORDERS & FULFILLMENT  (real domain — see services/OrderService.js)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1161,6 +1260,55 @@ async function listSellerOrders(req, res) {
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function exportOrders(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const { status, q, from, to, payment, minTotal, maxTotal } = req.query;
+
+    const orders = await OrderService.exportOrders(sellerId, {
+      status,
+      q,
+      from,
+      to,
+      payment,
+      minTotal,
+      maxTotal,
+    });
+
+    const rows = orders.map((o) => [
+      String(o._id),
+      o.orderNumber ?? "",
+      o.status ?? "",
+      o.payment?.status ?? "unpaid",
+      o.currency ?? "IRR",
+      o.subtotal ?? 0,
+      o.shippingFee ?? 0,
+      o.discount ?? 0,
+      o.total ?? 0,
+      o.itemCount ?? (o.items?.length ?? 0),
+      o.customer?.name ?? "",
+      o.customer?.phone ?? "",
+      o.createdAt.toISOString(),
+      (o.items || [])
+        .map((item) => `${item.title || ""} x${item.qty} (${item.price ?? 0})`)
+        .join("; "),
+    ]);
+
+    const csv = toCsv([
+      ["id", "orderNumber", "status", "payment", "currency", "subtotal", "shippingFee", "discount", "total", "itemCount", "customerName", "customerPhone", "createdAt", "items"],
+      ...rows,
+    ]);
+    sendCsv(res, "orders", csv);
+  } catch (e) {
+    logger.error("Seller exportOrders error", { error: e.message, sellerId: req.seller?._id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
   }
 }
 
@@ -1731,6 +1879,7 @@ module.exports = {
   deleteProduct,
   updateProductStatus,
   listInventory,
+  exportInventory,
   adjustStock,
   getStockHistory,
   getAnalytics,
@@ -1739,7 +1888,9 @@ module.exports = {
   getPayoutReport,
   exportPayoutReport,
   getActivity,
+  exportActivity,
   listSellerOrders,
+  exportOrders,
   getSellerOrder,
   changeOrderStatus,
   getSellerFulfillment,

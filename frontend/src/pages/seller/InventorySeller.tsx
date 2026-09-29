@@ -8,17 +8,21 @@ import {
   History,
   Plus,
   Minus,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { useDebounce } from "../../hooks/useDebounce";
 import {
   listSellerInventory,
   adjustSellerStock,
+  exportSellerInventoryCsv,
 } from "../../services/sellerService";
 import type { SellerProduct, StockAdjustmentType } from "../../types/seller";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { Pagination } from "../../components/admin/Pagination";
 import { faNumber } from "../../lib/adminFormat";
+import { downloadBlob } from "../../lib/download";
 import {
   PRODUCT_STATUS_LABEL,
   PRODUCT_STATUS_TONE,
@@ -54,6 +58,9 @@ export function InventorySeller() {
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
   const [adjustBusy, setAdjustBusy] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDone, setExportDone] = useState(false);
 
   const fetcher = useCallback(
     () =>
@@ -79,6 +86,24 @@ export function InventorySeller() {
     setStatus(next);
     setPage(1);
     setSearchParams(next ? { status: next } : {}, { replace: true });
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    setExportDone(false);
+    try {
+      const { blob, filename } = await exportSellerInventoryCsv({
+        q: debouncedQ || undefined,
+        status: status || undefined,
+      });
+      downloadBlob(blob, filename);
+      setExportDone(true);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "خطا در دریافت فایل خروجی");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const closeAdjust = () => {
@@ -115,7 +140,32 @@ export function InventorySeller() {
             مدیریت موجودی فیزیکی و تاریخچه تنظیمات
           </p>
         </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting || isLoading}
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+        >
+          {exporting ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          خروجی CSV
+        </button>
       </div>
+
+      {exportError && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {exportError}
+        </p>
+      )}
+      {exportDone && !exportError && (
+        <p className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4" />
+          فایل خروجی دانلود شد.
+        </p>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">

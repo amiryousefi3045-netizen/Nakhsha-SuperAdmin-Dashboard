@@ -33,6 +33,7 @@ import type {
 } from "../../types/seller";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { faNumber, formatDateTime } from "../../lib/adminFormat";
+import { downloadBlob } from "../../lib/download";
 import {
   PAYOUT_METHOD_LABEL,
   PAYOUT_STATUS_LABEL,
@@ -204,14 +205,7 @@ export function FinanceSeller() {
         from: reportRange.from,
         to: reportRange.to,
       });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       setExportReportDone(true);
     } catch (e) {
       setExportReportError(e instanceof Error ? e.message : "خطا در دریافت فایل خروجی");

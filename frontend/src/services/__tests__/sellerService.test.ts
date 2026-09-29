@@ -29,6 +29,7 @@ import {
   deleteSellerProduct,
   updateSellerProductStatus,
   listSellerInventory,
+  exportSellerInventoryCsv,
   adjustSellerStock,
   getSellerStockHistory,
   getSellerAnalytics,
@@ -37,7 +38,9 @@ import {
   getSellerPayoutReport,
   exportSellerPayoutReportCsv,
   getSellerActivity,
+  exportSellerActivityCsv,
   listSellerOrders,
+  exportSellerOrdersCsv,
   getSellerOrder,
   updateSellerOrderStatus,
   getSellerFulfillment,
@@ -773,5 +776,73 @@ describe("seller reviews (live backend)", () => {
     const review = await deleteSellerReviewReply("rv1");
     expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith("/seller/reviews/rv1/reply");
     expect(review.sellerReply).toBeNull();
+  });
+});
+
+describe("seller CSV row exports (Phase 30, P1-02)", () => {
+  it("exportSellerOrdersCsv forwards the current list filters", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["\uFEFFid,status\r\n"], { type: "text/csv" }),
+      status: 200,
+      statusText: "OK",
+      headers: { "content-disposition": 'attachment; filename="orders-2026-09-25.csv"' },
+      config: {},
+    } as never);
+    const file = await exportSellerOrdersCsv({
+      status: "pending",
+      q: "مریم",
+      payment: "paid",
+      minTotal: 100000,
+    });
+    expect(vi.mocked(apiClient.rawGet)).toHaveBeenCalledWith("/seller/orders/export", {
+      params: { status: "pending", q: "مریم", payment: "paid", minTotal: 100000 },
+      responseType: "blob",
+    });
+    expect(file.filename).toBe("orders-2026-09-25.csv");
+  });
+
+  it("exportSellerInventoryCsv forwards the stock filters", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["\uFEFFsku,available\r\n"], { type: "text/csv" }),
+      status: 200,
+      statusText: "OK",
+      headers: { "content-disposition": 'attachment; filename="inventory-2026-09-25.csv"' },
+      config: {},
+    } as never);
+    const file = await exportSellerInventoryCsv({ status: "low", q: "گلدان" });
+    expect(vi.mocked(apiClient.rawGet)).toHaveBeenCalledWith("/seller/inventory/export", {
+      params: { status: "low", q: "گلدان" },
+      responseType: "blob",
+    });
+    expect(file.blob.type).toBe("text/csv");
+    expect(file.filename).toBe("inventory-2026-09-25.csv");
+  });
+
+  it("exportSellerActivityCsv hits the activity export with no params", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["\uFEFFid,action\r\n"], { type: "text/csv" }),
+      status: 200,
+      statusText: "OK",
+      headers: { "content-disposition": 'attachment; filename="store-activity-2026-09-25.csv"' },
+      config: {},
+    } as never);
+    const file = await exportSellerActivityCsv();
+    expect(vi.mocked(apiClient.rawGet)).toHaveBeenCalledWith("/seller/activity/export", {
+      params: {},
+      responseType: "blob",
+    });
+    expect(file.filename).toBe("store-activity-2026-09-25.csv");
+  });
+
+  it("falls back to a dated filename when the header carries no filename", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValueOnce({
+      data: new Blob(["id,status\r\n"], { type: "text/csv" }),
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config: {},
+    } as never);
+    const file = await exportSellerActivityCsv();
+    expect(file.filename).toBe(`store-activity-${new Date().toISOString().slice(0, 10)}.csv`);
   });
 });
