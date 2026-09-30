@@ -287,7 +287,7 @@ export function FinanceSeller() {
             <StatCard
               icon={TrendingUp}
               tone="gray"
-              label="درآمد ناخالص (تحویل‌شده)"
+              label="درآمد ناخالص (تحویل‌شده، پس از کسر استرداد و هزینهٔ ارسال)"
               value={formatSellerPrice(finance.gross.delivered, finance.currency)}
             />
           </div>
@@ -301,6 +301,22 @@ export function FinanceSeller() {
                   label={`کمیسیون نخشا (${faNumber(finance.commission.percent)}٪)`}
                   value={formatSellerPrice(finance.commission.amount, finance.currency)}
                 />
+                {/* Both of these are already deducted from `gross.delivered`; they
+                    are listed so the seller can match them against their own RMA
+                    and courier statements rather than reverse-engineer the net. */}
+                {typeof finance.gross.refunded === "number" && finance.gross.refunded > 0 ? (
+                  <DetailRow
+                    label="مستردشده به خریدار"
+                    value={`- ${formatSellerPrice(finance.gross.refunded, finance.currency)}`}
+                  />
+                ) : null}
+                {typeof finance.gross.shippingCost === "number" &&
+                finance.gross.shippingCost > 0 ? (
+                  <DetailRow
+                    label="هزینهٔ ارسال (پرداختی به حامل)"
+                    value={`- ${formatSellerPrice(finance.gross.shippingCost, finance.currency)}`}
+                  />
+                ) : null}
                 <DetailRow
                   label={`مبلغ در انتظار آزادسازی (${faNumber(finance.hold.days)} روز)`}
                   value={formatSellerPrice(finance.hold.amount, finance.currency)}

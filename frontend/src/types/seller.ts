@@ -703,6 +703,14 @@ export interface SellerFinanceSummary {
   currency: string;
   gross: {
     delivered: number;
+    /**
+     * Money already returned to buyers, and what the couriers charged on
+     * delivered orders. Both are already deducted from `delivered`; they are
+     * exposed so the seller can reconcile them against their own RMA and carrier
+     * records instead of reverse-engineering the net.
+     */
+    refunded?: number;
+    shippingCost?: number;
     held: number;
     awaiting: number;
   };
