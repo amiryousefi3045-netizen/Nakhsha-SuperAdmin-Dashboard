@@ -59,6 +59,13 @@ async function salesReport(sellerId, { from, to, top } = {}) {
               shippingFee: { $sum: "$shippingFee" },
               discount: { $sum: "$discount" },
               total: { $sum: "$total" },
+              // Seller's real courier expense. Null on pre-Phase-36 orders and on
+              // pickup, so `$ifNull` keeps the sum an integer rather than letting
+              // one missing field poison the whole report.
+              shippingCost: { $sum: { $ifNull: ["$shipping.cost", 0] } },
+              shippingCostRecorded: {
+                $sum: { $cond: [{ $gt: [{ $ifNull: ["$shipping.cost", 0] }, 0] }, 1, 0] },
+              },
             },
           },
         ],
@@ -105,7 +112,15 @@ async function salesReport(sellerId, { from, to, top } = {}) {
     },
   ]);
 
-  const ordersRow = faceted.orders[0] || { count: 0, subtotal: 0, shippingFee: 0, discount: 0, total: 0 };
+  const ordersRow = faceted.orders[0] || {
+    count: 0,
+    subtotal: 0,
+    shippingFee: 0,
+    discount: 0,
+    total: 0,
+    shippingCost: 0,
+    shippingCostRecorded: 0,
+  };
 
   const byStatusMap = {};
   for (const row of faceted.byStatus) byStatusMap[row._id] = row;
@@ -138,6 +153,23 @@ async function salesReport(sellerId, { from, to, top } = {}) {
       shippingFee: ordersRow.shippingFee,
       discount: ordersRow.discount,
       total: ordersRow.total,
+      /**
+       * Delivery economics (Phase 36, P1-08). Three numbers, kept apart on
+       * purpose:
+       *   shippingFee      — collected from buyers
+       *   shippingCost     — actually paid to couriers, and only for orders
+       *                      where the seller has actually recorded it
+       *   shippingMargin   — the difference, which is what the delivery part of
+       *                      a sale really earned
+       *
+       * `shippingCostUnrecorded` is the honest part: a cost the seller has not
+       * entered yet is not zero, and a report that summed the recorded ones
+       * without saying so would overstate margin for every seller still in the
+       * habit of not filling this in.
+       */
+      shippingCost: ordersRow.shippingCost,
+      shippingMargin: ordersRow.shippingFee - ordersRow.shippingCost,
+      shippingCostUnrecorded: Math.max(0, ordersRow.count - ordersRow.shippingCostRecorded),
     },
     byStatus,
     topProducts: faceted.topProducts.map((p) => ({
@@ -184,10 +216,21 @@ async function salesReportCsv(sellerId, { from, to } = {}) {
     "discount",
     "total",
     "currency",
+    // Phase 36, P1-08. Appended rather than inserted so an existing importer
+    // that reads by position still lines up.
+    "shippingMethod",
+    "shippingKind",
+    "shippingZone",
+    "shippingCost",
+    "shippingMargin",
+    "shippingCostRecorded",
   ];
 
-  const rows = orders.map((o) =>
-    [
+  const rows = orders.map((o) => {
+    const fee = o.shipping?.fee || 0;
+    const cost = o.shipping?.cost || 0;
+    const recorded = cost > 0;
+    return [
       o.orderNumber,
       o.status,
       o.createdAt.toISOString(),
@@ -200,10 +243,18 @@ async function salesReportCsv(sellerId, { from, to } = {}) {
       o.discount,
       o.total,
       o.currency,
+      o.shipping?.methodTitle || "",
+      o.shipping?.kind || "",
+      o.shipping?.zoneLabel || "",
+      cost,
+      fee - cost,
+      // "no" rather than blank, so a spreadsheet formula can tell "not entered"
+      // from "entered as zero" instead of reading an empty cell as free freight.
+      recorded ? "yes" : "no",
     ]
       .map(csvCell)
-      .join(","),
-  );
+      .join(",");
+  });
 
   return header.map(csvCell).join(",") + "\r\n" + rows.join("\r\n");
 }

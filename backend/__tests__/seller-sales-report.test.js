@@ -37,6 +37,7 @@ const PHONES = {
 let sellerToken;
 let seller2Token;
 let sellerId;
+let sellerUserId;
 let seller2Id;
 let seedNow;
 
@@ -97,6 +98,7 @@ beforeAll(async () => {
     finance: { commissionPercent: 0, payoutMinimum: 0, holdDays: 0 },
   });
   sellerId = profile._id;
+  sellerUserId = seller._id;
   sellerToken = TOKEN_OF(seller);
 
   const seller2 = await User.create({
@@ -278,6 +280,115 @@ describe("sales report — filters and ownership", () => {
   });
 });
 
+describe("sales report — delivery economics (Phase 36, P1-08)", () => {
+  // Two orders inside the default 30-day window: one with a recorded courier
+  // cost, one the seller has not filled in yet.
+  const withShipping = () =>
+    Order.create({
+      sellerId,
+      sellerUserId: sellerUserId,
+      orderNumber: "990001",
+      origin: "storefront",
+      customer: { name: "مشتری ارسال", phone: "09120000001", address: "تهران، خیابان ولیعصر" },
+      items: [{ productId: new mongoose.Types.ObjectId(), title: "گلدان", price: 500000, qty: 1, currency: "IRR" }],
+      subtotal: 500000,
+      shippingFee: 45000,
+      discount: 0,
+      total: 545000,
+      currency: "IRR",
+      status: "shipped",
+      shipping: {
+        methodKey: "post",
+        methodTitle: "پست پیشتاز",
+        kind: "delivery",
+        carrier: "پست",
+        fee: 45000,
+        cost: 38000,
+        zoneLabel: "تهران",
+      },
+      createdAt: new Date(seedNow - 3 * DAY),
+      updatedAt: new Date(seedNow - 3 * DAY),
+    });
+
+  const withoutCost = () =>
+    Order.create({
+      sellerId,
+      sellerUserId: sellerUserId,
+      orderNumber: "990002",
+      origin: "storefront",
+      customer: { name: "مشتری حضوری", phone: "09120000002", address: "تهران" },
+      items: [{ productId: new mongoose.Types.ObjectId(), title: "لیوان", price: 200000, qty: 1, currency: "IRR" }],
+      subtotal: 200000,
+      shippingFee: 0,
+      discount: 0,
+      total: 200000,
+      currency: "IRR",
+      status: "delivered",
+      // A pickup order: a real order, but with no courier to pay.
+      shipping: { methodKey: "pickup", methodTitle: "دریافت حضوری", kind: "pickup", fee: 0, cost: 0 },
+      createdAt: new Date(seedNow - 2 * DAY),
+      updatedAt: new Date(seedNow - 2 * DAY),
+    });
+
+  beforeEach(async () => {
+    await Order.deleteMany({ orderNumber: { $in: ["990001", "990002"] } });
+  });
+
+  afterAll(async () => {
+    await Order.deleteMany({ orderNumber: { $in: ["990001", "990002"] } });
+  });
+
+  it("separates what buyers paid from what the seller paid", async () => {
+    await withShipping();
+    await withoutCost();
+    const summary = (await get("/api/seller/reports/sales")).body.report.summary;
+    // The seeded orders carry no shipping fee; only the two above do.
+    expect(summary.shippingFee).toBe(45000);
+    expect(summary.shippingCost).toBe(38000);
+    expect(summary.shippingMargin).toBe(7000);
+  });
+
+  it("does not silently read an unrecorded cost as free freight", async () => {
+    await withShipping();
+    await withoutCost();
+    const summary = (await get("/api/seller/reports/sales")).body.report.summary;
+    // The pickup order contributes a fee of 0 and an unrecorded cost. Counting
+    // it as recorded would tell the seller their margin is fully known when it
+    // is not; the honest number is surfaced next to the sum.
+    expect(summary.shippingCostUnrecorded).toBeGreaterThanOrEqual(1);
+  });
+
+  it("writes the delivery columns into the CSV, marked recorded or not", async () => {
+    await withShipping();
+    await withoutCost();
+    const res = await get("/api/seller/reports/sales/export");
+    const lines = res.text.split("\r\n").slice(1).filter(Boolean);
+    const header = res.text.split("\r\n")[0].replace(/^﻿/, "").split(",");
+
+    const shipped = lines.find((l) => l.startsWith("990001,"));
+    expect(shipped).toBeDefined();
+    const cols = Object.fromEntries(shipped.split(",").map((v, i) => [header[i], v]));
+    expect(cols.shippingMethod).toBe("پست پیشتاز");
+    expect(cols.shippingKind).toBe("delivery");
+    expect(cols.shippingZone).toBe("تهران");
+    expect(cols.shippingCost).toBe("38000");
+    expect(cols.shippingMargin).toBe("7000");
+    expect(cols.shippingCostRecorded).toBe("yes");
+
+    const pickup = lines.find((l) => l.startsWith("990002,"));
+    const pickupCols = Object.fromEntries(pickup.split(",").map((v, i) => [header[i], v]));
+    // "no" rather than a blank cell, so a spreadsheet cannot read an empty
+    // string as "the courier was free".
+    expect(pickupCols.shippingCostRecorded).toBe("no");
+  });
+
+  it("never puts another seller's delivery figures in the report", async () => {
+    await withShipping();
+    const report = (await get("/api/seller/reports/sales")).body.report;
+    expect(JSON.stringify(report)).not.toContain("88888888");
+  });
+});
+
 describe("sales report — CSV export", () => {
   it("returns a BOM-prefixed CSV with one row per order, sender scoped", async () => {
     const res = await get("/api/seller/reports/sales/export");
@@ -288,8 +399,10 @@ describe("sales report — CSV export", () => {
     const text = res.text;
     expect(text.charCodeAt(0)).toBe(0xfeff); // BOM
     const lines = text.split("\r\n");
-    expect(lines[0].replace(/^\uFEFF/, "")).toBe(
-      "orderNumber,orderStatus,createdAt,customerName,customerPhone,items,units,subtotal,shippingFee,discount,total,currency",
+    // Phase 36 appends the delivery columns after `currency`, so an importer
+    // reading by position still lines up.
+    expect(lines[0].replace(/^﻿/, "")).toBe(
+      "orderNumber,orderStatus,createdAt,customerName,customerPhone,items,units,subtotal,shippingFee,discount,total,currency,shippingMethod,shippingKind,shippingZone,shippingCost,shippingMargin,shippingCostRecorded",
     );
     expect(lines).toHaveLength(5); // header + 4 orders (seller B's order excluded)
     expect(lines.slice(1).join("\n")).not.toContain("88888888");
