@@ -157,6 +157,10 @@ const OrderSchema = new mongoose.Schema(
       fee: { type: Number, default: 0, min: 0 },
       // Seller's actual courier cost. 0 until the seller records it.
       cost: { type: Number, default: 0, min: 0 },
+      // Who recorded the cost and when, so a margin figure can be traced to the
+      // moment the expense was entered rather than to an anonymous total.
+      costRecordedAt: Date,
+      costRecordedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       zoneLabel: { type: String, default: "", maxlength: 80 },
       eta: {
         minDays: { type: Number, default: 0, min: 0 },

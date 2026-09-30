@@ -1576,7 +1576,9 @@ async function changeOrderStatus(req, res) {
       metadata: { orderNumber: order.orderNumber, status },
     });
 
-    res.json(createSuccessResponse({ order: OrderService.orderToDTO(order) }, req.id));
+    res.json(
+      createSuccessResponse({ order: OrderService.orderToDTO(order, { includeCost: true }) }, req.id),
+    );
   } catch (e) {
     if (e instanceof OrderService.OrderDomainError) {
       const statusMap = {
@@ -1929,7 +1931,10 @@ async function refundReturn(req, res) {
 
     res.json(
       createSuccessResponse(
-        { return: ReturnService.returnToDTO(ret), order: OrderService.orderToDTO(order) },
+        {
+        return: ReturnService.returnToDTO(ret),
+        order: OrderService.orderToDTO(order, { includeCost: true }),
+      },
         req.id,
       ),
     );
@@ -2226,6 +2231,72 @@ async function getSellerFulfillment(req, res) {
     );
   } catch (e) {
     logger.error("Seller getFulfillment error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * Record the courier cost the seller actually paid (Phase 36, P1-08).
+ *
+ * This is the seller's own expense, so it is never accepted from the buyer side
+ * and never inferred from the rate card: the rate card says what a parcel
+ * *should* cost, this says what it *did*. The window and the locking rule live
+ * in `OrderService.recordShippingCost`; this handler only maps errors and writes
+ * the audit row, because a cost that silently changes is a cost nobody can
+ * reconstruct later.
+ */
+async function setOrderShippingCost(req, res) {
+  try {
+    const result = await OrderService.recordShippingCost({
+      orderId: req.params.id,
+      sellerId: req.seller._id,
+      cost: req.body.cost,
+      actorUserId: req.user.id,
+    });
+    if (!result) {
+      return res
+        .status(404)
+        .json(createErrorResponse("ORDER_NOT_FOUND", "سفارش یافت نشد", null, req.id));
+    }
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "ORDER_SHIPPING_COST_SET",
+      resource: { type: "ORDER", id: String(result.order._id) },
+      result: "SUCCESS",
+      metadata: {
+        previous: result.previous,
+        current: result.current,
+        status: result.order.status,
+      },
+    });
+
+    res.json(
+      createSuccessResponse(
+        {
+          orderId: String(result.order._id),
+          shipping: {
+            fee: result.order.shipping.fee,
+            cost: result.order.shipping.cost,
+            margin: result.order.shipping.fee - result.order.shipping.cost,
+            costRecordedAt: result.order.shipping.costRecordedAt,
+          },
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    if (e instanceof OrderService.OrderDomainError) {
+      const status = e.code === "SHIPPING_COST_LOCKED" ? 409 : 400;
+      return res.status(status).json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller setOrderShippingCost error", {
+      error: e.message,
+      sellerId: req.seller?._id,
+      orderId: req.params?.id,
+    });
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
@@ -2844,6 +2915,7 @@ module.exports = {
   getShippingProfile,
   updateShippingProfile,
   previewShippingQuote,
+  setOrderShippingCost,
   getFinance,
   getPayouts,
   requestPayout,

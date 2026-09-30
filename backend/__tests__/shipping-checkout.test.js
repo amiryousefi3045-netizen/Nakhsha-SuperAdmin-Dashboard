@@ -7,6 +7,7 @@ const SellerProfile = require("../models/SellerProfile");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const ShippingProfile = require("../models/ShippingProfile");
+const AuditLog = require("../models/AuditLog");
 const ShippingService = require("../services/ShippingService");
 const { _resetRateLimitStoreForTests } = require("../utils/rateLimiter");
 
@@ -61,6 +62,7 @@ let buyerToken;
 let productId;
 let storeId;
 let otherStore;
+let otherOwnerToken;
 
 async function wipe() {
   await User.deleteMany({ phone: { $in: Object.values(PHONES) } });
@@ -122,6 +124,7 @@ beforeAll(async () => {
     role: "seller",
     isVerified: true,
   });
+  otherOwnerToken = accessTokenOf(otherOwner);
   otherStore = await SellerProfile.create({
     userId: otherOwner._id,
     storeName: "فروشگاه دیگر",
@@ -166,6 +169,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await Order.deleteMany({});
+  await AuditLog.deleteMany({ action: "ORDER_SHIPPING_COST_SET" });
   // Reset the weight too: a per-kilogram method priced in an earlier test would
   // otherwise leak into this one and hide the "weight not declared" case.
   await Product.updateMany({}, { $set: { "stock.onHand": 20, "stock.reserved": 0, "shipping.weight": 0 } });
@@ -715,6 +719,175 @@ describe("Phase 36: the buyer can see the cost before committing", () => {
     const res = await quote({ items: [{ productId: foreign._id, qty: 1 }], shippingAddress: ADDRESS });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("PRODUCT_NOT_AVAILABLE");
+  });
+});
+
+describe("Phase 36: the seller records what the courier really cost", () => {
+  const setCost = (orderId, body, token = ownerToken) =>
+    request(app)
+      .patch(`/api/seller/orders/${orderId}/shipping-cost`)
+      .set("Authorization", AUTH(token))
+      .send(body);
+
+  async function shippedOrder() {
+    await configureProfile();
+    return advanceToProcessing();
+  }
+
+  it("records the cost and reports the margin it left", async () => {
+    const orderId = await shippedOrder();
+    expect((await setStatus(orderId, "shipped")).status).toBe(200);
+
+    const res = await setCost(orderId, { cost: 38000 });
+    expect(res.status).toBe(200);
+    expect(res.body.shipping.cost).toBe(38000);
+    // The buyer paid 45,000 for delivery; the courier took 38,000 of it.
+    expect(res.body.shipping.fee).toBe(45000);
+    expect(res.body.shipping.margin).toBe(7000);
+  });
+
+  it("shows the cost to the seller and never to the buyer", async () => {
+    const orderId = await shippedOrder();
+    await setStatus(orderId, "shipped");
+    await setCost(orderId, { cost: 38000 });
+
+    const sellerView = await request(app)
+      .get(`/api/seller/orders/${orderId}`)
+      .set("Authorization", AUTH(ownerToken));
+    expect(sellerView.status).toBe(200);
+    expect(sellerView.body.order.shipping.cost).toBe(38000);
+    expect(sellerView.body.order.shipping.shippingMargin).toBe(7000);
+
+    const buyerView = await request(app)
+      .get(`/api/storefront/orders/${orderId}`)
+      .set("Authorization", AUTH(buyerToken));
+    expect(buyerView.status).toBe(200);
+    expect(buyerView.body.order.shipping.cost).toBeUndefined();
+    expect(JSON.stringify(buyerView.body)).not.toContain("38000");
+  });
+
+  it("lets the seller correct a typo while the parcel is in transit", async () => {
+    const orderId = await shippedOrder();
+    await setStatus(orderId, "shipped");
+    await setCost(orderId, { cost: 3500 });
+    const fixed = await setCost(orderId, { cost: 35000 });
+    expect(fixed.status).toBe(200);
+    expect(fixed.body.shipping.cost).toBe(35000);
+  });
+
+  it("locks the cost once the order is delivered", async () => {
+    // A closed order's expense is history. Rewriting it after delivery is how a
+    // margin report becomes fiction, so the window closes for good.
+    const orderId = await shippedOrder();
+    await setStatus(orderId, "shipped");
+    await setCost(orderId, { cost: 38000 });
+    expect((await setStatus(orderId, "delivered")).status).toBe(200);
+
+    const res = await setCost(orderId, { cost: 1 });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("SHIPPING_COST_LOCKED");
+
+    const check = await request(app)
+      .get(`/api/seller/orders/${orderId}`)
+      .set("Authorization", AUTH(ownerToken));
+    expect(check.body.order.shipping.cost).toBe(38000);
+  });
+
+  it("refuses a cost before the parcel is packed", async () => {
+    // Settable from `processing` onward: an Iranian COD courier usually settles
+    // after collection, so a seller cannot be asked to know the figure at
+    // handover. Before that there is nothing to attach an expense to.
+    await configureProfile();
+    const res = await request(app)
+      .post(`/api/storefront/${SLUG}/checkout`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({
+        customer: { name: "مریم", phone: "09148010002" },
+        items: [{ productId, qty: 1 }],
+        paymentMethod: "card",
+        shippingAddress: ADDRESS,
+        shippingMethodId: "post",
+      });
+    const orderId = res.body.order.id;
+    await setStatus(orderId, "confirmed");
+
+    const refused = await setCost(orderId, { cost: 38000 });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe("SHIPPING_COST_LOCKED");
+  });
+
+  it("refuses a cost that is not a sane amount", async () => {
+    const orderId = await shippedOrder();
+    await setStatus(orderId, "shipped");
+    for (const cost of [-1, 1.5, 999999999, "abc", null]) {
+      const res = await setCost(orderId, { cost });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("INVALID_SHIPPING_COST");
+    }
+  });
+
+  it("refuses a courier cost on a pickup order", async () => {
+    // Pickup has no courier. Accepting a number here would subtract an expense
+    // from margin forever, for a parcel that was never dispatched.
+    await configureProfile();
+    const res = await request(app)
+      .post(`/api/storefront/${SLUG}/checkout`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({
+        customer: { name: "مریم", phone: "09148010002" },
+        items: [{ productId, qty: 1 }],
+        paymentMethod: "card",
+        shippingMethodId: "pickup",
+      });
+    const orderId = res.body.order.id;
+    await setStatus(orderId, "confirmed");
+    await setStatus(orderId, "processing");
+    await setStatus(orderId, "shipped");
+
+    const refused = await setCost(orderId, { cost: 20000 });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe("SHIPPING_NOT_DISPATCHED");
+  });
+
+  it("leaves another store's order alone", async () => {
+    const orderId = await shippedOrder();
+    await setStatus(orderId, "shipped");
+    const other = await request(app)
+      .patch(`/api/seller/orders/${orderId}/shipping-cost`)
+      .set("Authorization", AUTH(otherOwnerToken))
+      .send({ cost: 1 });
+    expect(other.status).toBe(404);
+  });
+
+  it("is not writable by an anonymous caller", async () => {
+    const orderId = await shippedOrder();
+    const res = await request(app)
+      .patch(`/api/seller/orders/${orderId}/shipping-cost`)
+      .send({ cost: 1 });
+    expect(res.status).toBe(401);
+  });
+
+  it("leaves an audit trail of every change", async () => {
+    const orderId = await shippedOrder();
+    await setStatus(orderId, "shipped");
+    await setCost(orderId, { cost: 3500 });
+    await setCost(orderId, { cost: 35000 });
+
+    const order = await Order.findById(orderId);
+    // The order's own timeline is buyer-visible, so it records that a cost was
+    // set but never how much — the seller's margin is not the buyer's business.
+    const notes = order.timeline.filter((t) => t.reason.includes("هزینهٔ ارسال"));
+    expect(notes).toHaveLength(2);
+    expect(notes[0].reason).not.toContain("3500");
+    expect(notes[0].reason).not.toContain("35000");
+    expect(String(order.shipping.costRecordedBy)).toBeTruthy();
+    expect(order.shipping.costRecordedAt).toBeTruthy();
+
+    // The figures live in the seller-only audit log instead.
+    const audit = await AuditLog.find({ action: "ORDER_SHIPPING_COST_SET" }).lean();
+    expect(audit.length).toBeGreaterThanOrEqual(2);
+    const amounts = audit.map((a) => a.metadata?.current);
+    expect(amounts).toEqual(expect.arrayContaining([3500, 35000]));
   });
 });
 

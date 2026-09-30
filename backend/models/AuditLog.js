@@ -19,6 +19,11 @@ const resourceSchema = new mongoose.Schema(
         "SELLER_PROFILE",
         "TEAM_MEMBER",
         "COUPON",
+        // Orders were audited long before this list gained them, which is why
+        // ORDER_STATUS_CHANGED rows went through `resource.type: "ORDER"` only
+        // after it was added. Without it, Mongoose rejects the whole document
+        // and `AuditService.log` swallows the error — a silent audit gap.
+        "ORDER",
       ],
       required: true,
     },
@@ -128,6 +133,11 @@ const auditLogSchema = new mongoose.Schema(
         "STOCK_ADJUSTED",
         "ORDER_CREATED",
         "ORDER_STATUS_CHANGED",
+        // The seller's real courier expense (Phase 36, P1-08). Kept distinct from
+        // ORDER_STATUS_CHANGED because it changes money rather than workflow,
+        // and because `shipping.cost` is the one shipping field the buyer must
+        // never see.
+        "ORDER_SHIPPING_COST_SET",
 
         // Returns / RMA domain
         "RETURN_REQUESTED",

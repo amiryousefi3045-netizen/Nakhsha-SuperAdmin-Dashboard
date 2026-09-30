@@ -143,6 +143,16 @@ router.get(
   sellerController.getSellerFulfillment,
 );
 
+// Recording what the courier charged is a manager-or-owner action, for the same
+// reason the status endpoint is: it decides an amount the seller will not be
+// paid for.
+router.patch(
+  "/orders/:id/shipping-cost",
+  write,
+  requireManagerOrOwner,
+  sellerController.setOrderShippingCost,
+);
+
 // ── Shipping (Phase 36, P1-08) ───────────────────────────────────────────────
 // Reading the rate card is open to any team member. Writing it is a pricing
 // decision that sets what every buyer is charged, so it sits at the same tier

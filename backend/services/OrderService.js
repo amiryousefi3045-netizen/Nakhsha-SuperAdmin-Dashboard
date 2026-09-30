@@ -55,7 +55,15 @@ class OrderDomainError extends Error {
 
 // ── DTO ─────────────────────────────────────────────────────────────────────
 
-function orderToDTO(order) {
+/**
+ * @param {object} order
+ * @param {{ includeCost?: boolean }} [options] `includeCost` is the seller's
+ *   view and must only ever be passed on a seller-authenticated path. The
+ *   default is the buyer's, because the buyer and the seller read the same
+ *   order through different endpoints and the courier cost is the seller's
+ *   margin, not the buyer's business.
+ */
+function orderToDTO(order, options = {}) {
   const o = order.toObject ? order.toObject({ virtuals: true }) : order;
   return {
     id: String(o._id),
@@ -77,10 +85,9 @@ function orderToDTO(order) {
     shippingFee: o.shippingFee || 0,
     /**
      * Delivery detail for the receipt (Phase 36). `cost` is deliberately NOT
-     * here: this DTO is shared by the buyer endpoint and the seller endpoint, so
-     * including the seller's courier cost would hand the buyer the seller's
-     * margin. The seller's own view of `cost` comes from the seller-only finance
-     * and margin reports.
+     * here by default: this DTO is shared by the buyer endpoint and the seller
+     * endpoint, so including the seller's courier cost would hand the buyer the
+     * seller's margin. `includeCost` is the seller's opt-in.
      */
     shipping: o.shipping?.methodKey
       ? {
@@ -89,6 +96,15 @@ function orderToDTO(order) {
           kind: o.shipping.kind || "",
           carrier: o.shipping.carrier || "",
           fee: o.shipping.fee || 0,
+          ...(options.includeCost
+            ? {
+                // What the courier charged, and the margin the sale actually
+                // left. Only ever on a seller-authenticated read.
+                cost: o.shipping.cost || 0,
+                shippingMargin: (o.shipping.fee || 0) - (o.shipping.cost || 0),
+                costRecordedAt: o.shipping.costRecordedAt || null,
+              }
+            : {}),
           zoneLabel: o.shipping.zoneLabel || "",
           eta: o.shipping.eta || { minDays: 0, maxDays: 0 },
           address: o.shipping.address || {},
@@ -772,6 +788,96 @@ async function transitionOrder({
 }
 
 /**
+ * Record what the courier actually charged (Phase 36, P1-08).
+ *
+ * `shipping.fee` is what the buyer paid and is fixed at checkout. `shipping.cost`
+ * is the seller's real expense and is the only number that can be wrong about
+ * margin, so the window matters:
+ *
+ *   - Settable from `processing` (parcel packed, courier not yet billed) through
+ *     `shipped`. COD carriers in Iran routinely settle after collection, so a
+ *     seller cannot be asked to know the figure at handover.
+ *   - Locked from `delivered` onward. A closed order's expense is history;
+ *     rewriting it after the fact is how a margin report becomes fiction.
+ *
+ * A correction inside the window is allowed on purpose. A seller who types
+ * 350000 as 35000 must be able to fix it, and a permanently wrong expense is
+ * just as fictional as a rewritten one. Every write is audited with the previous
+ * value, so a sequence of edits is reconstructible.
+ *
+ * @throws {OrderDomainError} SHIPPING_NOT_DISPATCHED / SHIPPING_COST_LOCKED /
+ *   INVALID_SHIPPING_COST
+ */
+async function recordShippingCost({ orderId, sellerId, cost, actorUserId = null }) {
+  // `Number(null)` and `Number("")` are both 0, so an absent or blank cost would
+  // otherwise be accepted as a genuine "the courier was free" — an expense of
+  // zero that margin reporting would then believe forever. Only a real number
+  // gets in; `0` itself is still allowed, because collecting nothing is real.
+  if (cost === null || cost === undefined || cost === "" || typeof cost === "boolean") {
+    throw new OrderDomainError(
+      "INVALID_SHIPPING_COST",
+      "هزینهٔ ارسال الزامی است",
+      { cost },
+    );
+  }
+  const amount = Number(cost);
+  if (!Number.isFinite(amount) || amount < 0 || !Number.isInteger(amount)) {
+    throw new OrderDomainError(
+      "INVALID_SHIPPING_COST",
+      "هزینهٔ ارسال باید عدد صحیح و نامنفی باشد",
+      { cost },
+    );
+  }
+  if (amount > ShippingService.MAX_FEE) {
+    throw new OrderDomainError(
+      "INVALID_SHIPPING_COST",
+      "هزینهٔ ارسال غیرمنطقی است",
+      { cost, max: ShippingService.MAX_FEE },
+    );
+  }
+
+  const order = await Order.findOne({ _id: orderId, sellerId });
+  if (!order) return null;
+
+  const dispatchable = ["processing", "shipped"];
+  if (!dispatchable.includes(order.status)) {
+    throw new OrderDomainError(
+      "SHIPPING_COST_LOCKED",
+      "هزینهٔ ارسال پس از تحویل سفارش قابل تغییر نیست",
+      { status: order.status },
+    );
+  }
+  if (!order.shipping || order.shipping.kind !== "delivery") {
+    // Pickup has no courier to pay, and a pre-Phase-36 order has no snapshot to
+    // attach an expense to. Saying so is better than silently accepting a
+    // number that margin reporting would then subtract forever.
+    throw new OrderDomainError(
+      "SHIPPING_NOT_DISPATCHED",
+      "برای این سفارش هزینهٔ ارسال قابل ثبت نیست",
+      { kind: order.shipping?.kind || "none", status: order.status },
+    );
+  }
+
+  const previous = order.shipping.cost || 0;
+  order.shipping.cost = amount;
+  order.shipping.costRecordedAt = new Date();
+  order.shipping.costRecordedBy = actorUserId || null;
+  // The order timeline is part of the buyer's view of their order, so the
+  // amounts stay out of it — a note reading "3500 ← 35000" would hand the buyer
+  // the seller's courier cost, which is the seller's margin. The figures live in
+  // the audit log, which only the seller and an admin can read.
+  order.timeline.push({
+    status: order.status,
+    at: new Date(),
+    by: actorUserId || null,
+    reason: "هزینهٔ ارسال ثبت شد",
+  });
+  await order.save();
+
+  return { order, previous, current: amount };
+}
+
+/**
  * List orders for a seller. `status` filters by workflow state; `q` searches
  * customer name/phone or the numeric order number.
  */
@@ -866,9 +972,13 @@ async function exportOrders(
   return orders;
 }
 
+/**
+ * Seller-scoped read: the only caller is the seller order detail endpoint, so
+ * this is where the courier cost is allowed to surface.
+ */
 async function getOrder(sellerId, orderId) {
   const order = await Order.findOne({ _id: orderId, sellerId });
-  return order ? orderToDTO(order) : null;
+  return order ? orderToDTO(order, { includeCost: true }) : null;
 }
 
 async function countsByStatus(sellerId) {
@@ -887,6 +997,7 @@ module.exports = {
   OrderDomainError,
   ORDER_TRANSITIONS,
   orderToDTO,
+  recordShippingCost,
   createOrder,
   transitionOrder,
   listOrders,
