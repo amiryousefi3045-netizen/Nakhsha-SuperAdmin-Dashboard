@@ -3,7 +3,14 @@
  * invoice over email once payment succeeds. HTML is used when the email
  * transport supports it; the plain-text version is what lands in the
  * notification record (and is what a text-only transport would deliver).
+ *
+ * Every interpolated value goes through `escapeHtml`. This document is sent to
+ * the buyer from the platform's domain while the product title inside it is
+ * chosen by the seller and the customer name by the buyer, so it is the exact
+ * place where unescaped interpolation turns into phishing in a trusted inbox.
  */
+
+const { escapeHtml } = require("../../utils/html");
 
 function formatIRR(amount) {
   return new Intl.NumberFormat("fa-IR").format(Number(amount) || 0);
@@ -59,10 +66,10 @@ function buildInvoiceHtml(order) {
     .map(
       (item) => `
       <tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee">${item.title}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center">${item.qty}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:left" dir="ltr">${formatIRR(item.price)}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:left" dir="ltr">${formatIRR(item.price * item.qty)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee">${escapeHtml(item.title)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center">${escapeHtml(item.qty)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:left" dir="ltr">${escapeHtml(formatIRR(item.price))}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:left" dir="ltr">${escapeHtml(formatIRR(item.price * item.qty))}</td>
       </tr>`,
     )
     .join("");
@@ -86,17 +93,17 @@ function buildInvoiceHtml(order) {
 <html dir="rtl" lang="fa">
   <head>
     <meta charset="utf-8" />
-    <title>فاکتور سفارش ${order.orderNumber}</title>
+    <title>فاکتور سفارش ${escapeHtml(order.orderNumber)}</title>
   </head>
   <body style="margin:0;background:#f4f4f4;font-family:Tahoma,'Segoe UI',sans-serif;">
     <div style="max-width:600px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5;">
       <div style="background:#0f172a;color:#fff;padding:18px 24px;">
         <div style="font-size:18px;font-weight:700;color:#fff">فاکتور سفارش نخشا</div>
-        <div style="font-size:13px;color:#cbd5e1;margin-top:4px">شماره سفارش: ${order.orderNumber}</div>
+        <div style="font-size:13px;color:#cbd5e1;margin-top:4px">شماره سفارش: ${escapeHtml(order.orderNumber)}</div>
       </div>
       <div style="padding:24px;">
         <div style="font-size:14px;color:#333;margin-bottom:16px">
-          فروشگاه: <strong>${order.sellerStoreName || "-"}</strong> — خریدار: ${order.customer.name}
+          فروشگاه: <strong>${escapeHtml(order.sellerStoreName || "-")}</strong> — خریدار: ${escapeHtml(order.customer?.name)}
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead>
@@ -113,7 +120,7 @@ function buildInvoiceHtml(order) {
           <tbody>${totals}</tbody>
         </table>
         <div style="font-size:12px;color:#64748b;margin-top:16px;border-top:1px dashed #ddd;padding-top:12px">
-          وضعیت پرداخت: ${PAYMENT_LABELS[order.payment?.status] || order.payment?.status || "-"}
+          وضعیت پرداخت: ${escapeHtml(PAYMENT_LABELS[order.payment?.status] || order.payment?.status || "-")}
         </div>
       </div>
     </div>

@@ -205,6 +205,105 @@ describe("FinanceService.computeBalance", () => {
   });
 });
 
+/**
+ * Refunds vs. the payout ledger (Phase 36).
+ *
+ * These are regression tests for a real money bug. A refund flips the order to
+ * `returned` on its FIRST refund, including a partial one, so a ledger that
+ * grouped earnings by status alone dropped the whole order out of the seller's
+ * payable balance: a 300,000 refund on a 1,000,000 order silently removed
+ * 1,000,000 instead of 300,000. Earnings have to be `total - refundedAmount`.
+ */
+describe("FinanceService: refunds in the payout ledger", () => {
+  async function refundOrder(order, amount) {
+    // The RMA path is what really moves the money, but this suite is about the
+    // ledger's arithmetic, so the fields the ledger reads are written directly.
+    await Order.updateOne(
+      { _id: order._id },
+      {
+        $inc: { "payment.refundedAmount": amount },
+        $set: { "payment.status": "refunded", status: "returned" },
+      },
+    );
+  }
+
+  it("keeps the unrefunded remainder of a partially refunded order in the balance", async () => {
+    const order = await deliverOrder(profileA, 1000000);
+    await refundOrder(order, 300000);
+    await setTerms(profileA, { commissionPercent: 0 });
+
+    const b = await computeBalance(profileA._id);
+    // 1,000,000 charged, 300,000 given back -> 700,000 still the seller's.
+    expect(b.gross.refunded).toBe(300000);
+    expect(b.gross.delivered).toBe(700000);
+    expect(b.net.earned).toBe(700000);
+    expect(b.net.available).toBe(700000);
+  });
+
+  it("takes commission only on what was actually kept", async () => {
+    const order = await deliverOrder(profileA, 1000000);
+    await refundOrder(order, 300000);
+    await setTerms(profileA, { commissionPercent: 10 });
+
+    const b = await computeBalance(profileA._id);
+    // Commission on 700,000, not on the 1,000,000 that was charged.
+    expect(b.commission.amount).toBe(70000);
+    expect(b.net.earned).toBe(630000);
+  });
+
+  it("drops a fully refunded order to zero rather than by accident of its status", async () => {
+    const order = await deliverOrder(profileA, 1000000);
+    await refundOrder(order, 1000000);
+    await setTerms(profileA, { commissionPercent: 10 });
+
+    const b = await computeBalance(profileA._id);
+    expect(b.gross.refunded).toBe(1000000);
+    expect(b.gross.delivered).toBe(0);
+    expect(b.commission.amount).toBe(0);
+    expect(b.net.available).toBe(0);
+  });
+
+  it("keeps a partially refunded order claimable while its siblings are still earning", async () => {
+    await deliverOrder(profileA, 1000000);
+    const refunded = await deliverOrder(profileA, 1000000);
+    await refundOrder(refunded, 400000);
+    await setTerms(profileA, { commissionPercent: 0 });
+
+    const b = await computeBalance(profileA._id);
+    expect(b.gross.delivered).toBe(1600000);
+    expect(b.gross.refunded).toBe(400000);
+  });
+
+  it("never lets a refund drive a balance negative", async () => {
+    // The RMA ledger refuses to over-refund, but the finance ledger must be
+    // defensive on its own: an inconsistent document must not become money the
+    // store owes a seller.
+    const order = await deliverOrder(profileA, 1000000);
+    await Order.updateOne(
+      { _id: order._id },
+      { $set: { "payment.refundedAmount": 5000000, status: "returned" } },
+    );
+    await setTerms(profileA, { commissionPercent: 0 });
+
+    const b = await computeBalance(profileA._id);
+    expect(b.net.earned).toBe(0);
+    expect(b.net.available).toBe(0);
+  });
+
+  it("reports refunded money without double counting a held order", async () => {
+    const order = await deliverOrder(profileA, 1000000);
+    await refundOrder(order, 200000);
+    await setTerms(profileA, { commissionPercent: 0, holdDays: 7 });
+
+    const b = await computeBalance(profileA._id);
+    // The order moved to `returned`, so it is no longer inside the hold window;
+    // what is left of it is immediately payable.
+    expect(b.gross.held).toBe(0);
+    expect(b.gross.delivered).toBe(800000);
+    expect(b.net.available).toBe(800000);
+  });
+});
+
 // ── Request payout ──────────────────────────────────────────────────────────
 
 describe("FinanceService.requestPayout", () => {

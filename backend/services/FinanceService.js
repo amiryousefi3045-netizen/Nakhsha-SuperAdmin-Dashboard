@@ -5,6 +5,12 @@
  *   - Revenue is EARNED when an order is `delivered` (the customer has the
  *     goods). `shipped` revenue is in transit; `confirmed`/`processing` is
  *     awaiting action. Neither counts toward the balance.
+ *   - Earnings are NET of refunds. A `returned` order is a delivered order that
+ *     later gave money back, so the basis is `total - payment.refundedAmount`
+ *     over `delivered` + `returned`, never the status label on its own. This
+ *     matters because a partial refund moves the order to `returned` on its
+ *     first refund: reading status buckets directly would drop the unrefunded
+ *     remainder of a partially refunded order out of the payable balance.
  *   - Delivered orders inside the profile's `finance.holdDays` return window
  *     are HELD (still reversible) and excluded from the balance.
  *   - Commission applies to the eligible (held-excluded) delivered revenue at
@@ -122,10 +128,24 @@ async function computeBalance(sellerId, profile) {
   const commissionPercent = Number(terms.commissionPercent) || 0;
   const holdDays = Number(terms.holdDays) || 0;
 
+  // One pass over the whole order ledger, carrying BOTH the charge and the money
+  // already handed back. The refund has to be read here rather than derived from
+  // the order status, because a partial refund flips the order to `returned` on
+  // its very first refund: grouping by status alone would drop the unrefunded
+  // remainder of a partially refunded order out of the seller's payable balance,
+  // and a fully refunded one would be excluded by accident rather than by
+  // arithmetic. Earnings are therefore always `total - refundedAmount`, which is
+  // the only figure that can mean "money the store may pay out".
   const [revenueRows, payoutRows] = await Promise.all([
     Order.aggregate([
       { $match: { sellerId } },
-      { $group: { _id: "$status", total: { $sum: "$total" } } },
+      {
+        $group: {
+          _id: "$status",
+          total: { $sum: "$total" },
+          refunded: { $sum: { $ifNull: ["$payment.refundedAmount", 0] } },
+        },
+      },
     ]),
     Payout.aggregate([
       { $match: { sellerId } },
@@ -134,13 +154,27 @@ async function computeBalance(sellerId, profile) {
   ]);
 
   const byStatus = {};
-  for (const row of revenueRows) byStatus[row._id] = row.total;
+  const refundedByStatus = {};
+  for (const row of revenueRows) {
+    byStatus[row._id] = row.total;
+    refundedByStatus[row._id] = row.refunded || 0;
+  }
   const byPayout = {};
   for (const row of payoutRows) byPayout[row._id] = row.total;
 
-  const delivered = byStatus.delivered || 0;
+  /** Money a status actually contributed, after refunds. */
+  const netOf = (...statuses) =>
+    statuses.reduce((sum, s) => sum + (byStatus[s] || 0) - (refundedByStatus[s] || 0), 0);
 
-  // Held = delivered inside the return/refund window, still reversible.
+  // Both statuses are "the goods reached the buyer": a returned order is still a
+  // delivered order that later gave some money back, so it belongs in the
+  // earnings basis at whatever is left of it.
+  const delivered = netOf("delivered", "returned");
+  const refunded = (refundedByStatus.delivered || 0) + (refundedByStatus.returned || 0);
+
+  // Held = delivered inside the return/refund window, still reversible. A
+  // returned order is never "held": it has already been through the refund path,
+  // and holding it again would hide money that was never refunded.
   let heldAmount = 0;
   if (holdDays > 0 && delivered > 0) {
     const cutoff = new Date(Date.now() - holdDays * HOLD_MS);
@@ -152,13 +186,18 @@ async function computeBalance(sellerId, profile) {
           createdAt: { $gte: cutoff },
         },
       },
-      { $group: { _id: null, total: { $sum: "$total" } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$total" },
+          refunded: { $sum: { $ifNull: ["$payment.refundedAmount", 0] } },
+        },
+      },
     ]);
-    heldAmount = heldRows[0]?.total || 0;
+    heldAmount = (heldRows[0]?.total || 0) - (heldRows[0]?.refunded || 0);
   }
 
-  const eligibleGross = Math.max(0, delivered - heldAmount);
-  const commissionAmount = Math.round((eligibleGross * commissionPercent) / 100);
+  const eligibleGross = Math.max(0, delivered - heldAmount);  const commissionAmount = Math.round((eligibleGross * commissionPercent) / 100);
   const netEarned = Math.max(0, eligibleGross - commissionAmount);
 
   const requested = byPayout.requested || 0;
@@ -171,6 +210,9 @@ async function computeBalance(sellerId, profile) {
     currency: "IRR",
     gross: {
       delivered,
+      /** Money already returned to buyers. Deducted from `delivered`, shown for
+       *  the seller to reconcile against their own RMA records. */
+      refunded,
       shipped: byStatus.shipped || 0,
       awaiting: (byStatus.confirmed || 0) + (byStatus.processing || 0),
       held: heldAmount,

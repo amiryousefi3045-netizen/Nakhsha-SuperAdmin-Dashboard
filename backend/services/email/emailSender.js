@@ -22,6 +22,22 @@ function isConfigured() {
 }
 
 /**
+ * Control characters (CR, LF, NUL, …) have no legitimate place in an address or
+ * a subject, and a downstream mail provider that folds a `Bcc:` header out of one
+ * turns a bad address into an open relay. Both fields are user-influenced here:
+ * `to` is the buyer's own address from checkout, which is only loosely validated.
+ * Rejecting is the honest response — silently stripping would turn a malformed
+ * address into a *different*, deliverable one.
+ */
+const CONTROL_CHARS = /[\r\n\u0000-\u001F\u007F]/;
+
+function assertSendable(value, field) {
+  if (CONTROL_CHARS.test(value)) {
+    throw new Error(`Email ${field} contains control characters`);
+  }
+}
+
+/**
  * @param {string} to      recipient address
  * @param {string} subject email subject
  * @param {string} body    plain-text Persian body
@@ -34,6 +50,8 @@ async function sendEmail(to, subject, body, meta = {}) {
   if (!to || !subject || !body) {
     throw new Error("Email recipient, subject and body are required");
   }
+  assertSendable(to, "recipient");
+  assertSendable(subject, "subject");
 
   const kind = meta.kind || "generic";
 

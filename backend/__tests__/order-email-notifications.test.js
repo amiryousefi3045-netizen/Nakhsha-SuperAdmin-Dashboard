@@ -10,6 +10,7 @@ const AuditLog = require("../models/AuditLog");
 const NotificationService = require("../services/NotificationService");
 const notificationQueueService = require("../services/NotificationQueueService");
 const { createOrder } = require("../services/OrderService");
+const { sendEmail } = require("../services/email/emailSender");
 const { _resetRateLimitStoreForTests } = require("../utils/rateLimiter");
 
 /**
@@ -308,5 +309,40 @@ describe("email through the stage-19 retry queue", () => {
     expect(email.delivered).toBe(true);
     expect(email.message).toContain("تأیید شد");
     await Order.deleteMany({ _id: created._id });
+  });
+});
+
+/**
+ * Phase 36 hardening — control characters in the envelope.
+ *
+ * The recipient is the buyer's own address from checkout, which is validated
+ * only loosely. A CR/LF in it lets a downstream mail provider fold an extra
+ * header out of the address ("Bcc:"), turning the platform's mail account into
+ * a relay for the attacker's mail. Rejecting beats stripping: stripping would
+ * silently turn a malformed address into a different, deliverable one.
+ */
+describe("email envelope hardening (Phase 36)", () => {
+  it("rejects a recipient carrying an injected header", async () => {
+    await expect(
+      sendEmail("victim@x.tld\r\nBcc: attacker@evil.tld", "s", "b"),
+    ).rejects.toThrow(/recipient contains control characters/);
+  });
+
+  it("rejects a subject carrying an injected header", async () => {
+    await expect(
+      sendEmail("buyer@example.tld", "hi\r\nBcc: x@y.tld", "b"),
+    ).rejects.toThrow(/subject contains control characters/);
+  });
+
+  it("rejects a NUL byte in the recipient", async () => {
+    await expect(sendEmail("buyer@example.tld\u0000", "s", "b")).rejects.toThrow(
+      /recipient contains control characters/,
+    );
+  });
+
+  it("still accepts a legitimate Persian send", async () => {
+    await expect(
+      sendEmail("buyer@example.tld", "سفارش ۱۲", "متن سفارش"),
+    ).resolves.toBeUndefined();
   });
 });
