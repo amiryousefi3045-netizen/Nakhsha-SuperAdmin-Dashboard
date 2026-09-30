@@ -2,6 +2,7 @@ const OrderService = require("../services/OrderService");
 const ReturnService = require("../services/ReturnService");
 const CouponService = require("../services/CouponService");
 const ShippingService = require("../services/ShippingService");
+const { IRAN_PROVINCES } = require("../utils/iranGeo");
 const Product = require("../models/Product");
 const SellerProfile = require("../models/SellerProfile");
 const AuditService = require("../services/AuditService");
@@ -319,6 +320,18 @@ async function quoteShipping(req, res) {
   }
 }
 
+async function listShippingProvinces(req, res) {
+  // No profile lookup and no `OrderService` call on purpose: the answer is the
+  // same 31 names for every slug, including an unknown one, so this endpoint
+  // cannot be used to tell whether a store exists.
+  res.json(
+    createSuccessResponse(
+      { provinces: IRAN_PROVINCES.slice(), currency: "IRR" },
+      req.id,
+    ),
+  );
+}
+
 async function paymentCallback(req, res) {
   try {
     const { order, applied } = await submitPaymentResult({
@@ -502,6 +515,7 @@ module.exports = {
   checkout,
   validateCoupon,
   quoteShipping,
+  listShippingProvinces,
   paymentCallback,
   listBuyerOrders: listBuyerOrdersHandler,
   getBuyerOrder: getBuyerOrderHandler,

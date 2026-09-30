@@ -722,6 +722,31 @@ describe("Phase 36: the buyer can see the cost before committing", () => {
   });
 });
 
+describe("Phase 36: the buyer form needs the server's province list", () => {
+  it("serves the canonical provinces without authentication", async () => {
+    const res = await request(app).get(`/api/storefront/${SLUG}/shipping/provinces`);
+    expect(res.status).toBe(200);
+    expect(res.body.provinces).toContain("تهران");
+    expect(res.body.provinces).toHaveLength(31);
+  });
+
+  it("answers the same for an unknown slug, so it cannot probe for a store", async () => {
+    // A free-text province box would let a buyer type something the server
+    // rejects; a dropdown has to come from the same table the server validates
+    // against, which is exactly why this list is served rather than shipped in
+    // the frontend bundle.
+    const res = await request(app).get("/api/storefront/no-such-store-here/shipping/provinces");
+    expect(res.status).toBe(200);
+    expect(res.body.provinces).toContain("تهران");
+  });
+
+  it("offers only provinces the shipping engine actually accepts", async () => {
+    const res = await request(app).get(`/api/storefront/${SLUG}/shipping/provinces`);
+    const { IRAN_PROVINCES } = require("../utils/iranGeo");
+    expect(res.body.provinces).toEqual(IRAN_PROVINCES);
+  });
+});
+
 describe("Phase 36: the seller records what the courier really cost", () => {
   const setCost = (orderId, body, token = ownerToken) =>
     request(app)

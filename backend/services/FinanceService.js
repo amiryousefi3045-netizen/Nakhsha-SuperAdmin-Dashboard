@@ -5,14 +5,19 @@
  *   - Revenue is EARNED when an order is `delivered` (the customer has the
  *     goods). `shipped` revenue is in transit; `confirmed`/`processing` is
  *     awaiting action. Neither counts toward the balance.
- *   - Earnings are NET of refunds. A `returned` order is a delivered order that
- *     later gave money back, so the basis is `total - payment.refundedAmount`
- *     over `delivered` + `returned`, never the status label on its own. This
- *     matters because a partial refund moves the order to `returned` on its
- *     first refund: reading status buckets directly would drop the unrefunded
- *     remainder of a partially refunded order out of the payable balance.
+ *   - Earnings are NET of refunds AND of the courier's actual cost (Phase 36).
+ *     A `returned` order is a delivered order that later gave money back, so the
+ *     basis is `total - payment.refundedAmount - shipping.cost` over
+ *     `delivered` + `returned`, never the status label on its own. This matters
+ *     twice over: a partial refund moves the order to `returned` on its first
+ *     refund, so reading status buckets directly would drop the unrefunded
+ *     remainder of a partially refunded order out of the payable balance; and
+ *     `shipping.cost` is money the seller collected on the buyer's behalf and
+ *     passed to a carrier, so a balance that ignored it would let a store
+ *     withdraw delivery fees that were never its own.
  *   - Delivered orders inside the profile's `finance.holdDays` return window
- *     are HELD (still reversible) and excluded from the balance.
+ *     are HELD (still reversible) and excluded from the balance, on the same
+ *     `total - refunded - shippingCost` basis.
  *   - Commission applies to the eligible (held-excluded) delivered revenue at
  *     `finance.commissionPercent`; `netEarned = eligible - commission`.
  *   - A payout moves money OUT of the balance. Only non-terminal documents
@@ -128,14 +133,16 @@ async function computeBalance(sellerId, profile) {
   const commissionPercent = Number(terms.commissionPercent) || 0;
   const holdDays = Number(terms.holdDays) || 0;
 
-  // One pass over the whole order ledger, carrying BOTH the charge and the money
-  // already handed back. The refund has to be read here rather than derived from
-  // the order status, because a partial refund flips the order to `returned` on
-  // its very first refund: grouping by status alone would drop the unrefunded
-  // remainder of a partially refunded order out of the seller's payable balance,
-  // and a fully refunded one would be excluded by accident rather than by
-  // arithmetic. Earnings are therefore always `total - refundedAmount`, which is
-  // the only figure that can mean "money the store may pay out".
+  // One pass over the whole order ledger, carrying the charge, the money already
+  // handed back, AND what the courier actually cost. The refund has to be read
+  // here rather than derived from the order status, because a partial refund
+  // flips the order to `returned` on its very first refund: grouping by status
+  // alone would drop the unrefunded remainder of a partially refunded order out
+  // of the seller's payable balance, and a fully refunded one would be excluded
+  // by accident rather than by arithmetic. Earnings are therefore always
+  // `total - refundedAmount - shippingCost`, which is the only figure that can
+  // mean "money the store may pay out": the fee the buyer paid for delivery is
+  // not the seller's to keep, it is on its way to the courier.
   const [revenueRows, payoutRows] = await Promise.all([
     Order.aggregate([
       { $match: { sellerId } },
@@ -144,6 +151,9 @@ async function computeBalance(sellerId, profile) {
           _id: "$status",
           total: { $sum: "$total" },
           refunded: { $sum: { $ifNull: ["$payment.refundedAmount", 0] } },
+          // `null` on a pre-Phase-36 order and on a pickup; `$ifNull` keeps the
+          // arithmetic an integer instead of poisoning the whole ledger.
+          shippingCost: { $sum: { $ifNull: ["$shipping.cost", 0] } },
         },
       },
     ]),
@@ -155,22 +165,43 @@ async function computeBalance(sellerId, profile) {
 
   const byStatus = {};
   const refundedByStatus = {};
+  const shippingCostByStatus = {};
   for (const row of revenueRows) {
     byStatus[row._id] = row.total;
     refundedByStatus[row._id] = row.refunded || 0;
+    shippingCostByStatus[row._id] = row.shippingCost || 0;
   }
   const byPayout = {};
   for (const row of payoutRows) byPayout[row._id] = row.total;
 
-  /** Money a status actually contributed, after refunds. */
+  /** What a status actually contributed: what was charged, less refunds and
+   *  less what the courier cost. The courier is a real expense on a delivered
+   *  order, so leaving it out would let a seller withdraw delivery fees that
+   *  were never theirs to keep. */
   const netOf = (...statuses) =>
-    statuses.reduce((sum, s) => sum + (byStatus[s] || 0) - (refundedByStatus[s] || 0), 0);
+    statuses.reduce(
+      (sum, s) =>
+        sum +
+        (byStatus[s] || 0) -
+        (refundedByStatus[s] || 0) -
+        (shippingCostByStatus[s] || 0),
+      0,
+    );
 
   // Both statuses are "the goods reached the buyer": a returned order is still a
   // delivered order that later gave some money back, so it belongs in the
   // earnings basis at whatever is left of it.
-  const delivered = netOf("delivered", "returned");
+  //
+  // Floored at zero, because a loss-making shipment (the courier charged more
+  // than the order was worth) is a loss, not negative revenue. Left unclamped it
+  // would print a negative `gross.delivered`, which reads as a broken ledger even
+  // though the payable balance below is floored correctly.
+  const delivered = Math.max(0, netOf("delivered", "returned"));
   const refunded = (refundedByStatus.delivered || 0) + (refundedByStatus.returned || 0);
+  // Reported gross-of-arithmetic, so the seller can reconcile a single number
+  // against their courier invoices instead of reverse-engineering `delivered`.
+  const shippingCost =
+    (shippingCostByStatus.delivered || 0) + (shippingCostByStatus.returned || 0);
 
   // Held = delivered inside the return/refund window, still reversible. A
   // returned order is never "held": it has already been through the refund path,
@@ -191,13 +222,16 @@ async function computeBalance(sellerId, profile) {
           _id: null,
           total: { $sum: "$total" },
           refunded: { $sum: { $ifNull: ["$payment.refundedAmount", 0] } },
+          shippingCost: { $sum: { $ifNull: ["$shipping.cost", 0] } },
         },
       },
     ]);
-    heldAmount = (heldRows[0]?.total || 0) - (heldRows[0]?.refunded || 0);
+    heldAmount =
+      (heldRows[0]?.total || 0) - (heldRows[0]?.refunded || 0) - (heldRows[0]?.shippingCost || 0);
   }
 
-  const eligibleGross = Math.max(0, delivered - heldAmount);  const commissionAmount = Math.round((eligibleGross * commissionPercent) / 100);
+  const eligibleGross = Math.max(0, delivered - heldAmount);
+  const commissionAmount = Math.round((eligibleGross * commissionPercent) / 100);
   const netEarned = Math.max(0, eligibleGross - commissionAmount);
 
   const requested = byPayout.requested || 0;
@@ -213,6 +247,10 @@ async function computeBalance(sellerId, profile) {
       /** Money already returned to buyers. Deducted from `delivered`, shown for
        *  the seller to reconcile against their own RMA records. */
       refunded,
+      /** What the couriers charged on delivered orders (Phase 36). Also deducted
+       *  from `delivered`, and shown so the seller can match it against their
+       *  carrier statements. */
+      shippingCost,
       shipped: byStatus.shipped || 0,
       awaiting: (byStatus.confirmed || 0) + (byStatus.processing || 0),
       held: heldAmount,

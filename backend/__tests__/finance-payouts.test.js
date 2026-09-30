@@ -248,6 +248,128 @@ describe("GET /api/seller/finance", () => {
   });
 });
 
+/**
+ * The courier's invoice is money the seller collected on the buyer's behalf and
+ * handed to a carrier. A balance that ignored it would let a store withdraw
+ * delivery fees that were never its own — so the cost is deducted from earnings,
+ * and reported so the seller can match it against their carrier statement.
+ */
+describe("GET /api/seller/finance — the courier's cost comes off the balance", () => {
+  /** A delivered order whose shipping fee was 100000 and cost the seller 70000. */
+  async function deliverWithCourierCost({ fee = 100000, cost = 70000 } = {}) {
+    const product = await Product.create({
+      sellerId: sellerProfile._id,
+      sellerUserId: sellerUser._id,
+      title: "کالای ارسالی",
+      price: 1000000,
+      stock: { onHand: 10, reserved: 0 },
+      stockPolicy: "tracked",
+      status: "active",
+    });
+    const order = await Order.create({
+      sellerId: sellerProfile._id,
+      sellerUserId: sellerUser._id,
+      orderNumber: 880001,
+      origin: "storefront",
+      customer: { name: "خریدار", phone: "09120000009" },
+      items: [
+        {
+          productId: product._id,
+          title: product.title,
+          price: 1000000,
+          qty: 1,
+          currency: "IRR",
+        },
+      ],
+      subtotal: 1000000,
+      shippingFee: fee,
+      discount: 0,
+      total: 1000000 + fee,
+      currency: "IRR",
+      status: "delivered",
+      shipping: {
+        methodKey: "post",
+        methodTitle: "پست",
+        kind: "delivery",
+        fee,
+        cost,
+        zoneLabel: "تهران",
+        eta: { minDays: 1, maxDays: 3 },
+        address: {},
+        pickup: {},
+      },
+    });
+    return order;
+  }
+
+  const balance = async () => {
+    const res = await request(app)
+      .get("/api/seller/finance")
+      .set("Authorization", AUTH(sellerToken))
+      .expect(200);
+    return res.body.finance;
+  };
+
+  beforeEach(async () => {
+    await Order.deleteMany({ orderNumber: 880001 });
+  });
+
+  afterAll(async () => {
+    await Order.deleteMany({ orderNumber: 880001 });
+  });
+
+  it("takes the courier cost out of what the seller can withdraw", async () => {
+    await deliverWithCourierCost();
+    const f = await balance();
+    // The buyer paid 1100000 in total; 70000 of it was never the seller's.
+    expect(f.gross.delivered).toBe(1030000);
+    expect(f.gross.shippingCost).toBe(70000);
+    expect(f.net.earned).toBe(1030000);
+    expect(f.net.available).toBe(1030000);
+  });
+
+  it("applies commission to what is left after the courier, not before", async () => {
+    await setFinanceTerms(sellerProfile, { commissionPercent: 10 });
+    await deliverWithCourierCost();
+    const f = await balance();
+    // 10% of 1030000, not of 1100000: commission is charged on revenue the
+    // seller actually earned, and a delivery fee it passed on is not that.
+    expect(f.commission.amount).toBe(103000);
+    expect(f.net.earned).toBe(927000);
+    await setFinanceTerms(sellerProfile, { commissionPercent: 0 });
+  });
+
+  it("leaves an order with no recorded cost alone", async () => {
+    // An unrecorded cost is not a zero cost, but it also must not become an
+    // invented expense: until the seller enters the invoice, the balance stands.
+    await deliverWithCourierCost({ cost: 0 });
+    const f = await balance();
+    expect(f.gross.shippingCost).toBe(0);
+    expect(f.net.earned).toBe(1100000);
+  });
+
+  it("clamps the earnings basis at zero rather than going negative", async () => {
+    // A loss-making shipment: the courier charged more than the whole order was
+    // worth. The balance must floor at zero, because a negative available
+    // balance would be a request for money that does not exist.
+    await deliverWithCourierCost({ fee: 50000, cost: 1200000 });
+    const f = await balance();
+    expect(f.gross.shippingCost).toBe(1200000);
+    expect(f.gross.delivered).toBe(0);
+    expect(f.net.earned).toBe(0);
+    expect(f.net.available).toBe(0);
+  });
+
+  it("keeps the seller's goods revenue when only the delivery leg loses money", async () => {
+    // The common real case: shipping was underpriced by 40000, but the goods
+    // margin is untouched. Deducting the whole order would be wrong.
+    await deliverWithCourierCost({ fee: 50000, cost: 90000 });
+    const f = await balance();
+    expect(f.gross.delivered).toBe(960000);
+    expect(f.net.available).toBe(960000);
+  });
+});
+
 // ── POST /payouts ───────────────────────────────────────────────────────────
 
 describe("POST /api/seller/payouts", () => {

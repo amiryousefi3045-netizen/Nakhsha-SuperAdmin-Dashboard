@@ -13,6 +13,7 @@ const {
   listBuyerReturns,
   validateCoupon,
   quoteShipping,
+  listShippingProvinces,
 } = require("../controllers/StorefrontOrderController");
 
 /**
@@ -239,6 +240,19 @@ router.post(
   validate(shippingQuoteBodySchema, "body"),
   quoteShipping,
 );
+
+/**
+ * The canonical province list, so the buyer's address form can offer a dropdown
+ * instead of a free-text box.
+ *
+ * Deliberately PUBLIC and slug-scoped: the payload is a fixed national constant
+ * (31 names), identical for every store, so it leaks nothing about any seller
+ * and there is nothing to rate-limit. The client must not ship its own copy of
+ * this list — `ShippingService.normalizeAddress` validates against exactly this
+ * table, so a second copy in the frontend would drift and offer buyers
+ * provinces the server then rejects.
+ */
+router.get("/:slug/shipping/provinces", validate(storefrontParamsSchema, "params"), listShippingProvinces);
 
 router.post(
   "/payments/:refId/callback",  heavyLimiter,
