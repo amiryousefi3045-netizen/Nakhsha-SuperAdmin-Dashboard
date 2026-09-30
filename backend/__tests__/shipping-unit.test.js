@@ -4,6 +4,7 @@ const {
   zoneMatches,
   selectZone,
   methodCoversAddress,
+  isEmptyAddress,
   computeFee,
   quoteProfile,
   ShippingDomainError,
@@ -482,6 +483,20 @@ describe("quoteProfile", () => {
     });
     expect(quote.unavailable[0].key).toBe("mashhad");
     expect(quote.unavailable[0].reason).toContain("در دسترس نیست");
+  });
+
+  it("treats an all-blank address object as no address at all", () => {
+    // A pickup checkout posts `shippingAddress: {}` because the form has the
+    // field but the buyer used none of it.
+    expect(isEmptyAddress({})).toBe(true);
+    expect(isEmptyAddress({ receiverName: "  ", line1: "" })).toBe(true);
+    expect(isEmptyAddress(null)).toBe(true);
+  });
+
+  it("does not excuse a half-typed address", () => {
+    // One field filled in is a typo, not an absent address.
+    expect(isEmptyAddress({ city: "تهران" })).toBe(false);
+    expect(isEmptyAddress({ receiverName: "علی" })).toBe(false);
   });
 
   it("never returns a maxDays below minDays", () => {    const quote = quoteProfile({

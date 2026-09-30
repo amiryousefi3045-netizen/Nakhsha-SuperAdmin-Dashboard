@@ -92,7 +92,7 @@ function normalizeProvince(name) {
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 
-function normalizePostalCode(value) {
+function toLatinDigits(value) {
   if (typeof value === "number") value = String(value);
   if (typeof value !== "string") return "";
   let digits = "";
@@ -109,7 +109,23 @@ function normalizePostalCode(value) {
     }
     if (char >= "0" && char <= "9") digits += char;
   }
+  return digits;
+}
+
+function normalizePostalCode(value) {
+  const digits = toLatinDigits(value);
   return digits.length === 10 ? digits : "";
+}
+
+/**
+ * A delivery zone may be scoped to a postal *prefix* ("16" for Isfahan) rather
+ * than a full code, so this accepts 1-10 digits where `normalizePostalCode`
+ * demands all ten. Reusing one digit conversion keeps the two from drifting
+ * apart on which characters count as digits.
+ */
+function normalizePostalPrefix(value) {
+  const digits = toLatinDigits(value);
+  return digits.length > 0 && digits.length <= 10 ? digits : "";
 }
 
 module.exports = {
@@ -117,5 +133,6 @@ module.exports = {
   isValidProvince,
   normalizeProvince,
   normalizePostalCode,
+  normalizePostalPrefix,
   normalizeText,
 };

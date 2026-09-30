@@ -339,7 +339,7 @@ async function createOrder({
   // one: pickup has no destination by definition, and a seller-created order may
   // legitimately be a phone order the seller will ask about.
   let normalizedShippingAddress = null;
-  if (shippingAddress && typeof shippingAddress === "object") {
+  if (shippingAddress && typeof shippingAddress === "object" && !ShippingService.isEmptyAddress(shippingAddress)) {
     const normalized = ShippingService.normalizeAddress(shippingAddress);
     if (!normalized.ok) {
       throw new OrderDomainError("INVALID_SHIPPING_ADDRESS", normalized.errors[0], {
@@ -418,6 +418,17 @@ async function createOrder({
     // No preference: take the cheapest quote. The list is already sorted
     // cheapest-first, so this is the first entry by construction.
     chosenMethod = shippingQuote.methods[0];
+  } else if (shippingQuote.configured) {
+    // A seller who HAS configured rates, but whose rates cover neither this
+    // destination nor this basket, gets no silent free order. Falling through
+    // here would let a buyer pay nothing for delivery the seller never agreed to
+    // carry, simply by omitting `shippingMethodId`. Only a store with no profile
+    // at all — `configured: false` above — keeps the free-shipping default.
+    throw new OrderDomainError(
+      "SHIPPING_NOT_AVAILABLE",
+      "برای این مقصد روش ارسالی در دسترس نیست",
+      { reasons: shippingQuote.unavailable.map((u) => u.key) },
+    );
   }
 
   const shippingFee = chosenMethod ? chosenMethod.fee : 0;

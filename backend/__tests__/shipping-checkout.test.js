@@ -233,6 +233,101 @@ function checkout(body = {}) {
     });
 }
 
+describe("Phase 36: what a seller can actually save", () => {
+  it("keeps a short postal prefix instead of discarding the zone", async () => {
+    // A zone scoped to "16" is how an Iranian seller targets Isfahan. Routing
+    // the prefix through the 10-digit postal validator silently emptied the
+    // list, so the zone could never be saved and the seller lost the rate.
+    await ShippingService.saveProfile({
+      sellerId: storeId,
+      payload: {
+        isEnabled: true,
+        methods: [
+          {
+            key: "post",
+            title: "پست",
+            kind: "delivery",
+            pricing: { mode: "flat", flatFee: 40000 },
+            zones: [{ label: "اصفهان", type: "postal_code", postalPrefixes: ["16", "۸۶"] }],
+          },
+        ],
+      },
+    });
+    const saved = await ShippingProfile.findOne({ sellerId: storeId });
+    expect(saved.methods[0].zones[0].postalPrefixes).toEqual(["16", "86"]);
+  });
+
+  it("quotes the prefix zone for an address that starts with it", async () => {
+    await ShippingService.saveProfile({
+      sellerId: storeId,
+      payload: {
+        isEnabled: true,
+        methods: [
+          {
+            key: "post",
+            title: "پست",
+            kind: "delivery",
+            pricing: { mode: "flat", flatFee: 40000 },
+            zones: [
+              { label: "اصفهان ارزان", type: "postal_code", postalPrefixes: ["81"], feeOverride: 20000 },
+              { label: "پیش‌فرض", type: "all" },
+            ],
+          },
+        ],
+      },
+    });
+    const res = await checkout({
+      shippingAddress: { ...ADDRESS, province: "اصفهان", city: "اصفهان", postalCode: "8165813478" },
+      shippingMethodId: "post",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.order.shipping.zoneLabel).toBe("اصفهان ارزان");
+    expect(res.body.order.shippingFee).toBe(20000);
+  });
+
+  it("refuses to create a free order by simply omitting the method", async () => {
+    // The seller configured a delivery rate, but it covers only Isfahan. A buyer
+    // in Tehran who leaves `shippingMethodId` out must not get free delivery.
+    await ShippingService.saveProfile({
+      sellerId: storeId,
+      payload: {
+        isEnabled: true,
+        methods: [
+          {
+            key: "post",
+            title: "پست",
+            kind: "delivery",
+            pricing: { mode: "flat", flatFee: 40000 },
+            zones: [{ label: "اصفهان", type: "province", provinces: ["اصفهان"] }],
+          },
+        ],
+      },
+    });
+    const res = await checkout({ shippingAddress: ADDRESS });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("SHIPPING_NOT_AVAILABLE");
+  });
+
+  it("still leaves an unconfigured store open to free shipping", async () => {
+    // The counterpart to the guard above: "not configured" stays a decision of
+    // record, so a seller who never set rates is not locked out of selling.
+    const res = await checkout({ shippingAddress: ADDRESS });
+    expect(res.status).toBe(200);
+    expect(res.body.order.shippingFee).toBe(0);
+    expect(res.body.order.shipping).toBeNull();
+  });
+
+  it("accepts a pickup order whose address object is blank", async () => {
+    // The checkout form always posts the field; a pickup buyer fills in nothing.
+    await configureProfile();
+    const res = await checkout({ shippingAddress: {}, shippingMethodId: "pickup" });
+    expect(res.status).toBe(200);
+    expect(res.body.order.shippingFee).toBe(0);
+    expect(res.body.order.shipping.kind).toBe("pickup");
+    expect(res.body.order.shipping.pickup.address).toContain("ولیعصر");
+  });
+});
+
 function setStatus(orderId, status) {
   return request(app)
     .patch(`/api/seller/orders/${orderId}/status`)

@@ -23,6 +23,7 @@ const ShippingProfile = require("../models/ShippingProfile");
 const {
   normalizeProvince,
   normalizePostalCode,
+  normalizePostalPrefix,
   isValidProvince,
 } = require("../utils/iranGeo");
 const { calculateDistance, isValidCoordinates } = require("../utils/geospatial");
@@ -113,6 +114,37 @@ function normalizeAddress(input = {}) {
 
   if (errors.length) return { ok: false, errors };
   return { ok: true, value };
+}
+
+const ADDRESS_FIELDS = [
+  "receiverName",
+  "receiverPhone",
+  "province",
+  "city",
+  "postalCode",
+  "line1",
+  "line2",
+  "note",
+  "lat",
+  "lng",
+];
+
+/**
+ * A checkout form will happily post `shippingAddress: {}` for a pickup order,
+ * because the buyer filled in no fields and did not pick a method yet. Treating
+ * that as a malformed address would make the client know the seller's method
+ * list before it is allowed to ask for it. An address that carries *any* field
+ * is still validated strictly, so a half-typed address stays a real error.
+ */
+function isEmptyAddress(input) {
+  if (!input || typeof input !== "object") return true;
+  return ADDRESS_FIELDS.every((field) => {
+    const value = input[field];
+    if (value === null || value === undefined) return true;
+    if (typeof value === "string") return value.trim() === "";
+    if (typeof value === "number") return Number.isNaN(value);
+    return false;
+  });
 }
 
 /** Does this zone's own type match the destination it is given? */
@@ -455,9 +487,8 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
         }
       }
       const postalPrefixes = (Array.isArray(z.postalPrefixes) ? z.postalPrefixes : [])
-        .map((p) => normalizePostalCode(p))
-        .filter(Boolean)
-        .map((p) => p.slice(0, 10));
+        .map((p) => normalizePostalPrefix(p))
+        .filter(Boolean);
       if (type === "postal_code") {
         if (postalPrefixes.length === 0) {
           errors.push(`${zat}: حداقل یک پیشوند کدپستی معتبر لازم است`);
@@ -567,6 +598,7 @@ module.exports = {
   ShippingDomainError,
   roundUpKg,
   normalizeAddress,
+  isEmptyAddress,
   zoneMatches,
   selectZone,
   hasCatchAll,

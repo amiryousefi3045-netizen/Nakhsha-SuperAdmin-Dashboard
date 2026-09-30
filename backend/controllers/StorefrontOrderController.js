@@ -87,6 +87,7 @@ async function checkout(req, res) {
         // method. 400 keeps it out of the 5xx noise.
         INVALID_SHIPPING_ADDRESS: 400,
         SHIPPING_METHOD_UNAVAILABLE: 400,
+  SHIPPING_NOT_AVAILABLE: 400,
         // Defence in depth: `createOrder` rejects a leftover `shippingFee` key.
         // Reaching this means some caller still passes an amount, which would
         // otherwise become a silently free shipment.
