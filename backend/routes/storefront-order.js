@@ -2,7 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const { requireAuth } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
-const { heavyLimiter } = require("../middleware/rateLimiter");
+const { heavyLimiter, couponValidateLimiter } = require("../middleware/rateLimiter");
 const { ORDER_STATUSES } = require("../models/Order");
 const {
   checkout,
@@ -11,6 +11,7 @@ const {
   getBuyerOrder,
   createBuyerReturn,
   listBuyerReturns,
+  validateCoupon,
 } = require("../controllers/StorefrontOrderController");
 
 /**
@@ -129,6 +130,9 @@ const checkoutBodySchema = z.object({
     })
     .default("card"),
   customerNote: z.string().trim().max(2000, "یادداشت نامعتبر است").optional().default(""),
+  // A lookup key only. The amount is decided server-side in OrderService, so a
+  // client that tampers with this gains nothing except a validation error.
+  couponCode: z.string().trim().max(64, "کد تخفیف نامعتبر است").optional().default(""),
 });
 
 const callbackBodySchema = z.object({
@@ -136,6 +140,25 @@ const callbackBodySchema = z.object({
     errorMap: () => ({ message: "نتیجه پرداخت نامعتبر است" }),
   }),
   reason: z.string().trim().max(200, "دلیل نامعتبر است").optional().default(""),
+});
+
+// Coupon preview (Phase 35, P1-07). `code` is bounded here so an oversized
+// string never reaches the regex guard in the service.
+const couponBodySchema = z.object({
+  code: z
+    .string({ required_error: "کد تخفیف الزامی است" })
+    .trim()
+    .min(1, "کد تخفیف الزامی است")
+    .max(64, "کد تخفیف نامعتبر است"),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().regex(REF_ID_PATTERN, "شناسهٔ کالا نامعتبر است"),
+        qty: z.number().int().min(1).max(99),
+      }),
+    )
+    .min(1, "سبد خرید خالی است")
+    .max(50, "تعداد اقلام بیش از حد مجاز است"),
 });
 
 const router = express.Router();
@@ -147,6 +170,18 @@ router.post(
   validate(storefrontParamsSchema, "params"),
   validate(checkoutBodySchema, "body"),
   checkout,
+);
+
+// Coupon preview. `couponValidateLimiter` is the anti-enumeration budget: this
+// endpoint answers whether a code is real, so an unlimited version of it is a
+// free brute-force oracle against every campaign a seller ever runs.
+router.post(
+  "/:slug/coupons/validate",
+  requireAuth,
+  couponValidateLimiter,
+  validate(storefrontParamsSchema, "params"),
+  validate(couponBodySchema, "body"),
+  validateCoupon,
 );
 
 router.post(

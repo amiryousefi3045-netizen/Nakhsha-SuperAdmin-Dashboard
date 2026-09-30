@@ -654,6 +654,115 @@ describe("returns: the money (P1-04)", () => {
     expect(res.body.order.payment.status).toBe("refunded");
   });
 
+  it("lets a follow-up refund settle a partial one instead of stranding it", async () => {
+    const order = await newDeliveredBuyerOrder();
+    const created = await request(app)
+      .post(`/api/storefront/orders/${order._id}/returns`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({ reason: "کالا آسیب جزئی داشت" })
+      .expect(201);
+    const retId = created.body.return.id;
+
+    for (const status of ["approved", "received"]) {
+      await request(app)
+        .patch(`/api/seller/returns/${retId}/status`)
+        .set("Authorization", AUTH(ownerToken))
+        .send({ status })
+        .expect(200);
+    }
+
+    const first = await request(app)
+      .post(`/api/seller/returns/${retId}/refund`)
+      .set("Authorization", AUTH(ownerToken))
+      .send({ refundAmount: 60000 })
+      .expect(200);
+    expect(first.body.order.payment.refundedAmount).toBe(60000);
+    // Money is still owed, so the RMA stays the open vehicle for the order.
+    expect((await ReturnRequest.findById(retId)).openKey).toBe(String(order._id));
+
+    const second = await request(app)
+      .post(`/api/seller/returns/${retId}/refund`)
+      .set("Authorization", AUTH(ownerToken))
+      .send({ refundAmount: 40000, note: "تسویهٔ مانده" })
+      .expect(200);
+
+    // Cumulative ledger, not an overwrite: 60k + 40k, never just 40k.
+    expect(second.body.order.payment.refundedAmount).toBe(100000);
+    expect(second.body.return.refundAmount).toBe(100000);
+    // Fully settled: the lease is released so nothing blocks a future claim.
+    expect((await ReturnRequest.findById(retId)).openKey).toBeUndefined();
+  });
+
+  it("rejects a top-up that would over-refund the order", async () => {
+    const order = await newDeliveredBuyerOrder();
+    const created = await request(app)
+      .post(`/api/storefront/orders/${order._id}/returns`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({ reason: "مرجوعی برای سقف" })
+      .expect(201);
+    const retId = created.body.return.id;
+
+    for (const status of ["approved", "received"]) {
+      await request(app)
+        .patch(`/api/seller/returns/${retId}/status`)
+        .set("Authorization", AUTH(ownerToken))
+        .send({ status })
+        .expect(200);
+    }
+
+    await request(app)
+      .post(`/api/seller/returns/${retId}/refund`)
+      .set("Authorization", AUTH(ownerToken))
+      .send({ refundAmount: 60000 })
+      .expect(200);
+
+    // 60k is already gone; only 40k can legally follow.
+    const over = await request(app)
+      .post(`/api/seller/returns/${retId}/refund`)
+      .set("Authorization", AUTH(ownerToken))
+      .send({ refundAmount: 50000 });
+    expect(over.status).toBe(400);
+    expect(over.body.error.code).toBe("REFUND_AMOUNT_INVALID");
+
+    // The rejected attempt moved no money and did not release the lease.
+    const fresh = await Order.findById(order._id);
+    expect(fresh.payment.refundedAmount).toBe(60000);
+    expect((await ReturnRequest.findById(retId)).openKey).toBe(String(order._id));
+  });
+
+  it("never over-refunds under two simultaneous refunds (atomic ledger)", async () => {
+    const order = await newDeliveredBuyerOrder();
+    const created = await request(app)
+      .post(`/api/storefront/orders/${order._id}/returns`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({ reason: "تست همزمانی استرداد" })
+      .expect(201);
+    const retId = created.body.return.id;
+
+    for (const status of ["approved", "received"]) {
+      await request(app)
+        .patch(`/api/seller/returns/${retId}/status`)
+        .set("Authorization", AUTH(ownerToken))
+        .send({ status })
+        .expect(200);
+    }
+
+    const fire = () =>
+      request(app)
+        .post(`/api/seller/returns/${retId}/refund`)
+        .set("Authorization", AUTH(ownerToken))
+        .send({ refundAmount: 60000 });
+
+    const [a, b] = await Promise.all([fire(), fire()]);
+
+    // 60k + 60k > 100k, so the guarded increment must let exactly one land.
+    expect([a.status, b.status].filter((s) => s === 200)).toHaveLength(1);
+
+    const fresh = await Order.findById(order._id);
+    expect(fresh.payment.refundedAmount).toBe(60000);
+    expect(fresh.payment.refundedAmount).toBeLessThanOrEqual(order.total);
+  });
+
   it("frees the order for a new claim only after the refund closes it", async () => {
     const order = await newDeliveredBuyerOrder();
     const created = await request(app)

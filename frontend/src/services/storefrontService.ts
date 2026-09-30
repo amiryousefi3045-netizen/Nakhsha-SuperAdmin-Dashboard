@@ -15,7 +15,9 @@ import type {
   BuyerReturn,
   BuyerReturnsPage,
   CheckoutInput,
+  CheckoutItemInput,
   CheckoutResponse,
+  CouponPreview,
   CreateBuyerReturnInput,
   ListBuyerOrdersParams,
   ListStorefrontProductsParams,
@@ -108,6 +110,30 @@ export async function checkoutStorefront(
     order: {} as CheckoutResponse["order"],
     paymentIntent: {} as CheckoutResponse["paymentIntent"],
   });
+}
+
+/**
+ * POST /storefront/:slug/coupons/validate — check a typed code against the
+ * current cart WITHOUT spending it.
+ *
+ * The server re-prices the cart from live products, so the returned numbers are
+ * the ones checkout will use; the client never sends a subtotal and never does
+ * the arithmetic itself. Nothing here is a promise that the code will still be
+ * valid at checkout — the quota is only spent when the order is written.
+ *
+ * Requires authentication. The endpoint is rate limited, so this is for a human
+ * typing a code, not a loop.
+ */
+export async function validateStorefrontCoupon(
+  slug: string,
+  code: string,
+  items: CheckoutItemInput[],
+): Promise<CouponPreview> {
+  const res = await apiClient.post<CouponPreview>(
+    `/storefront/${encodeURIComponent(slug)}/coupons/validate`,
+    { code, items },
+  );
+  return unwrap(res, {} as CouponPreview);
 }
 
 /**

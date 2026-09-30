@@ -357,13 +357,6 @@ async function refundReturn({ sellerId, returnId, refundAmount, sellerUserId, no
   if (!ret) {
     throw new ReturnDomainError("RETURN_NOT_FOUND", "درخواست مرجوعی یافت نشد");
   }
-  if (ret.status !== "received") {
-    throw new ReturnDomainError(
-      "INVALID_RETURN_TRANSITION",
-      "استرداد تنها پس از دریافت کالا ممکن است",
-      { from: ret.status, to: "refunded" },
-    );
-  }
   if (!Number.isInteger(refundAmount) || refundAmount < 1) {
     throw new ReturnDomainError("REFUND_AMOUNT_INVALID", "مبلغ استرداد باید عدد صحیح و بزرگ‌تر از صفر باشد", {
       field: "refundAmount",
@@ -374,24 +367,55 @@ async function refundReturn({ sellerId, returnId, refundAmount, sellerUserId, no
   if (!order) {
     throw new ReturnDomainError("ORDER_NOT_FOUND", "سفارش یافت نشد");
   }
-  if (refundAmount > order.total) {
-    throw new ReturnDomainError("REFUND_AMOUNT_INVALID", "مبلغ استرداد نمی‌تواند از مبلغ سفارش بیشتر باشد", {
-      field: "refundAmount",
-      orderTotal: order.total,
-    });
+
+  // The RMA is the vehicle for the whole order's money. A first refund enters
+  // from `received`; a follow-up (top-up) re-enters from `refunded` while the
+  // order still carries an outstanding balance. Without this path a partial
+  // refund would permanently strand the remainder: the RMA closes, the order is
+  // `returned`, and a fresh claim can no longer reach it (the goods are already
+  // back, so only money is left to settle).
+  const alreadyRefunded = order.payment?.refundedAmount || 0;
+  const outstanding = Math.max(0, order.total - alreadyRefunded);
+  const isTopUp = ret.status === "refunded" && outstanding > 0;
+  if (ret.status !== "received" && !isTopUp) {
+    throw new ReturnDomainError(
+      "INVALID_RETURN_TRANSITION",
+      "استرداد تنها پس از دریافت کالا ممکن است",
+      { from: ret.status, to: "refunded" },
+    );
+  }
+
+  if (refundAmount > outstanding) {
+    throw new ReturnDomainError(
+      "REFUND_AMOUNT_INVALID",
+      "مبلغ استرداد از ماندهٔ قابل استرداد سفارش بیشتر است",
+      { field: "refundAmount", orderTotal: order.total, alreadyRefunded, outstanding },
+    );
   }
 
   // `delivered` is the normal case. An order the seller already returned by
-  // hand (legacy `delivered → returned` path) is tolerated: the money is still
-  // owed, the stock is already back, and failing here would strand the buyer.
+  // hand (legacy `delivered → returned` path), or one whose earlier partial
+  // refund already flipped it, is tolerated: the goods are back, the stock was
+  // restored once by the (one-way, retry-idempotent) transition below, and only
+  // the money remains. Money is checked BEFORE anything is written so a rejected
+  // amount leaves the order untouched.
   if (order.status === "delivered") {
-    await OrderService.transitionOrder({
-      orderId: order._id,
-      sellerId,
-      nextStatus: "returned",
-      sellerUserId,
-      reason: `استرداد مبلغ ${refundAmount} بابت درخواست مرجوعی #${ret.rmaNumber}`,
-    });
+    try {
+      await OrderService.transitionOrder({
+        orderId: order._id,
+        sellerId,
+        nextStatus: "returned",
+        sellerUserId,
+        reason: `استرداد مبلغ ${refundAmount} بابت درخواست مرجوعی #${ret.rmaNumber}`,
+      });
+    } catch (e) {
+      // A concurrent refund may have already flipped the order to `returned`;
+      // the transition is one-way and already restored stock, so losing that
+      // race is harmless. The atomic ledger guard below is the single judge of
+      // who actually gets the money, so rethrowing here would only replace a
+      // truthful "amount exceeded" with a misleading "invalid transition".
+      if (e.code !== "INVALID_TRANSITION") throw e;
+    }
   } else if (order.status !== "returned") {
     throw new ReturnDomainError(
       "ORDER_NOT_RETURNABLE",
@@ -400,28 +424,57 @@ async function refundReturn({ sellerId, returnId, refundAmount, sellerUserId, no
     );
   }
 
-  const fresh = await Order.findById(order._id);
-  fresh.payment.status = "refunded";
-  fresh.payment.refundedAmount = refundAmount;
-  fresh.payment.refundedAt = new Date();
-  await fresh.save();
+  // The ledger write is the one race that can lose real money, so it is a
+  // single atomic guarded increment — never read-modify-write. Two concurrent
+  // refunds can therefore never push `refundedAmount` past `total`: the guard
+  // lives in the query, so the loser matches nothing and is told the truth.
+  const refundedAt = new Date();
+  const fresh = await Order.findOneAndUpdate(
+    {
+      _id: order._id,
+      sellerId,
+      $or: [
+        { "payment.refundedAmount": { $lte: order.total - refundAmount } },
+        { "payment.refundedAmount": null },
+      ],
+    },
+    {
+      $inc: { "payment.refundedAmount": refundAmount },
+      $set: { "payment.status": "refunded", "payment.refundedAt": refundedAt },
+    },
+    { new: true },
+  );
+  if (!fresh) {
+    throw new ReturnDomainError(
+      "REFUND_AMOUNT_INVALID",
+      "مبلغ استرداد از ماندهٔ قابل استرداد سفارش بیشتر است",
+      { field: "refundAmount", orderTotal: order.total, alreadyRefunded },
+    );
+  }
 
   const fromStatus = ret.status;
   ret.status = "refunded";
-  ret.refundAmount = refundAmount;
-  ret.refundedAt = fresh.payment.refundedAt;
-  ret.openKey = undefined;
+  // Cumulative on the RMA ledger; the controller reports the increment for the
+  // audit trail so a top-up never looks like a second full refund.
+  ret.refundAmount = (ret.refundAmount || 0) + refundAmount;
+  ret.refundedAt = refundedAt;
+  // The RMA stays the open vehicle while money is still owed on the order and
+  // only a fully settled order releases the unique `openKey`, which is what
+  // keeps a competing second RMA from being filed meanwhile.
+  if (fresh.payment.refundedAmount >= fresh.total) {
+    ret.openKey = undefined;
+  }
   if (note.trim()) ret.resolutionNote = note.trim();
   ret.timeline.push({
     status: "refunded",
-    at: new Date(),
+    at: refundedAt,
     by: sellerUserId || null,
     note: note || `استرداد ${refundAmount}`,
   });
   await ret.save();
 
   publishReturnEvent(ret, fromStatus, fresh.status);
-  return { ret, order: fresh };
+  return { ret, order: fresh, refundedNow: refundAmount, outstanding: Math.max(0, fresh.total - fresh.payment.refundedAmount) };
 }
 
 // ── Queries ─────────────────────────────────────────────────────────────────

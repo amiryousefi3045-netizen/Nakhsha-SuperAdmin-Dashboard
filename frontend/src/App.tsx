@@ -56,6 +56,7 @@ const OrdersSeller = lazy(() => import("./pages/seller/OrdersSeller"));
 const OrderDetailSeller = lazy(() => import("./pages/seller/OrderDetailSeller"));
 const FulfillmentSeller = lazy(() => import("./pages/seller/FulfillmentSeller"));
 const ReturnsSeller = lazy(() => import("./pages/seller/ReturnsSeller"));
+const CouponsSeller = lazy(() => import("./pages/seller/CouponsSeller"));
 const FinanceSeller = lazy(() => import("./pages/seller/FinanceSeller"));
 const ReviewsSeller = lazy(() => import("./pages/seller/ReviewsSeller"));
 const SettingsSeller = lazy(() => import("./pages/seller/SettingsSeller"));
@@ -493,6 +494,14 @@ function App() {
               element={
                 <SellerPageSuspense>
                   <ReturnsSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="coupons"
+              element={
+                <SellerPageSuspense>
+                  <CouponsSeller />
                 </SellerPageSuspense>
               }
             />

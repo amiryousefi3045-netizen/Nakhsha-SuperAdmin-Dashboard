@@ -15,11 +15,14 @@
  *     raise `INVALID_TRANSITION`.
  *   - Order numbers are race-safe per seller (AtomicCounter).
  */
+const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const { nextSequence } = require("../models/AtomicCounter");
 const NotificationService = require("./NotificationService");
 const sellerEventHub = require("./SellerEventHub");
+const CouponService = require("./CouponService");
+const AuditService = require("./AuditService");
 const logger = require("../utils/logger");
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -72,6 +75,16 @@ function orderToDTO(order) {
     subtotal: o.subtotal,
     shippingFee: o.shippingFee || 0,
     discount: o.discount || 0,
+    // Null on an order with no coupon, so the receipt can render a breakdown
+    // line only when there is genuinely something to explain.
+    coupon: o.coupon?.couponId
+      ? {
+          code: o.coupon.code || "",
+          type: o.coupon.type || "",
+          value: o.coupon.value || 0,
+          discount: o.coupon.discount || 0,
+        }
+      : null,
     total: o.total,
     currency: o.currency || "IRR",
     status: o.status,
@@ -196,6 +209,9 @@ async function returnToStock(productId, sellerId, qty) {
  * @param {Array<{ productId: string; qty: number }>} params.items
  * @param {number} [params.shippingFee]
  * @param {number} [params.discount]
+ * @param {string} [params.couponCode] seller-owned code to redeem (Phase 35).
+ *   Only a lookup key: the amount is derived here from the server-priced
+ *   subtotal, never taken from the request.
  * @param {string} [params.customerNote]
  * @param {"seller"|"storefront"} [params.origin] - entry point; defaults to seller
  * @param {import("mongoose").Types.ObjectId|null} [params.buyerUserId] - buyer for storefront orders
@@ -207,6 +223,7 @@ async function createOrder({
   items,
   shippingFee = 0,
   discount = 0,
+  couponCode = null,
   customerNote = "",
   origin = "seller",
   buyerUserId = null,
@@ -228,9 +245,12 @@ async function createOrder({
   const productIds = items.map((item) => item.productId);
   const products = await Product.find({ _id: { $in: productIds }, sellerId }).lean();
 
-  // Build the snapshot rows in the requested order, atomically reserving stock
-  // for tracked products. A single failure aborts the whole order.
+  // ── Phase 1: price the basket (read-only) ──────────────────────────────────
+  // Snapshot rows are built in the requested order WITHOUT touching stock, so
+  // the subtotal is known before any scarce resource is spent. `trackedToReserve`
+  // records what phase 3 will have to reserve.
   const snapshotItems = [];
+  const trackedToReserve = [];
   for (const item of items) {
     const product = products.find((p) => String(p._id) === String(item.productId));
     if (!product) {
@@ -240,14 +260,7 @@ async function createOrder({
     }
 
     if (product.stockPolicy === "tracked") {
-      const reserved = await reserveStock(product._id, sellerId, item.qty);
-      if (!reserved) {
-        throw new OrderDomainError(
-          "INSUFFICIENT_STOCK",
-          `موجودی کافی برای «${product.title}» وجود ندارد`,
-          { productId: String(product._id), title: product.title },
-        );
-      }
+      trackedToReserve.push({ product, qty: item.qty });
     }
 
     snapshotItems.push({
@@ -262,40 +275,160 @@ async function createOrder({
   }
 
   const subtotal = snapshotItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const total = Math.max(0, subtotal + shippingFee - discount);
 
-  const orderNumber = await nextSequence(`order:${String(sellerId)}`);
-  const order = await Order.create({
-    sellerId,
-    sellerUserId,
-    origin,
-    buyerUserId,
-    orderNumber,
-    customer: {
-      name: customer.name,
-      phone: customer.phone,
-      email: customer.email || "",
-      telegram: customer.telegram || "",
-      address: customer.address || "",
-    },
-    items: snapshotItems,
-    subtotal,
-    shippingFee,
-    discount,
-    total,
-    currency: snapshotItems[0]?.currency || "IRR",
-    status: "pending",
-    timeline: [{ status: "pending", at: new Date() }],
-    customerNote: customerNote || "",
-    payment: { status: "unpaid" },
-  });
+  // ── Phase 2: spend the coupon ──────────────────────────────────────────────
+  // The discount is decided HERE, from the subtotal this server just priced.
+  // Nothing about the amount comes from the request, and `couponCode` is only
+  // a lookup key against this seller's own coupons.
+  //
+  // Ordering matters. The scarce resource (the coupon's last remaining use) is
+  // spent BEFORE stock is touched, and against an order id that already exists,
+  // because a redemption row must point at a real order. A pre-generated id
+  // gives that for free — so a buyer who loses a quota race never has their
+  // stock reservation opened and rolled back.
+  const orderId = new mongoose.Types.ObjectId();
+  let appliedDiscount = Math.max(0, Math.floor(Number(discount) || 0));
+  let couponSnapshot = null;
+  let reservedCoupon = null;
 
-  // A brand-new order is the single most important seller notification
-  // (storefront checkout included), so it is published with `from: null`.
-  publishOrderEvent(order, null);
-
-  return order;
+  if (couponCode) {
+    const evaluated = await CouponService.evaluateCoupon({
+      sellerId,
+      code: couponCode,
+      subtotal,
+      buyerUserId: buyerUserId || null,
+    });
+    appliedDiscount = evaluated.discount;
+    reservedCoupon = await CouponService.reserveCoupon({
+      coupon: evaluated.coupon,
+      buyerUserId: buyerUserId || null,
+      orderId,
+      discount: evaluated.discount,
+    });
+    couponSnapshot = {
+      couponId: evaluated.coupon._id,
+      code: evaluated.coupon.code,
+      type: evaluated.coupon.type,
+      value: evaluated.coupon.value,
+      discount: evaluated.discount,
+    };
+  } else {
+    appliedDiscount = Math.min(appliedDiscount, subtotal);
   }
+
+  const total = Math.max(0, subtotal + shippingFee - appliedDiscount);
+
+  // ── Phase 3: reserve stock, then write the order ───────────────────────────
+  // Every mutation from here on is compensated on failure. `reservedNow` is the
+  // running list of reservations actually taken, so a mid-loop failure returns
+  // exactly what it took and leaves nothing stranded.
+  const reservedNow = [];
+
+  /** Undo every reservation this call opened. Never masks the original error. */
+  const unwindStock = async () => {
+    for (const taken of reservedNow.reverse()) {
+      await restoreStock(taken.productId, String(sellerId), taken.qty).catch((err) =>
+        logger.error("Failed to unwind a stock reservation for a failed order", {
+          productId: String(taken.productId),
+          qty: taken.qty,
+          error: err.message,
+        }),
+      );
+    }
+  };
+
+  /** Give a coupon use back to whoever was holding it. Never throws. */
+  const unwindCoupon = async () => {
+    if (!reservedCoupon) return;
+    await CouponService.releaseCouponForOrder(orderId).catch((err) =>
+      logger.error("Failed to release coupon after order write failure", {
+        error: err.message,
+      }),
+    );
+  };
+
+  try {
+    for (const { product, qty } of trackedToReserve) {
+      const reserved = await reserveStock(product._id, sellerId, qty);
+      if (!reserved) {
+        throw new OrderDomainError(
+          "INSUFFICIENT_STOCK",
+          `موجودی کافی برای «${product.title}» وجود ندارد`,
+          { productId: String(product._id), title: product.title },
+        );
+      }
+      reservedNow.push({ productId: product._id, qty });
+    }
+
+    const orderNumber = await nextSequence(`order:${String(sellerId)}`);
+    const order = await Order.create({
+      _id: orderId,
+      sellerId,
+      sellerUserId,
+      origin,
+      buyerUserId,
+      orderNumber,
+      customer: {
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email || "",
+        telegram: customer.telegram || "",
+        address: customer.address || "",
+      },
+      items: snapshotItems,
+      subtotal,
+      shippingFee,
+      discount: appliedDiscount,
+      coupon: couponSnapshot || undefined,
+      total,
+      currency: snapshotItems[0]?.currency || "IRR",
+      status: "pending",
+      timeline: [{ status: "pending", at: new Date() }],
+      customerNote: customerNote || "",
+      payment: { status: "unpaid" },
+    });
+
+    // A brand-new order is the single most important seller notification
+    // (storefront checkout included), so it is published with `from: null`.
+    publishOrderEvent(order, null);
+
+    // Money left the seller's till because of this campaign, so the redemption
+    // joins the audit trail. `AuditService.log` swallows its own failures, so
+    // awaiting it makes the trail deterministic without letting an audit
+    // problem fail the order. It is awaited like every other `AuditService.log`
+    // call in the codebase; `COUPON_REDEEMED` is only emitted when a campaign
+    // was actually applied, so plain orders pay nothing.
+    if (couponSnapshot) {
+      await AuditService.log({
+        // A guest checkout has no buyer account, so the store's own operator
+        // owns the entry.
+        userId: String(buyerUserId || sellerUserId),
+        action: "COUPON_REDEEMED",
+        resource: { type: "COUPON", id: String(couponSnapshot.couponId) },
+        result: "SUCCESS",
+        riskLevel: "LOW",
+        metadata: {
+          code: couponSnapshot.code,
+          discount: couponSnapshot.discount,
+          orderId: String(order._id),
+          orderNumber: order.orderNumber,
+          buyerUserId: buyerUserId ? String(buyerUserId) : null,
+          sellerProfileId: String(sellerId),
+        },
+      });
+    }
+
+    return order;
+  } catch (e) {
+    // The order never became real, so every scarce thing this call consumed has
+    // to go back: reserved stock first, then the coupon use. A failed write must
+    // not permanently consume a one-use-per-buyer allowance or hold inventory
+    // hostage.
+    await unwindStock();
+    await unwindCoupon();
+    throw e;
+  }
+}
 
   /**
    * Live store event (P1-05) so open dashboards refetch without polling.
@@ -351,6 +484,15 @@ async function transitionOrder({
           { productId: String(item.productId) },
         );
       }
+    }
+    // The order never became real, so the coupon's use goes back with it. A
+    // buyer must not lose a one-use-per-buyer allowance because a seller or a
+    // carrier dropped the order. Refunds travel the RMA path instead, where the
+    // discount really was consumed.
+    if (order.coupon?.couponId) {
+      await CouponService.releaseCouponForOrder(order._id).catch((e) =>
+        logger.error("Failed to release coupon on cancellation", { error: e.message }),
+      );
     }
   } else if (nextStatus === "returned") {
     // Reservation was released at shipment; units physically return to onHand.

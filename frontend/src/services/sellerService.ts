@@ -9,6 +9,15 @@
 import { apiClient, API_BASE_URL, TokenManager } from "../lib/apiClient";
 import type { ApiError, ApiResult } from "../types/apiClient";
 import type {
+  CreateSellerCouponInput,
+  CouponCounts,
+  CouponStatus,
+  CouponUsage,
+  ListSellerCouponsParams,
+  SellerCoupon,
+  UpdateSellerCouponInput,
+} from "../types/coupon";
+import type {
   AnalyticsParams,
   BulkActionResult,
   CreateReturnInput,
@@ -476,6 +485,89 @@ export async function updateSellerOrderStatus(
     reason ? { status, reason } : { status },
   );
   return unwrap(res, { order: {} as SellerOrder }).order;
+}
+
+// ── Coupons / campaigns (Phase 35, P1-07) ──────────────────────────────────
+
+/** Zeroed count block, used so a response without `counts` still satisfies the type. */
+const EMPTY_COUPON_COUNTS: CouponCounts = {
+  total: 0,
+  active: 0,
+  paused: 0,
+  exhausted: 0,
+  discountGiven: 0,
+};
+
+/**
+ * GET /seller/coupons — the store's campaigns, newest first, with a usage block
+ * per row so the table can show what each one actually cost.
+ *
+ * Open to any team member: reading a campaign is not a decision.
+ */
+export async function listSellerCoupons(
+  params: ListSellerCouponsParams = {},
+): Promise<SellerPage<SellerCoupon & { usage: CouponUsage }> & { counts: CouponCounts }> {
+  const res = await apiClient.get<
+    SellerPage<SellerCoupon & { usage: CouponUsage }> & { counts: CouponCounts }
+  >("/seller/coupons", { params });
+  const page = unwrap(res, {
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 0,
+    counts: EMPTY_COUPON_COUNTS,
+  });
+  // `unwrap` passes `res.data` through untouched, so a response that omits
+  // `counts` would leave the header reading `.counts.active` off undefined.
+  return { ...page, counts: { ...EMPTY_COUPON_COUNTS, ...(page.counts ?? {}) } };
+}
+
+/** GET /seller/coupons/:id (another store's coupon answers like a missing one) */
+export async function getSellerCoupon(id: string): Promise<SellerCoupon> {
+  const res = await apiClient.get<{ coupon: SellerCoupon }>(`/seller/coupons/${id}`);
+  return unwrap(res, { coupon: {} as SellerCoupon }).coupon;
+}
+
+/** POST /seller/coupons — manager or owner only. */
+export async function createSellerCoupon(input: CreateSellerCouponInput): Promise<SellerCoupon> {
+  const res = await apiClient.post<{ coupon: SellerCoupon }>("/seller/coupons", input);
+  return unwrap(res, { coupon: {} as SellerCoupon }).coupon;
+}
+
+/**
+ * PATCH /seller/coupons/:id — manager or owner only.
+ *
+ * Only the fields present in `input` reach the server, so an omitted field is
+ * left as it is rather than being blanked.
+ */
+export async function updateSellerCoupon(
+  id: string,
+  input: UpdateSellerCouponInput,
+): Promise<SellerCoupon> {
+  const res = await apiClient.patch<{ coupon: SellerCoupon }>(`/seller/coupons/${id}`, input);
+  return unwrap(res, { coupon: {} as SellerCoupon }).coupon;
+}
+
+/**
+ * PATCH /seller/coupons/:id/status — manager or owner only.
+ *
+ * A spent campaign is paused rather than deleted, because historical orders
+ * still point at it.
+ */
+export async function updateSellerCouponStatus(
+  id: string,
+  status: CouponStatus,
+): Promise<SellerCoupon> {
+  const res = await apiClient.patch<{ coupon: SellerCoupon }>(
+    `/seller/coupons/${id}/status`,
+    { status },
+  );
+  return unwrap(res, { coupon: {} as SellerCoupon }).coupon;
+}
+
+/** GET /seller/coupons/usage/export — manager or owner only. */
+export function exportSellerCouponUsageCsv(params: ListSellerCouponsParams = {}) {
+  return downloadCsv("/seller/coupons/usage/export", params, "coupon-usage");
 }
 
 // ── Returns / RMA (Phase 33, P1-04) ─────────────────────────────────────────

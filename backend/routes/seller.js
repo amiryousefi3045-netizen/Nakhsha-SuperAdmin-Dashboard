@@ -183,6 +183,51 @@ router.post(
   sellerController.refundReturn,
 );
 
+// ── Coupons / campaigns (Phase 35, P1-07) ────────────────────────────────────
+// Reading the campaign list is open to any team member, the same as the returns
+// queue. Minting and editing a code is a manager decision, because a code is a
+// public promise about price that a staff member should not be able to make.
+router.get(
+  "/coupons",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.listCoupons,
+);
+router.get(
+  "/coupons/:id",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.getCoupon,
+);
+router.get(
+  "/coupons/usage/export",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  requireManagerOrOwner,
+  sellerController.exportCouponUsage,
+);
+router.post(
+  "/coupons",
+  write,
+  requireManagerOrOwner,
+  sellerController.createCoupon,
+);
+router.patch(
+  "/coupons/:id",
+  write,
+  requireManagerOrOwner,
+  sellerController.updateCoupon,
+);
+router.patch(
+  "/coupons/:id/status",
+  write,
+  requireManagerOrOwner,
+  sellerController.setCouponStatus,
+);
+
 // ── Reviews (Phase 16) ───────────────────────────────────────────────────────
 // Review moderation is part of the seller write surface (rate-limited). Reads
 // stay unthrottled like the other catalogs; ownership is enforced in the

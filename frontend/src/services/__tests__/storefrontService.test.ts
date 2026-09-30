@@ -33,6 +33,7 @@ import {
   getStorefrontOrderDetail,
   createBuyerReturn,
   listBuyerReturns,
+  validateStorefrontCoupon,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -250,6 +251,100 @@ describe("storefrontService", () => {
           items: [{ productId: "c1", qty: 60 }],
         }),
       ).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
+    });
+
+    it("passes the campaign code through as a lookup key only", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(ok(CHECKOUT));
+      await checkoutStorefront("nakhsha-vitrin", {
+        customer: { name: "خریدار محمدی", phone: "09123456789" },
+        items: [{ productId: "c1", qty: 2 }],
+        paymentMethod: "card" as const,
+        couponCode: "SUMMER10",
+      });
+      // The client sends the code and NOTHING about the money: no subtotal, no
+      // discount. The server re-prices the cart and decides the amount.
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/storefront/nakhsha-vitrin/checkout",
+        expect.objectContaining({ couponCode: "SUMMER10" }),
+      );
+      const [, sent] = vi.mocked(apiClient.post).mock.calls[0];
+      expect(sent).not.toHaveProperty("subtotal");
+      expect(sent).not.toHaveProperty("discount");
+      expect(sent).not.toHaveProperty("total");
+    });
+
+    it("omits couponCode entirely when no code was applied", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(ok(CHECKOUT));
+      const input = {
+        customer: { name: "خریدار محمدی", phone: "09123456789" },
+        items: [{ productId: "c1", qty: 1 }],
+      };
+      await checkoutStorefront("nakhsha-vitrin", input);
+      expect(apiClient.post).toHaveBeenCalledWith("/storefront/nakhsha-vitrin/checkout", input);
+    });
+
+    it("surfaces a coupon refusal so the page can say the code is not usable", async () => {
+      const err: ApiError = { code: "COUPON_EXHAUSTED", message: "ظرفیت این کد تکمیل شده است" };
+      vi.mocked(apiClient.post).mockResolvedValue({ success: false, error: err });
+      await expect(
+        checkoutStorefront("nakhsha-vitrin", {
+          customer: { name: "خریدار محمدی", phone: "09123456789" },
+          items: [{ productId: "c1", qty: 1 }],
+          couponCode: "SUMMER10",
+        }),
+      ).rejects.toMatchObject({ code: "COUPON_EXHAUSTED" });
+    });
+  });
+
+  describe("validateStorefrontCoupon", () => {
+    const PREVIEW = {
+      code: "SUMMER10",
+      type: "percent" as const,
+      value: 10,
+      description: "",
+      subtotal: 1000000,
+      discount: 100000,
+      total: 900000,
+    };
+
+    it("previews a code against the cart without spending it", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(ok(PREVIEW));
+
+      const result = await validateStorefrontCoupon("nakhsha-vitrin", "SUMMER10", [
+        { productId: "c1", qty: 2 },
+      ]);
+
+      // The amounts come from the server, not from arithmetic in the browser.
+      expect(result.discount).toBe(100000);
+      expect(result.total).toBe(900000);
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/storefront/nakhsha-vitrin/coupons/validate",
+        { code: "SUMMER10", items: [{ productId: "c1", qty: 2 }] },
+      );
+    });
+
+    it("sends no subtotal, so a forged cart total cannot buy a discount", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(ok(PREVIEW));
+      await validateStorefrontCoupon("nakhsha-vitrin", "SUMMER10", [{ productId: "c1", qty: 2 }]);
+      const [, sent] = vi.mocked(apiClient.post).mock.calls[0];
+      expect(sent).not.toHaveProperty("subtotal");
+    });
+
+    it("URL-encodes Persian slugs", async () => {
+      vi.mocked(apiClient.post).mockResolvedValue(ok(PREVIEW));
+      await validateStorefrontCoupon("فروشگاه من", "X", []);
+      expect(apiClient.post).toHaveBeenCalledWith(
+        `/storefront/${encodeURIComponent("فروشگاه من")}/coupons/validate`,
+        { code: "X", items: [] },
+      );
+    });
+
+    it("throws the server's own refusal for a bad code", async () => {
+      const err: ApiError = { code: "COUPON_MIN_PURCHASE", message: "مبلغ خرید کافی نیست" };
+      vi.mocked(apiClient.post).mockResolvedValue({ success: false, error: err });
+      await expect(
+        validateStorefrontCoupon("nakhsha-vitrin", "SUMMER10", [{ productId: "c1", qty: 1 }]),
+      ).rejects.toMatchObject({ code: "COUPON_MIN_PURCHASE" });
     });
   });
 

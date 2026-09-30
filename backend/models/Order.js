@@ -118,6 +118,19 @@ const OrderSchema = new mongoose.Schema(
     subtotal: { type: Number, required: true, min: 0 },
     shippingFee: { type: Number, default: 0, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
+    // Provenance of `discount` (Phase 35, P1-07). Snapshotted because a coupon
+    // can be edited or deleted later, yet the order still has to render what it
+    // was actually given and a refund has to know the buyer paid less. The
+    // money itself stays in `discount` — this block is only the "why".
+    coupon: {
+      couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon", default: null },
+      code: { type: String, default: "", maxlength: 32 },
+      type: { type: String, default: "", maxlength: 10 },
+      // The rule as applied, so a later edit to the coupon cannot rewrite history.
+      value: { type: Number, default: 0, min: 0 },
+      // Integer actually taken off this order (after any percentage ceiling).
+      discount: { type: Number, default: 0, min: 0 },
+    },
     total: { type: Number, required: true, min: 0 },
     currency: { type: String, default: "IRR", maxlength: 10 },
     status: { type: String, enum: ORDER_STATUSES, default: "pending" },

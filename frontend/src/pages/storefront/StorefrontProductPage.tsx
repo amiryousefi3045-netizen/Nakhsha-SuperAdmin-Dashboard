@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowRight,
+  BadgeCheck,
   CheckCircle2,
   CreditCard,
   Loader2,
@@ -23,11 +24,13 @@ import {
   getStorefrontProductReviews,
   submitStorefrontPayment,
   submitStorefrontReview,
+  validateStorefrontCoupon,
 } from "../../services/storefrontService";
 import {
   STOREFRONT_CATEGORIES,
   type BuyerOrder,
   type CheckoutResponse,
+  type CouponPreview,
   type MyStorefrontReview,
   type ReviewItem,
 } from "../../types/storefront";
@@ -38,6 +41,30 @@ function categoryLabel(value: string): string {
 }
 
 const PHONE_PATTERN = /^09\d{9}$/;
+
+/**
+ * Coupon refusals the server can return at checkout.
+ *
+ * These all mean the same thing to a buyer — "this code is not usable for this
+ * order" — and the one message covers every case deliberately: naming which
+ * limit was hit (exhausted, expired, over the per-buyer cap) would turn the
+ * checkout into a way to probe a campaign's state.
+ */
+const COUPON_ERROR_CODES = new Set([
+  "COUPON_NOT_FOUND",
+  "COUPON_INACTIVE",
+  "COUPON_EXPIRED",
+  "COUPON_NOT_STARTED",
+  "COUPON_EXHAUSTED",
+  "COUPON_USER_LIMIT",
+  "COUPON_MIN_PURCHASE",
+  "COUPON_CODE_TAKEN",
+  "COUPON_INVALID",
+]);
+
+function isCouponErrorCode(code: string | undefined): boolean {
+  return !!code && COUPON_ERROR_CODES.has(code);
+}
 
 type BuyStep = "idle" | "submitting" | "paying" | "success" | "failed";
 
@@ -59,8 +86,64 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
   const [paidTotal, setPaidTotal] = useState(0);
   const [order, setOrder] = useState<BuyerOrder | null>(null);
   const [message, setMessage] = useState("");
+  // The coupon is applied in two steps: a server-priced preview, then the same
+  // code handed to checkout. The preview spends nothing, so changing the
+  // quantity or retyping the code cannot burn a use.
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState("");
+  const [coupon, setCoupon] = useState<CouponPreview | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponMessage, setCouponMessage] = useState("");
 
   const effectiveMax = Math.max(1, Math.min(maxQty || 1, 99));
+
+  /**
+   * Ask the server what the code is worth for this exact cart.
+   *
+   * The amounts that come back are the ones checkout will use, so what the
+   * buyer sees here is not a local guess. A refusal is reported verbatim from
+   * the server's own Persian message instead of a generic "invalid code", which
+   * is the difference between "this code has expired" and "spend more first".
+   */
+  async function handleApplyCoupon() {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponBusy(true);
+    setCouponMessage("");
+    setCoupon(null);
+    setAppliedCode("");
+    try {
+      const preview = await validateStorefrontCoupon(slug, code, [{ productId, qty }]);
+      setCoupon(preview);
+      setAppliedCode(code);
+    } catch (error) {
+      setCouponMessage(
+        (error as { message?: string } | null)?.message ?? "این کد تخفیف پذیرفته نشد.",
+      );
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
+  function handleClearCoupon() {
+    setCouponInput("");
+    setAppliedCode("");
+    setCoupon(null);
+    setCouponMessage("");
+  }
+
+  /**
+   * Changing the quantity re-prices the cart, so a preview that was valid for
+   * the old quantity is no longer a promise. The applied code is kept (it is
+   * still the buyer's code) but its numbers are dropped until re-checked.
+   */
+  function handleQtyChange(next: number) {
+    setQty(next);
+    if (appliedCode) {
+      setCoupon(null);
+      setCouponMessage("تعداد تغییر کرد؛ برای اعمال کد تخفیف دوباره آن را بررسی کنید.");
+    }
+  }
 
   async function handleCheckout() {
     if (name.trim().length < 2 || !PHONE_PATTERN.test(phone)) {
@@ -74,6 +157,7 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
         customer: { name: name.trim(), phone },
         items: [{ productId, qty }],
         paymentMethod: "card",
+        ...(appliedCode ? { couponCode: appliedCode } : {}),
       });
       setRefId(result.paymentIntent.refId);
       setPaidTotal(result.paymentIntent.amount);
@@ -85,8 +169,15 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
           ? "برای خرید باید وارد حساب کاربری‌تان شوید."
           : code === "INSUFFICIENT_STOCK"
             ? "موجودی کافی نیست؛ تعداد را کمتر کنید."
-            : "برقراری سفارش موفق نشد؛ دوباره تلاش کنید.",
+            : isCouponErrorCode(code)
+              ? "این کد تخفیف دیگر معتبر نیست؛ بدون کد ادامه دهید یا کد دیگری وارد کنید."
+              : "برقراری سفارش موفق نشد؛ دوباره تلاش کنید.",
       );
+      // A code can be refused between the preview and the write (its last use
+      // went to another buyer), so the failed attempt must not leave a stale
+      // discount on screen.
+      setCoupon(null);
+      setAppliedCode("");
       setStep("idle");
     }
   }
@@ -120,6 +211,11 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
     setOrder(null);
     setPaidTotal(0);
     setMessage("");
+    // Starting over must not carry the old discount into the next order: the
+    // code's quota was already spent by the one that just completed.
+    setCoupon(null);
+    setAppliedCode("");
+    setCouponMessage("");
   }
 
   if (!user) {
@@ -251,9 +347,7 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
           max={effectiveMax}
           value={qty}
           onChange={(e) =>
-            setQty(
-              Math.max(1, Math.min(Number(e.target.value) || 1, effectiveMax)),
-            )
+            handleQtyChange(Math.max(1, Math.min(Number(e.target.value) || 1, effectiveMax)))
           }
           className="w-20 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-center text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
         />
@@ -261,6 +355,58 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
           {faNumber(effectiveMax)} عدد موجود است
         </span>
       </div>
+
+      <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]/40 p-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-40 flex-1">
+            <span className="mb-1 block text-xs text-[var(--color-muted)]">کد تخفیف (اختیاری)</span>
+            <input
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+              placeholder="مثلاً SUMMER1404"
+              dir="ltr"
+              className="w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-start text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+            />
+          </label>
+          {coupon ? (
+            <button
+              type="button"
+              onClick={handleClearCoupon}
+              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm text-[var(--color-muted)] hover:bg-[var(--color-primary)]/5"
+            >
+              حذف کد
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleApplyCoupon}
+              disabled={couponBusy || couponInput.trim().length < 4}
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-primary)] px-3 py-2 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 disabled:opacity-40"
+            >
+              {couponBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tag className="h-4 w-4" />}
+              بررسی کد
+            </button>
+          )}
+        </div>
+
+        {couponMessage ? <p className="mt-2 text-xs text-red-600">{couponMessage}</p> : null}
+
+        {coupon ? (
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 font-medium text-green-700">
+              <BadgeCheck className="h-4 w-4" />
+              کد «{coupon.code}» اعمال شد
+              {coupon.type === "percent" ? (
+                <span className="text-[var(--color-muted)]">({faNumber(coupon.value)}٪)</span>
+              ) : null}
+            </span>
+            <span className="text-[var(--color-muted)]">
+              {formatSellerPrice(coupon.discount, currency)} تخفیف
+            </span>
+          </div>
+        ) : null}
+      </div>
+
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <button
           type="button"
@@ -276,8 +422,13 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
           ثبت سفارش و پرداخت
         </button>
         <span className="text-base font-extrabold text-[var(--color-primary)]">
-          {formatSellerPrice(price * qty, currency)}
+          {formatSellerPrice(coupon ? coupon.total : price * qty, currency)}
         </span>
+        {coupon && coupon.discount > 0 ? (
+          <span className="text-xs text-[var(--color-muted)]">
+            <s>{formatSellerPrice(coupon.subtotal, currency)}</s> · {formatSellerPrice(coupon.discount, currency)} تخفیف
+          </span>
+        ) : null}
       </div>
       {message ? <p className="mt-3 text-red-600">{message}</p> : null}
     </div>

@@ -6,6 +6,13 @@
  */
 
 import type { ReturnItem, ReturnStatus, ReturnTimelineEntry } from "./returns";
+import type { CouponPreview } from "./coupon";
+
+/**
+ * The buyer's view of a campaign. Re-exported so storefront consumers can reach
+ * it from the storefront types, the same way the return types are shared.
+ */
+export type { CouponPreview };
 
 export interface StorefrontStats {
   totalProducts: number;
@@ -131,6 +138,12 @@ export interface CheckoutInput {
   items: CheckoutItemInput[];
   paymentMethod?: "card" | "wallet" | "other";
   customerNote?: string;
+  /**
+   * A campaign code, or empty for none. This is ONLY a lookup key: the server
+   * re-prices the cart and computes the discount itself, so a client that lies
+   * about the code or the cart buys nothing. Omit it to check out normally.
+   */
+  couponCode?: string;
 }
 
 export interface StorefrontPayment {

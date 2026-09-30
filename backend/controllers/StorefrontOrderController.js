@@ -1,5 +1,8 @@
 const OrderService = require("../services/OrderService");
 const ReturnService = require("../services/ReturnService");
+const CouponService = require("../services/CouponService");
+const Product = require("../models/Product");
+const SellerProfile = require("../models/SellerProfile");
 const AuditService = require("../services/AuditService");
 const {
   StorefrontOrderError,
@@ -54,6 +57,7 @@ async function checkout(req, res) {
       items: req.body.items,
       paymentMethod: req.body.paymentMethod,
       customerNote: req.body.customerNote,
+      couponCode: req.body.couponCode,
     });
 
     res.json(
@@ -81,7 +85,110 @@ async function checkout(req, res) {
         .status(statusMap[e.code] || 400)
         .json(createErrorResponse(e.code, e.message, e.details, req.id));
     }
+    // A refused coupon is a normal outcome of a checkout, not a server fault.
+    // Without this branch an exhausted or mistyped code would surface as a 500
+    // and the buyer would be told to retry a request that can never succeed.
+    if (e instanceof CouponService.CouponDomainError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
     logger.error("Storefront checkout error", {
+      error: e.message,
+      buyer: req.user?.id,
+      slug: req.params?.slug,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * POST /api/storefront/:slug/coupons/validate — preview a code against a cart.
+ *
+ * The cart is re-priced HERE, from the store's own live products, and the
+ * subtotal is never taken from the request. A client that posts a smaller
+ * subtotal to sneak past a minimum-spend rule would otherwise be believed; by
+ * deriving the number here, the preview and the eventual checkout necessarily
+ * agree, because both call the same pricing path.
+ */
+async function validateCoupon(req, res) {
+  try {
+    // The same resolution the checkout path uses, so a preview can never
+    // succeed against a store the checkout itself would refuse.
+    const profile = await SellerProfile.findOne({
+      slug: String(req.params.slug || "").trim().toLowerCase(),
+      status: "active",
+      "settings.storefrontPublished": true,
+    }).select("_id");
+    if (!profile) {
+      return res
+        .status(404)
+        .json(createErrorResponse("STORE_NOT_FOUND", "ویترین فروشگاه یافت نشد", null, req.id));
+    }
+
+    const productIds = req.body.items.map((i) => i.productId);
+    const products = await Product.find({
+      _id: { $in: productIds },
+      sellerId: profile._id,
+      status: "active",
+    })
+      .select("_id price")
+      .lean();
+
+    const byId = new Map(products.map((p) => [String(p._id), p]));
+    let subtotal = 0;
+    for (const item of req.body.items) {
+      const product = byId.get(String(item.productId));
+      if (!product) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "PRODUCT_NOT_AVAILABLE",
+              "این محصول برای خرید در دسترس نیست",
+              { productId: item.productId },
+              req.id,
+            ),
+          );
+      }
+      subtotal += product.price * item.qty;
+    }
+
+    const { coupon, discount } = await CouponService.evaluateCoupon({
+      sellerId: profile._id,
+      code: req.body.code,
+      subtotal,
+      buyerUserId: req.user.id,
+    });
+
+    res.json(
+      createSuccessResponse(
+        {
+          coupon: {
+            code: coupon.code,
+            type: coupon.type,
+            value: coupon.value,
+            description: coupon.description || "",
+          },
+          discount,
+          subtotal,
+          // What the buyer will actually be charged. Sent back so the client
+          // never has to do the arithmetic (and cannot get it wrong).
+          total: Math.max(0, subtotal - discount),
+          currency: "IRR",
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    if (e instanceof CouponService.CouponDomainError) {
+      return res
+        .status(400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Storefront validateCoupon error", {
       error: e.message,
       buyer: req.user?.id,
       slug: req.params?.slug,
@@ -273,6 +380,7 @@ async function listBuyerReturnsHandler(req, res) {
 
 module.exports = {
   checkout,
+  validateCoupon,
   paymentCallback,
   listBuyerOrders: listBuyerOrdersHandler,
   getBuyerOrder: getBuyerOrderHandler,

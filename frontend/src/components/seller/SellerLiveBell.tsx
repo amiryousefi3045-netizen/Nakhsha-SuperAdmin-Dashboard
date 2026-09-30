@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, BellRing, ShoppingCart, Wallet, History, X, CheckCircle2 } from "lucide-react";
+import { Bell, BellRing, ShoppingCart, Wallet, TicketPercent, History, X, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { subscribeSellerLiveEvents } from "../../services/sellerService";
 import type {
@@ -91,6 +91,24 @@ function alertFromEvent(event: SellerLiveEvent): SellerLiveAlert | null {
     };
   }
 
+  if (event.type === "coupon") {
+    const code = String(p.code ?? "");
+    const kind = String(p.event ?? "");
+    const body =
+      kind === "created"
+        ? `کمپین جدید ساخته شد · ${code}`
+        : kind === "status_changed"
+          ? `${String(p.status ?? "") === "paused" ? "متوقف" : "فعال"} شد · ${code}`
+          : `ویرایش شد · ${code}`;
+    return {
+      id: `coupon-${p.id}-${p.at}`,
+      type: "coupon",
+      title: "کمپین تخفیف",
+      body,
+      at: String(p.at ?? new Date().toISOString()),
+    };
+  }
+
   if (event.type === "activity") {
     const action = String(p.action ?? "");
     return {
@@ -108,6 +126,7 @@ function alertFromEvent(event: SellerLiveEvent): SellerLiveAlert | null {
 const ICONS = {
   order: ShoppingCart,
   payout: Wallet,
+  coupon: TicketPercent,
   activity: History,
 } as const;
 
@@ -122,7 +141,9 @@ function AlertRow({ alert }: { alert: SellerLiveAlert }) {
             ? "bg-emerald-100 text-emerald-700"
             : alert.type === "order"
               ? "bg-blue-100 text-blue-700"
-              : "bg-slate-100 text-slate-600",
+              : alert.type === "coupon"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-slate-100 text-slate-600",
         )}
       >
         <Icon className="h-3.5 w-3.5" />

@@ -336,7 +336,8 @@ export type SellerLiveEventType =
   | "heartbeat"
   | "activity"
   | "order"
-  | "payout";
+  | "payout"
+  | "coupon";
 
 export interface SellerLiveActivityPayload {
   id: string;
@@ -367,11 +368,22 @@ export interface SellerLivePayoutPayload {
   at: string;
 }
 
+/** A coupon change pushed to the store's own dashboard (Phase 35, P1-07). */
+export interface SellerLiveCouponPayload {
+  id: string;
+  code: string;
+  type: CouponType;
+  status: CouponStatus;
+  event: "created" | "updated" | "status_changed";
+  at: string;
+}
+
 export type SellerLiveEventPayload =
   | { at: string }
   | SellerLiveActivityPayload
   | SellerLiveOrderPayload
-  | SellerLivePayoutPayload;
+  | SellerLivePayoutPayload
+  | SellerLiveCouponPayload;
 
 export interface SellerLiveEvent {
   type: SellerLiveEventType;
@@ -381,7 +393,7 @@ export interface SellerLiveEvent {
 /** A toast raised by the live bell for one store event. */
 export interface SellerLiveAlert {
   id: string;
-  type: "activity" | "order" | "payout";
+  type: "activity" | "order" | "payout" | "coupon";
   title: string;
   body: string;
   at: string;
@@ -516,6 +528,35 @@ export {
 export type { ReturnStatus, ReturnItem, ReturnTimelineEntry } from "./returns";
 
 import type { ReturnItem, ReturnStatus, ReturnTimelineEntry } from "./returns";
+
+// ── Coupons / campaigns (Phase 35, P1-07) ───────────────────────────────────
+
+/**
+ * The coupon vocabulary lives in `types/coupon.ts` because the buyer's checkout
+ * and the seller's campaign page describe the same discount. It is re-exported
+ * here so the seller dashboard keeps importing from one place.
+ */
+export {
+  COUPON_TYPES,
+  COUPON_STATUSES,
+  COUPON_TYPE_LABELS,
+  COUPON_STATUS_LABELS,
+  COUPON_MAX_PERCENT,
+  isCouponSpendable,
+} from "./coupon";
+export type {
+  CouponType,
+  CouponStatus,
+  SellerCoupon,
+  CouponUsage,
+  CouponCounts,
+  CouponPreview,
+  ListSellerCouponsParams,
+  CreateSellerCouponInput,
+  UpdateSellerCouponInput,
+} from "./coupon";
+
+import type { CouponStatus, CouponType } from "./coupon";
 
 export interface SellerReturn {
   id: string;

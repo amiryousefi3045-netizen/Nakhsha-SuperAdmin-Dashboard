@@ -8,6 +8,9 @@ const Craft = require("../models/Craft");
 const Order = require("../models/Order");
 const OrderService = require("../services/OrderService");
 const ReturnService = require("../services/ReturnService");
+const CouponService = require("../services/CouponService");
+const Coupon = require("../models/Coupon");
+const CouponRedemption = require("../models/CouponRedemption");
 const FinanceService = require("../services/FinanceService");
 const SalesReportService = require("../services/SalesReportService");
 const AuditService = require("../services/AuditService");
@@ -1890,7 +1893,7 @@ async function refundReturn(req, res) {
     }
     const { refundAmount, note } = req.body || {};
 
-    const { ret, order } = await ReturnService.refundReturn({
+    const { ret, order, refundedNow, outstanding } = await ReturnService.refundReturn({
       sellerId: req.seller._id,
       returnId: req.params.id,
       refundAmount: Number(refundAmount),
@@ -1909,7 +1912,11 @@ async function refundReturn(req, res) {
         rmaNumber: ret.rmaNumber,
         orderId: String(order._id),
         orderNumber: order.orderNumber,
-        amount: ret.refundAmount,
+        // The increment actually released in THIS call, not the RMA's running
+        // total — a top-up must never be logged as a second full refund.
+        amount: refundedNow,
+        orderRefundedTotal: ret.refundAmount,
+        outstandingAfter: outstanding,
         currency: ret.refundCurrency,
         orderTotal: order.total,
       },
@@ -1934,6 +1941,256 @@ async function refundReturn(req, res) {
     res
       .status(500)
       .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ── Coupons / campaigns (Phase 35, P1-07) ───────────────────────────────────
+
+/**
+ * Map a CouponDomainError onto the HTTP surface like the other domain errors.
+ *
+ * A code that does not exist and a code belonging to another store both answer
+ * `COUPON_NOT_FOUND` with the same status, so this endpoint is not an oracle
+ * for guessing which campaigns other sellers are running.
+ */
+function sendCouponError(res, e, req) {
+  return res.status(400).json(createErrorResponse(e.code, e.message, e.details, req.id));
+}
+
+/**
+ * Push a live coupon event to the store's own dashboard (P1-05 parity).
+ *
+ * The dashboard refetches on every event, so the payload is only a nudge plus
+ * the identity of what changed. Never throws: a live update must not be able to
+ * fail the seller request that triggered it.
+ */
+function publishCouponEvent(sellerId, event, coupon) {
+  try {
+    sellerEventHub.publish(sellerId, "coupon", {
+      id: String(coupon._id),
+      code: coupon.code,
+      type: coupon.type,
+      status: coupon.status,
+      event,
+      at: new Date().toISOString(),
+    });
+  } catch (e) {
+    logger.warn("Failed to publish seller coupon event", { error: e.message });
+  }
+}
+
+/** Attach per-coupon usage aggregates to a list of coupons. */
+async function withUsage(sellerId, coupons) {
+  const { byCoupon } = await CouponService.couponUsageStats({ sellerId });
+  return coupons.map((c) => {
+    const usage = byCoupon[String(c._id)] || { redemptions: 0, discountGiven: 0 };
+    return CouponService.couponToDTO(c, { usage });
+  });
+}
+
+async function listCoupons(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = safePageSize(req.query.limit);
+    const filter = { sellerId };
+    if (req.query.status && CouponService.COUPON_STATUSES.includes(req.query.status)) {
+      filter.status = req.query.status;
+    }
+
+    const [docs, total] = await Promise.all([
+      Coupon.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Coupon.countDocuments(filter),
+    ]);
+
+    res.json(
+      createSuccessResponse(
+        { items: await withUsage(sellerId, docs), total, page, limit },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller listCoupons error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function getCoupon(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسهٔ کوپن نامعتبر است", { field: "id" }, req.id));
+    }
+    const sellerId = req.seller._id;
+    const coupon = await CouponService.getCoupon({ sellerId, couponId: req.params.id });
+    const [dto] = await withUsage(sellerId, [coupon]);
+    res.json(createSuccessResponse({ coupon: dto }, req.id));
+  } catch (e) {
+    if (e instanceof CouponService.CouponDomainError) return sendCouponError(res, e, req);
+    logger.error("Seller getCoupon error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function createCoupon(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const { code, description, type, value, maxDiscount, minPurchase, maxUses, maxUsesPerBuyer, startsAt, expiresAt, status } = req.body || {};
+    const coupon = await CouponService.createCoupon({
+      sellerId,
+      sellerUserId: req.user.id,
+      code,
+      description,
+      type,
+      value,
+      maxDiscount,
+      minPurchase,
+      maxUses,
+      maxUsesPerBuyer,
+      startsAt,
+      expiresAt,
+      status,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "COUPON_CREATED",
+      resource: { type: "COUPON", id: String(coupon._id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { code: coupon.code, type: coupon.type, value: coupon.value },
+    });
+
+    publishCouponEvent(req.seller._id, "created", coupon);
+    res.status(201).json(
+      createSuccessResponse({ coupon: CouponService.couponToDTO(coupon) }, req.id),
+    );
+  } catch (e) {
+    if (e instanceof CouponService.CouponDomainError) return sendCouponError(res, e, req);
+    logger.error("Seller createCoupon error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateCoupon(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسهٔ کوپن نامعتبر است", { field: "id" }, req.id));
+    }
+    const { code, description, type, value, maxDiscount, minPurchase, maxUses, maxUsesPerBuyer, startsAt, expiresAt, status } = req.body || {};
+    const coupon = await CouponService.updateCoupon({
+      sellerId: req.seller._id,
+      couponId: req.params.id,
+      code,
+      description,
+      type,
+      value,
+      maxDiscount,
+      minPurchase,
+      maxUses,
+      maxUsesPerBuyer,
+      startsAt,
+      expiresAt,
+      status,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "COUPON_UPDATED",
+      resource: { type: "COUPON", id: String(coupon._id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { code: coupon.code },
+    });
+
+    publishCouponEvent(req.seller._id, "updated", coupon);
+    res.json(createSuccessResponse({ coupon: CouponService.couponToDTO(coupon) }, req.id));
+  } catch (e) {
+    if (e instanceof CouponService.CouponDomainError) return sendCouponError(res, e, req);
+    logger.error("Seller updateCoupon error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function setCouponStatus(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "شناسهٔ کوپن نامعتبر است", { field: "id" }, req.id));
+    }
+    const { status } = req.body || {};
+    const coupon = await CouponService.setCouponStatus({
+      sellerId: req.seller._id,
+      couponId: req.params.id,
+      status,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "COUPON_UPDATED",
+      resource: { type: "COUPON", id: String(coupon._id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { code: coupon.code, status: coupon.status },
+    });
+
+    publishCouponEvent(req.seller._id, "status_changed", coupon);
+    res.json(createSuccessResponse({ coupon: CouponService.couponToDTO(coupon) }, req.id));
+  } catch (e) {
+    if (e instanceof CouponService.CouponDomainError) return sendCouponError(res, e, req);
+    logger.error("Seller setCouponStatus error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/** CSV row-level export of coupon redemptions (how much was given away). */
+async function exportCouponUsage(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const rows = await CouponRedemption.find({ sellerId })
+      .populate("buyerUserId", "phone")
+      .sort({ redeemedAt: -1 })
+      .limit(5000)
+      .lean();
+
+    const csv = toCsv([
+      ["code", "orderId", "buyerPhone", "discount", "redeemedAt"],
+      ...rows.map((r) => [
+        r.code,
+        String(r.orderId),
+        r.buyerUserId?.phone || "",
+        r.discount,
+        r.redeemedAt ? new Date(r.redeemedAt).toISOString() : "",
+      ]),
+    ]);
+    sendCsv(res, "coupon-usage", csv);
+  } catch (e) {
+    logger.error("Seller exportCouponUsage error", { error: e.message, sellerId: req.seller?._id });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+    }
   }
 }
 
@@ -2443,6 +2700,12 @@ module.exports = {
   createReturn,
   changeReturnStatus,
   refundReturn,
+  listCoupons,
+  getCoupon,
+  createCoupon,
+  updateCoupon,
+  setCouponStatus,
+  exportCouponUsage,
   getSellerFulfillment,
   getFinance,
   getPayouts,

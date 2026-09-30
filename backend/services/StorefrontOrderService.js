@@ -57,6 +57,7 @@ async function createBuyerOrder({
   items,
   paymentMethod = "card",
   customerNote = "",
+  couponCode = "",
 }) {
   if (!buyerUserId) {
     throw new StorefrontOrderError("VALIDATION_ERROR", "خریدار مشخص نیست");
@@ -115,6 +116,9 @@ async function createBuyerOrder({
   }
 
   // Atomic reservation + snapshot happens here (OrderService.createOrder).
+  // `couponCode` is forwarded as a bare lookup key; OrderService decides the
+  // discount itself from the subtotal it just priced, and pre-spends the
+  // coupon's quota before touching stock.
   const order = await OrderService.createOrder({
     sellerId: profile._id,
     sellerUserId: owner.userId,
@@ -123,6 +127,7 @@ async function createBuyerOrder({
     origin: "storefront",
     buyerUserId,
     customerNote,
+    couponCode: couponCode || null,
   });
 
   const refId = String(order._id);

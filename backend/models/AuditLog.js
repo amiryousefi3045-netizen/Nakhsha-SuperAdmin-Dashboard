@@ -18,6 +18,7 @@ const resourceSchema = new mongoose.Schema(
         "TRANSACTION",
         "SELLER_PROFILE",
         "TEAM_MEMBER",
+        "COUPON",
       ],
       required: true,
     },
@@ -132,6 +133,11 @@ const auditLogSchema = new mongoose.Schema(
         "RETURN_REQUESTED",
         "RETURN_FILED",
         "RETURN_STATUS_CHANGED",
+
+        // Coupons / campaigns domain (Phase 35, P1-07)
+        "COUPON_CREATED",
+        "COUPON_UPDATED",
+        "COUPON_REDEEMED",
 
         // Seller finance & settlement domain
         "PAYOUT_REQUESTED",

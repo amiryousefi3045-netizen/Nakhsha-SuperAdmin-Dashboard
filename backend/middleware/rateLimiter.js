@@ -100,6 +100,24 @@ const authLimiter = rateLimit({
   },
 });
 
+// Coupon code validation (Phase 35, P1-07).
+//
+// A coupon code is a guessable secret, and the "apply" endpoint answers whether
+// a code exists. At 8 bits of entropy an unguarded endpoint is a free oracle:
+// an attacker walks the space offline-speed and arrives holding a working
+// campaign. A tight per-IP budget is the cheapest correct answer — a real
+// buyer types a code a handful of times, an enumerator needs millions.
+const couponValidateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 20, // 20 attempts per IP per 10 minutes
+  message: {
+    message: "تلاش‌های ناموفق برای کد تخفیف بیش از حد مجاز است. لطفاً کمی صبر کنید.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === "development",
+});
+
 module.exports = {
   otpStartLimiter,
   otpVerifyLimiter,
@@ -107,4 +125,5 @@ module.exports = {
   heavyLimiter,
   createHeavyLimiter,
   sellerWriteLimiter,
+  couponValidateLimiter,
 };

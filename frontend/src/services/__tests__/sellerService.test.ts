@@ -66,6 +66,12 @@ import {
   createSellerReturn,
   updateSellerReturnStatus,
   refundSellerReturn,
+  listSellerCoupons,
+  getSellerCoupon,
+  createSellerCoupon,
+  updateSellerCoupon,
+  updateSellerCouponStatus,
+  exportSellerCouponUsageCsv,
 } from "../sellerService";
 import { apiClient, TokenManager } from "../../lib/apiClient";
 
@@ -1105,5 +1111,142 @@ describe("seller returns / RMA (Phase 33, P1-04)", () => {
     await expect(refundSellerReturn("r6", { refundAmount: 100 })).rejects.toMatchObject({
       code: "INVALID_RETURN_TRANSITION",
     });
+  });
+});
+
+describe("seller coupons / campaigns (Phase 35, P1-07)", () => {
+  const COUPON = {
+    id: "c1",
+    code: "SUMMER10",
+    description: "",
+    type: "percent" as const,
+    value: 10,
+    maxDiscount: 0,
+    minPurchase: 0,
+    maxUses: 100,
+    maxUsesPerBuyer: 1,
+    usedCount: 3,
+    remainingUses: 97,
+    startsAt: null,
+    expiresAt: null,
+    status: "active" as const,
+    usage: { redemptions: 3, discountGiven: 30000, lastRedeemedAt: null },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("asks for the campaign list with the status filter and page", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(ok({ items: [], total: 0, page: 2, limit: 20 }) as never);
+
+    await listSellerCoupons({ page: 2, limit: 20, status: "paused" });
+
+    expect(apiClient.get).toHaveBeenCalledWith("/seller/coupons", {
+      params: { page: 2, limit: 20, status: "paused" },
+    });
+  });
+
+  it("falls back to a full zeroed count object when the server omits it", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(ok({ items: [], total: 0, page: 1, limit: 20 }) as never);
+
+    const result = await listSellerCoupons();
+
+    // A missing `counts` must not make the page crash on `.counts.active`.
+    expect(result.counts.total).toBe(0);
+    expect(result.counts.discountGiven).toBe(0);
+  });
+
+  it("keeps the server's own counts and per-row usage when they are present", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({
+        items: [COUPON],
+        total: 1,
+        page: 1,
+        limit: 20,
+        counts: { total: 4, active: 3, paused: 1, exhausted: 0, discountGiven: 90000 },
+      }) as never,
+    );
+
+    const result = await listSellerCoupons();
+
+    expect(result.counts.total).toBe(4);
+    expect(result.counts.discountGiven).toBe(90000);
+    expect(result.items[0].usage.discountGiven).toBe(30000);
+  });
+
+  it("unwraps a single campaign from the detail endpoint", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(ok({ coupon: COUPON }) as never);
+
+    const result = await getSellerCoupon("c1");
+
+    expect(apiClient.get).toHaveBeenCalledWith("/seller/coupons/c1");
+    expect(result.code).toBe("SUMMER10");
+  });
+
+  it("creates a campaign with the limits the seller typed", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(ok({ coupon: COUPON }) as never);
+
+    await createSellerCoupon({
+      code: "SUMMER10",
+      type: "percent",
+      value: 10,
+      maxUses: 100,
+      maxUsesPerBuyer: 1,
+    });
+
+    expect(apiClient.post).toHaveBeenCalledWith("/seller/coupons", {
+      code: "SUMMER10",
+      type: "percent",
+      value: 10,
+      maxUses: 100,
+      maxUsesPerBuyer: 1,
+    });
+  });
+
+  it("sends only the fields an update actually changes", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValue(ok({ coupon: COUPON }) as never);
+
+    await updateSellerCoupon("c1", { value: 20 });
+
+    // A partial update must not blank the limits the seller did not touch.
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/coupons/c1", { value: 20 });
+  });
+
+  it("pauses a campaign through the status endpoint", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValue(ok({ coupon: COUPON }) as never);
+
+    const result = await updateSellerCouponStatus("c1", "paused");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/coupons/c1/status", {
+      status: "paused",
+    });
+    expect(result.id).toBe("c1");
+  });
+
+  it("downloads the usage export with the server's filename", async () => {
+    vi.mocked(apiClient.rawGet).mockResolvedValue({
+      data: new Blob(["code,discount"]),
+      headers: { "content-disposition": 'attachment; filename="coupon-usage.csv"' },
+    } as never);
+
+    const result = await exportSellerCouponUsageCsv({ status: "active" });
+
+    expect(apiClient.rawGet).toHaveBeenCalledWith("/seller/coupons/usage/export", {
+      params: { status: "active" },
+      responseType: "blob",
+    });
+    expect(result.filename).toBe("coupon-usage.csv");
+  });
+
+  it("propagates a coupon domain error instead of swallowing it", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      success: false as const,
+      error: { code: "COUPON_CODE_TAKEN", message: "این کد قبلاً ثبت شده است", status: 400 },
+    });
+
+    await expect(
+      createSellerCoupon({ code: "SUMMER10", type: "percent", value: 10 }),
+    ).rejects.toMatchObject({ code: "COUPON_CODE_TAKEN" });
   });
 });
