@@ -6,9 +6,11 @@ const Product = require("../models/Product");
 const StockAdjustment = require("../models/StockAdjustment");
 const Craft = require("../models/Craft");
 const Order = require("../models/Order");
+const ShippingProfile = require("../models/ShippingProfile");
 const OrderService = require("../services/OrderService");
 const ReturnService = require("../services/ReturnService");
 const CouponService = require("../services/CouponService");
+const ShippingService = require("../services/ShippingService");
 const Coupon = require("../models/Coupon");
 const CouponRedemption = require("../models/CouponRedemption");
 const FinanceService = require("../services/FinanceService");
@@ -2231,6 +2233,135 @@ async function getSellerFulfillment(req, res) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// SHIPPING (Phase 36, P1-08)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Read the seller's own rate card.
+ *
+ * A store that has never configured shipping is a normal state, not an error, so
+ * this returns an empty `configured: false` shape rather than a 404. The seller
+ * dashboard needs to render "you have no rates yet" from one response instead of
+ * special-casing a missing resource.
+ */
+async function getShippingProfile(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const profile = await ShippingService.getProfile(sellerId);
+    if (!profile) {
+      return res.json(
+        createSuccessResponse(
+          { configured: false, isEnabled: false, methods: [], freeShippingThreshold: 0 },
+          req.id,
+        ),
+      );
+    }
+    const fresh = await ShippingProfile.findById(profile._id)
+      .select(
+        "isEnabled freeShippingThreshold methods updatedAt",
+      )
+      .lean();
+    res.json(
+      createSuccessResponse(
+        {
+          configured: true,
+          isEnabled: fresh.isEnabled !== false,
+          freeShippingThreshold: fresh.freeShippingThreshold || 0,
+          methods: fresh.methods || [],
+          updatedAt: fresh.updatedAt,
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller getShippingProfile error", { error: e.message, sellerId: req.seller?._id });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * Save the seller's rate card.
+ *
+ * The whole profile is replaced rather than patched: a zone list, a pricing
+ * mode and a threshold only make sense together, and a partial merge would let a
+ * seller end up with a method whose zones and pricing no longer agree.
+ */
+async function updateShippingProfile(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const saved = await ShippingService.saveProfile({
+      sellerId,
+      sellerUserId: req.user._id,
+      payload: req.body,
+    });
+    res.json(
+      createSuccessResponse(
+        {
+          configured: true,
+          isEnabled: saved.isEnabled !== false,
+          freeShippingThreshold: saved.freeShippingThreshold || 0,
+          methods: saved.methods || [],
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    if (e instanceof ShippingService.ShippingDomainError) {
+      return res
+        .status(e.code === "SELLER_REQUIRED" ? 403 : 400)
+        .json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller updateShippingProfile error", {
+      error: e.message,
+      sellerId: req.seller?._id,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/**
+ * Try a rate card against a candidate address without saving anything.
+ *
+ * A seller configuring zones needs to know whether "16" really covers the
+ * postcode they think it does. Reading their own profile back through the same
+ * quoting path the buyer will use is the only preview that cannot disagree with
+ * production.
+ */
+async function previewShippingQuote(req, res) {
+  try {
+    const sellerId = req.seller._id;
+    const address = ShippingService.isEmptyAddress(req.body.shippingAddress)
+      ? {}
+      : ShippingService.normalizeAddress(req.body.shippingAddress).value || {};
+    const subtotal = Math.max(0, Number(req.body.subtotal) || 0);
+
+    const quote = ShippingService.quoteProfile({
+      profile: await ShippingService.getProfile(sellerId),
+      address,
+      subtotal,
+      totalWeightKg: Math.max(0, Number(req.body.totalWeightKg) || 0),
+      totalQty: Math.max(0, Number(req.body.totalQty) || 0),
+    });
+    res.json(createSuccessResponse(quote, req.id));
+  } catch (e) {
+    if (e instanceof ShippingService.ShippingDomainError) {
+      return res.status(400).json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Seller previewShippingQuote error", {
+      error: e.message,
+      sellerId: req.seller?._id,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // FINANCE & PAYOUTS
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -2710,6 +2841,9 @@ module.exports = {
   setCouponStatus,
   exportCouponUsage,
   getSellerFulfillment,
+  getShippingProfile,
+  updateShippingProfile,
+  previewShippingQuote,
   getFinance,
   getPayouts,
   requestPayout,

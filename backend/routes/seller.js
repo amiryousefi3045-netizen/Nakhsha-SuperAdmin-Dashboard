@@ -143,6 +143,32 @@ router.get(
   sellerController.getSellerFulfillment,
 );
 
+// ── Shipping (Phase 36, P1-08) ───────────────────────────────────────────────
+// Reading the rate card is open to any team member. Writing it is a pricing
+// decision that sets what every buyer is charged, so it sits at the same tier
+// as the order-status endpoint (`requireManagerOrOwner`) rather than the
+// read-only tier — but below `requireOwnerOnly`, because setting a rate does not
+// move money out of the account the way a refund does.
+router.get(
+  "/shipping",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.getShippingProfile,
+);
+router.put(
+  "/shipping",
+  write,
+  requireManagerOrOwner,
+  sellerController.updateShippingProfile,
+);
+router.post(
+  "/shipping/preview",
+  write,
+  requireManagerOrOwner,
+  sellerController.previewShippingQuote,
+);
+
 // ── Returns / RMA (Phase 33, P1-04) ──────────────────────────────────────────
 // Reading the queue is open to any team member; deciding and paying are not.
 //   - requireManagerOrOwner  -> approve / reject / receive / file on behalf of

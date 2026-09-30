@@ -1,6 +1,7 @@
 const OrderService = require("../services/OrderService");
 const ReturnService = require("../services/ReturnService");
 const CouponService = require("../services/CouponService");
+const ShippingService = require("../services/ShippingService");
 const Product = require("../models/Product");
 const SellerProfile = require("../models/SellerProfile");
 const AuditService = require("../services/AuditService");
@@ -211,6 +212,113 @@ async function validateCoupon(req, res) {
   }
 }
 
+/**
+ * Shipping preview (Phase 36, P1-08).
+ *
+ * Answers "what will this basket cost to send to this address" *before* the
+ * buyer commits, which is the only reason a storefront like Digikala or
+ * Basalam can show a delivery estimate. It is a read: no order, no reservation,
+ * no stock touched. The amount in the response is computed from the seller's
+ * own rate card, exactly as the checkout will compute it, so the preview cannot
+ * promise a number the checkout then contradicts.
+ */
+async function quoteShipping(req, res) {
+  try {
+    const profile = await SellerProfile.findOne({
+      slug: String(req.params.slug || "").trim().toLowerCase(),
+      status: "active",
+      "settings.storefrontPublished": true,
+    }).select("_id");
+    if (!profile) {
+      return res
+        .status(404)
+        .json(createErrorResponse("STORE_NOT_FOUND", "فروشگاه مورد نظر یافت نشد", null, req.id));
+    }
+
+    const productIds = req.body.items.map((i) => i.productId);
+    const products = await Product.find({
+      _id: { $in: productIds },
+      sellerId: profile._id,
+      status: "active",
+    })
+      .select("_id price shipping.weight")
+      .lean();
+
+    const byId = new Map(products.map((p) => [String(p._id), p]));
+    let subtotal = 0;
+    let totalQty = 0;
+    let totalWeightKg = 0;
+    for (const item of req.body.items) {
+      const product = byId.get(String(item.productId));
+      if (!product) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "PRODUCT_NOT_AVAILABLE",
+              "این محصول برای خرید در دسترس نیست",
+              { productId: item.productId },
+              req.id,
+            ),
+          );
+      }
+      subtotal += product.price * item.qty;
+      totalQty += item.qty;
+      totalWeightKg += (Number(product.shipping?.weight) || 0) * item.qty;
+    }
+
+    // Same treatment as checkout: an all-blank address is "no address", so a
+    // pickup buyer can see the pickup option without filling in a form.
+    let address = {};
+    if (ShippingService.isEmptyAddress(req.body.shippingAddress)) {
+      address = {};
+    } else {
+      const normalized = ShippingService.normalizeAddress(req.body.shippingAddress);
+      if (!normalized.ok) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse("INVALID_SHIPPING_ADDRESS", normalized.errors[0], {
+              errors: normalized.errors,
+            }, req.id),
+          );
+      }
+      address = normalized.value;
+    }
+
+    const quote = ShippingService.quoteProfile({
+      profile: await ShippingService.getProfile(profile._id),
+      address,
+      subtotal,
+      totalWeightKg,
+      totalQty,
+    });
+
+    res.json(
+      createSuccessResponse(
+        {
+          ...quote,
+          subtotal,
+          currency: "IRR",
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    if (e instanceof ShippingService.ShippingDomainError) {
+      return res.status(400).json(createErrorResponse(e.code, e.message, e.details, req.id));
+    }
+    logger.error("Storefront quoteShipping error", {
+      error: e.message,
+      buyer: req.user?.id,
+      slug: req.params?.slug,
+    });
+    res
+      .status(500)
+      .json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 async function paymentCallback(req, res) {
   try {
     const { order, applied } = await submitPaymentResult({
@@ -393,6 +501,7 @@ async function listBuyerReturnsHandler(req, res) {
 module.exports = {
   checkout,
   validateCoupon,
+  quoteShipping,
   paymentCallback,
   listBuyerOrders: listBuyerOrdersHandler,
   getBuyerOrder: getBuyerOrderHandler,

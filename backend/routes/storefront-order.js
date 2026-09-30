@@ -2,7 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const { requireAuth } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
-const { heavyLimiter, couponValidateLimiter } = require("../middleware/rateLimiter");
+const { heavyLimiter, couponValidateLimiter, shippingQuoteLimiter } = require("../middleware/rateLimiter");
 const { ORDER_STATUSES } = require("../models/Order");
 const {
   checkout,
@@ -12,6 +12,7 @@ const {
   createBuyerReturn,
   listBuyerReturns,
   validateCoupon,
+  quoteShipping,
 } = require("../controllers/StorefrontOrderController");
 
 /**
@@ -162,8 +163,24 @@ const checkoutBodySchema = z.object({
   shippingMethodId: z.string().trim().max(40, "روش ارسال نامعتبر است").optional().default(""),
 });
 
-const callbackBodySchema = z.object({
-  result: z.enum(["SUCCESS", "FAIL"], {
+// Delivery preview (Phase 36, P1-08). Takes the basket and the destination
+// because a per-kilogram rate cannot be priced without knowing what is in the
+// basket. The `shippingAddress` shape is deliberately identical to the checkout
+// field, so the client validates one form, not two.
+const shippingQuoteBodySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        productId: z.string().regex(REF_ID_PATTERN, "شناسهٔ کالا نامعتبر است"),
+        qty: z.number().int().min(1).max(99),
+      }),
+    )
+    .min(1, "سبد خرید خالی است")
+    .max(50, "تعداد اقلام بیش از حد مجاز است"),
+  shippingAddress: checkoutBodySchema.shape.shippingAddress,
+});
+
+const callbackBodySchema = z.object({  result: z.enum(["SUCCESS", "FAIL"], {
     errorMap: () => ({ message: "نتیجه پرداخت نامعتبر است" }),
   }),
   reason: z.string().trim().max(200, "دلیل نامعتبر است").optional().default(""),
@@ -211,9 +228,20 @@ router.post(
   validateCoupon,
 );
 
+// Delivery preview. Authenticated, like checkout, so an anonymous crawler
+// cannot walk every seller's rate card; `shippingQuoteLimiter` bounds the cost
+// of the ones that are logged in.
 router.post(
-  "/payments/:refId/callback",
-  heavyLimiter,
+  "/:slug/shipping/quote",
+  requireAuth,
+  shippingQuoteLimiter,
+  validate(storefrontParamsSchema, "params"),
+  validate(shippingQuoteBodySchema, "body"),
+  quoteShipping,
+);
+
+router.post(
+  "/payments/:refId/callback",  heavyLimiter,
   validate(callbackParamsSchema, "params"),
   validate(callbackBodySchema, "body"),
   paymentCallback,

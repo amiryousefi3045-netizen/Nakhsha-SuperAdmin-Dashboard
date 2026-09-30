@@ -118,6 +118,22 @@ const couponValidateLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === "development",
 });
 
+// The shipping quote answers a real question but does real work on every call:
+// it reads the seller's profile and prices the basket's weight against it. A
+// buyer re-quotes while they type an address, so the budget has to allow a
+// handful of refreshes; an unbounded version is a way to turn the endpoint into
+// a load generator against the database.
+const shippingQuoteLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 60, // 60 quotes per IP per 10 minutes
+  message: {
+    message: "تعداد درخواست‌های محاسبهٔ هزینهٔ ارسال بیش از حد مجاز است. لطفاً کمی صبر کنید.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === "development",
+});
+
 module.exports = {
   otpStartLimiter,
   otpVerifyLimiter,
@@ -126,4 +142,5 @@ module.exports = {
   createHeavyLimiter,
   sellerWriteLimiter,
   couponValidateLimiter,
+  shippingQuoteLimiter,
 };

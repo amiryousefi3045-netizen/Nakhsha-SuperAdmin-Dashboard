@@ -30,6 +30,12 @@ const { calculateDistance, isValidCoordinates } = require("../utils/geospatial")
 
 const ZONE_SPECIFICITY = ShippingProfile.ZONE_SPECIFICITY;
 const MAX_FEE = 50_000_000; // Sanity ceiling; a courier fee above this is a typo.
+// A rate card is a handful of methods and a handful of zones each. The caps keep
+// a runaway form post from turning the quote loop into a denial of service, and
+// they reject loudly rather than truncating — a silently dropped zone is a rate
+// the seller believes is live and is not.
+const MAX_METHODS = 12;
+const MAX_ZONES_PER_METHOD = 50;
 
 class ShippingDomainError extends Error {
   constructor(code, message, details = {}) {
@@ -428,6 +434,13 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
 
   const errors = [];
   const incoming = Array.isArray(payload.methods) ? payload.methods : [];
+  if (incoming.length > MAX_METHODS) {
+    throw new ShippingDomainError(
+      "TOO_MANY_METHODS",
+      `حداکثر ${MAX_METHODS} روش ارسال می‌توانید تعریف کنید`,
+      { count: incoming.length },
+    );
+  }
   const seenKeys = new Set();
   const methods = [];
 
@@ -464,6 +477,10 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
     }
 
     const zones = [];
+    if (Array.isArray(raw.zones) && raw.zones.length > MAX_ZONES_PER_METHOD) {
+      errors.push(`${at}: حداکثر ${MAX_ZONES_PER_METHOD} ناحیه برای هر روش`);
+      return;
+    }
     (Array.isArray(raw.zones) ? raw.zones : []).forEach((z, zi) => {
       const zat = `${at} / ناحیه ${zi + 1}`;
       const type = ["all", "province", "postal_code", "radius"].includes(z?.type)

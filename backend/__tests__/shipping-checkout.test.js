@@ -60,6 +60,7 @@ let ownerToken;
 let buyerToken;
 let productId;
 let storeId;
+let otherStore;
 
 async function wipe() {
   await User.deleteMany({ phone: { $in: Object.values(PHONES) } });
@@ -121,7 +122,7 @@ beforeAll(async () => {
     role: "seller",
     isVerified: true,
   });
-  const otherStore = await SellerProfile.create({
+  otherStore = await SellerProfile.create({
     userId: otherOwner._id,
     storeName: "فروشگاه دیگر",
     slug: "other-ship-store",
@@ -625,5 +626,217 @@ describe("Phase 36: the buyer's receipt", () => {
     expect(receipt.body.order.shipping.kind).toBe("pickup");
     expect(receipt.body.order.shipping.pickup.address).toContain("ولیعصر");
     expect(receipt.body.order.shippingFee).toBe(0);
+  });
+});
+
+describe("Phase 36: the buyer can see the cost before committing", () => {
+  function quote(body) {
+    return request(app)
+      .post(`/api/storefront/${SLUG}/shipping/quote`)
+      .set("Authorization", AUTH(buyerToken))
+      .send(body);
+  }
+
+  it("prices the basket without creating an order or touching stock", async () => {
+    await configureProfile();
+    const before = await Product.findById(productId).select("stock").lean();
+    const res = await quote({ items: [{ productId, qty: 1 }], shippingAddress: ADDRESS });
+    expect(res.status).toBe(200);
+    expect(res.body.configured).toBe(true);
+    const post = res.body.methods.find((m) => m.key === "post");
+    expect(post.fee).toBe(45000);
+    // A preview is a read. No order, and the basket is exactly as it was.
+    expect(await Order.countDocuments({})).toBe(0);
+    const after = await Product.findById(productId).select("stock").lean();
+    expect(after.stock.onHand).toBe(before.stock.onHand);
+    expect(after.stock.reserved).toBe(0);
+  });
+
+  it("quotes the same number the checkout then charges", async () => {
+    // The preview is only worth having if it cannot disagree with the real thing.
+    await configureProfile();
+    const preview = await quote({ items: [{ productId, qty: 1 }], shippingAddress: ADDRESS });
+    const previewFee = preview.body.methods.find((m) => m.key === "post").fee;
+    const order = await checkout({ shippingAddress: ADDRESS, shippingMethodId: "post" });
+    expect(order.status).toBe(200);
+    expect(order.body.order.shippingFee).toBe(previewFee);
+  });
+
+  it("prices a per-kilogram method from the basket it is given", async () => {
+    await Product.updateOne({ _id: productId }, { $set: { "shipping.weight": 2.4 } });
+    await configureProfile();
+    const res = await quote({ items: [{ productId, qty: 2 }], shippingAddress: ADDRESS });
+    // 2 × 2.4 kg = 4.8 → 5 started kg, inside the free radius override.
+    expect(res.status).toBe(200);
+    const tipax = res.body.methods.find((m) => m.key === "tipax");
+    expect(tipax.fee).toBe(0);
+  });
+
+  it("hides a per-kilogram method when the basket declares no weight", async () => {
+    await configureProfile();
+    const res = await quote({ items: [{ productId, qty: 1 }], shippingAddress: ADDRESS });
+    expect(res.status).toBe(200);
+    expect(res.body.methods.map((m) => m.key)).not.toContain("tipax");
+    expect(res.body.unavailable.map((u) => u.key)).toContain("tipax");
+  });
+
+  it("offers pickup to a buyer who has not typed an address yet", async () => {
+    await configureProfile();
+    const res = await quote({ items: [{ productId, qty: 1 }], shippingAddress: {} });
+    expect(res.status).toBe(200);
+    expect(res.body.methods.map((m) => m.key)).toEqual(
+      expect.arrayContaining(["pickup"]),
+    );
+  });
+
+  it("rejects a malformed address instead of quoting a guess", async () => {
+    await configureProfile();
+    const res = await quote({
+      items: [{ productId, qty: 1 }],
+      shippingAddress: { ...ADDRESS, postalCode: "123" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_SHIPPING_ADDRESS");
+  });
+
+  it("does not reveal a store that is not published", async () => {
+    const res = await request(app)
+      .post("/api/storefront/no-such-store-here/shipping/quote")
+      .set("Authorization", AUTH(buyerToken))
+      .send({ items: [{ productId, qty: 1 }] });
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses another store's product in the basket", async () => {
+    // The basket is priced against the seller's own catalogue, so a buyer
+    // cannot price a parcel using somebody else's cheap product.
+    await configureProfile();
+    const foreign = await Product.findOne({ sellerId: otherStore._id });
+    const res = await quote({ items: [{ productId: foreign._id, qty: 1 }], shippingAddress: ADDRESS });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("PRODUCT_NOT_AVAILABLE");
+  });
+});
+
+describe("Phase 36: the seller owns the rate card", () => {
+  const RATE_CARD = {
+    isEnabled: true,
+    freeShippingThreshold: 5_000_000,
+    methods: [
+      {
+        key: "post",
+        title: "پست پیشتاز",
+        kind: "delivery",
+        carrier: "پست",
+        pricing: { mode: "flat", flatFee: 45000 },
+        zones: [{ label: "تهران", type: "province", provinces: ["تهران"] }],
+      },
+      { key: "pickup", title: "دریافت حضوری", kind: "pickup", pricing: { mode: "free" } },
+    ],
+  };
+
+  const sellerApi = (method, path, token = ownerToken) =>
+    request(app)[method](`/api/seller${path}`).set("Authorization", AUTH(token));
+
+  it("reports an unconfigured store as a state, not a 404", async () => {
+    const res = await sellerApi("get", "/shipping");
+    expect(res.status).toBe(200);
+    expect(res.body.configured).toBe(false);
+    expect(res.body.methods).toEqual([]);
+  });
+
+  it("saves and reads back the seller's rate card", async () => {
+    const saved = await sellerApi("put", "/shipping").send(RATE_CARD);
+    expect(saved.status).toBe(200);
+    expect(saved.body.methods).toHaveLength(2);
+
+    const read = await sellerApi("get", "/shipping");
+    expect(read.status).toBe(200);
+    expect(read.body.configured).toBe(true);
+    expect(read.body.freeShippingThreshold).toBe(5_000_000);
+    expect(read.body.methods[0].key).toBe("post");
+  });
+
+  it("replaces the rate card instead of merging into it", async () => {
+    await sellerApi("put", "/shipping").send(RATE_CARD);
+    // A leftover method from a previous card must not survive the save, or the
+    // seller keeps charging for a courier they retired.
+    const second = await sellerApi("put", "/shipping").send({
+      isEnabled: true,
+      methods: [{ key: "tipax", title: "تیپاکس", kind: "delivery", pricing: { mode: "flat", flatFee: 70000 } }],
+    });
+    expect(second.status).toBe(200);
+    const read = await sellerApi("get", "/shipping");
+    expect(read.body.methods.map((m) => m.key)).toEqual(["tipax"]);
+  });
+
+  it("refuses a rate card with an invalid zone rather than saving half of it", async () => {
+    const res = await sellerApi("put", "/shipping").send({
+      isEnabled: true,
+      methods: [
+        {
+          key: "post",
+          title: "پست",
+          kind: "delivery",
+          pricing: { mode: "flat", flatFee: 45000 },
+          zones: [{ label: "نامعلوم", type: "province", provinces: ["استان ناموجود"] }],
+        },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect(await ShippingProfile.countDocuments({ sellerId: storeId })).toBe(0);
+  });
+
+  it("refuses a duplicate method key", async () => {
+    const res = await sellerApi("put", "/shipping").send({
+      isEnabled: true,
+      methods: [
+        { key: "post", title: "یک", kind: "delivery", pricing: { mode: "flat", flatFee: 1000 } },
+        { key: "post", title: "دو", kind: "delivery", pricing: { mode: "flat", flatFee: 2000 } },
+      ],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a runaway rate card", async () => {
+    const methods = Array.from({ length: 40 }, (_, i) => ({
+      key: `m${i}`,
+      title: `روش ${i}`,
+      kind: "delivery",
+      pricing: { mode: "flat", flatFee: 1000 },
+    }));
+    const res = await sellerApi("put", "/shipping").send({ isEnabled: true, methods });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("TOO_MANY_METHODS");
+  });
+
+  it("previews a zone against a real address before it goes live", async () => {
+    await sellerApi("put", "/shipping").send(RATE_CARD);
+    const hit = await sellerApi("post", "/shipping/preview").send({
+      shippingAddress: { ...ADDRESS, province: "تهران" },
+      subtotal: 100000,
+    });
+    expect(hit.status).toBe(200);
+    const post = hit.body.methods.find((m) => m.key === "post");
+    expect(post.zoneLabel).toBe("تهران");
+
+    // The same card, a province it does not list: the seller sees the gap here
+    // instead of a buyer discovering it at checkout.
+    const miss = await sellerApi("post", "/shipping/preview").send({
+      shippingAddress: { ...ADDRESS, province: "اصفهان", city: "اصفهان" },
+      subtotal: 100000,
+    });
+    expect(miss.status).toBe(200);
+    expect(miss.body.methods.map((m) => m.key)).not.toContain("post");
+  });
+
+  it("is not readable by a buyer who is not a seller", async () => {
+    const res = await sellerApi("get", "/shipping", buyerToken);
+    expect(res.status).toBe(403);
+  });
+
+  it("is not writable by an anonymous caller", async () => {
+    const res = await request(app).put("/api/seller/shipping").send(RATE_CARD);
+    expect(res.status).toBe(401);
   });
 });
