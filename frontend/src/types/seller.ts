@@ -209,6 +209,16 @@ export interface SalesReportSummary {
   shippingFee: number;
   discount: number;
   total: number;
+  /**
+   * Delivery economics (Phase 36). Kept as three separate figures because a
+   * seller needs all of them: what buyers paid, what the couriers charged, and
+   * what is left. `shippingCostUnrecorded` counts the orders in the window with
+   * no courier cost entered — an unrecorded cost is not a zero cost, and a
+   * margin that ignored those orders would read as better than it is.
+   */
+  shippingCost: number;
+  shippingMargin: number;
+  shippingCostUnrecorded: number;
 }
 
 export interface SalesReportStatusRow {
@@ -477,6 +487,26 @@ export interface SellerOrder {
   itemCount: number;
   timeline: OrderTimelineEntry[];
   carrierInfo: Record<string, unknown>;
+  /**
+   * Delivery detail (Phase 36). `cost`, `shippingMargin` and `costRecordedAt`
+   * are present ONLY on a seller-authenticated read — the buyer's copy of this
+   * same order deliberately omits them, so they are optional here rather than
+   * typed as `0`. A `0` would be indistinguishable from "the courier was free".
+   */
+  shipping: {
+    methodKey: string;
+    methodTitle: string;
+    kind: string;
+    carrier: string;
+    fee: number;
+    cost?: number;
+    shippingMargin?: number;
+    costRecordedAt?: string | null;
+    zoneLabel: string;
+    eta: { minDays: number; maxDays: number };
+    address: Record<string, string>;
+    pickup: Record<string, string>;
+  } | null;
   /**
    * The refund snapshot written when an RMA is settled (Phase 33). Both fields
    * are absent until a refund is actually issued, so they are optional: a

@@ -60,6 +60,7 @@ const CouponsSeller = lazy(() => import("./pages/seller/CouponsSeller"));
 const FinanceSeller = lazy(() => import("./pages/seller/FinanceSeller"));
 const ReviewsSeller = lazy(() => import("./pages/seller/ReviewsSeller"));
 const SettingsSeller = lazy(() => import("./pages/seller/SettingsSeller"));
+const ShippingSeller = lazy(() => import("./pages/seller/ShippingSeller"));
 
 const StorefrontPage = lazy(() => import("./pages/storefront/StorefrontPage"));
 const StorefrontProductPage = lazy(
@@ -518,6 +519,14 @@ function App() {
               element={
                 <SellerPageSuspense>
                   <FinanceSeller />
+                </SellerPageSuspense>
+              }
+            />
+            <Route
+              path="shipping"
+              element={
+                <SellerPageSuspense>
+                  <ShippingSeller />
                 </SellerPageSuspense>
               }
             />

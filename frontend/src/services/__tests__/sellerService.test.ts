@@ -43,6 +43,10 @@ import {
   exportSellerOrdersCsv,
   getSellerOrder,
   updateSellerOrderStatus,
+  getSellerShipping,
+  saveSellerShipping,
+  previewSellerShipping,
+  recordOrderShippingCost,
   getSellerFulfillment,
   getSellerFinance,
   getSellerPayouts,
@@ -1248,5 +1252,104 @@ describe("seller coupons / campaigns (Phase 35, P1-07)", () => {
     await expect(
       createSellerCoupon({ code: "SUMMER10", type: "percent", value: 10 }),
     ).rejects.toMatchObject({ code: "COUPON_CODE_TAKEN" });
+  });
+});
+
+describe("sellerService — delivery (Phase 36)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reads the rate card", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({
+        configured: true,
+        isEnabled: true,
+        freeShippingThreshold: 0,
+        methods: [],
+      }) as never,
+    );
+
+    const profile = await getSellerShipping();
+
+    expect(apiClient.get).toHaveBeenCalledWith("/seller/shipping");
+    expect(profile.configured).toBe(true);
+  });
+
+  it("treats a store with no rate card as a normal state", async () => {
+    // Not an error: the store stays open on free shipping, so the editor renders
+    // an empty card rather than a failure.
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({
+        configured: false,
+        isEnabled: false,
+        freeShippingThreshold: 0,
+        methods: [],
+      }) as never,
+    );
+
+    const profile = await getSellerShipping();
+
+    expect(profile.configured).toBe(false);
+    expect(profile.methods).toEqual([]);
+  });
+
+  it("replaces the whole rate card rather than patching it", async () => {
+    vi.mocked(apiClient.put).mockResolvedValue(
+      ok({ configured: true, isEnabled: true, freeShippingThreshold: 0, methods: [] }) as never,
+    );
+
+    await saveSellerShipping({ isEnabled: true, freeShippingThreshold: 0, methods: [] });
+
+    expect(apiClient.put).toHaveBeenCalledWith("/seller/shipping", {
+      isEnabled: true,
+      freeShippingThreshold: 0,
+      methods: [],
+    });
+  });
+
+  it("previews with basket totals, not a product list", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({ configured: true, methods: [], unavailable: [], warning: "" }) as never,
+    );
+
+    await previewSellerShipping({
+      subtotal: 500000,
+      totalWeightKg: 2.5,
+      totalQty: 3,
+      shippingAddress: { province: "تهران" },
+    });
+
+    expect(apiClient.post).toHaveBeenCalledWith("/seller/shipping/preview", {
+      subtotal: 500000,
+      totalWeightKg: 2.5,
+      totalQty: 3,
+      shippingAddress: { province: "تهران" },
+    });
+  });
+
+  it("records the courier invoice as a bare number", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValue(ok({ order: { id: "o1" } }) as never);
+
+    await recordOrderShippingCost("o1", 38000);
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/seller/orders/o1/shipping-cost", {
+      cost: 38000,
+    });
+  });
+
+  it("lets a locked cost surface its 409 rather than looking like a network failure", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValue({
+      success: false as const,
+      error: {
+        code: "SHIPPING_COST_LOCKED",
+        message: "پس از تحویل قابل تغییر نیست",
+        status: 409,
+      },
+    });
+
+    await expect(recordOrderShippingCost("o1", 38000)).rejects.toMatchObject({
+      code: "SHIPPING_COST_LOCKED",
+    });
   });
 });

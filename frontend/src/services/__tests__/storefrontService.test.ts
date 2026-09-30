@@ -34,6 +34,8 @@ import {
   createBuyerReturn,
   listBuyerReturns,
   validateStorefrontCoupon,
+  quoteStorefrontShipping,
+  getShippingProvinces,
 } from "../storefrontService";
 import { apiClient } from "../../lib/apiClient";
 import type { ApiError } from "../../types/apiClient";
@@ -673,5 +675,94 @@ describe("buyer returns / RMA (Phase 33, P1-04)", () => {
     expect(apiClient.get).toHaveBeenCalledWith("/storefront/returns", {
       params: { page: 1, limit: 10 },
     });
+  });
+});
+
+describe("storefrontService — delivery (Phase 36)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const QUOTE = {
+    configured: true,
+    freeShippingThreshold: 0,
+    methods: [
+      {
+        key: "post",
+        title: "پست پیشتاز",
+        kind: "delivery",
+        carrier: "پست",
+        fee: 45000,
+        zoneLabel: "تهران",
+        eta: { minDays: 2, maxDays: 4 },
+        pickup: null,
+      },
+    ],
+    unavailable: [],
+    warning: "",
+    subtotal: 500000,
+    currency: "IRR",
+  };
+
+  it("sends the destination and basket, never a price", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(ok(QUOTE) as never);
+
+    const quote = await quoteStorefrontShipping("nakhsha-vitrin", {
+      items: [{ productId: "p1", qty: 2 }],
+      shippingAddress: { province: "تهران", city: "تهران", postalCode: "1584743311" },
+    });
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/storefront/nakhsha-vitrin/shipping/quote",
+      {
+        items: [{ productId: "p1", qty: 2 }],
+        shippingAddress: { province: "تهران", city: "تهران", postalCode: "1584743311" },
+      },
+    );
+    expect(quote.methods[0].fee).toBe(45000);
+  });
+
+  it("treats an unconfigured store as a valid answer, not a failure", async () => {
+    // Such a store still trades on free shipping, so the UI must render it as
+    // "no delivery options, no charge" rather than an error state.
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({
+        configured: false,
+        freeShippingThreshold: 0,
+        methods: [],
+        unavailable: [],
+        warning: "این فروشگاه هنوز ارسال را تنظیم نکرده است.",
+      }) as never,
+    );
+
+    const quote = await quoteStorefrontShipping("nakhsha-vitrin", {
+      items: [{ productId: "p1", qty: 1 }],
+    });
+
+    expect(quote.configured).toBe(false);
+    expect(quote.methods).toEqual([]);
+    expect(quote.warning).toContain("ارسال");
+  });
+
+  it("fetches the province list instead of bundling its own copy", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({ provinces: ["تهران", "اصفهان"] }) as never,
+    );
+
+    const provinces = await getShippingProvinces("nakhsha-vitrin");
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      "/storefront/nakhsha-vitrin/shipping/provinces",
+    );
+    expect(provinces).toEqual(["تهران", "اصفهان"]);
+  });
+
+  it("rejects when the list is unavailable, so callers must degrade explicitly", async () => {
+    // The service does not swallow this: a page that treats an empty province
+    // list as authoritative would be lying. Both the buyer form and the seller
+    // editor catch and fall back to a typed province instead.
+    vi.mocked(apiClient.get).mockResolvedValue({ success: false } as never);
+
+    await expect(getShippingProvinces("nakhsha-vitrin")).rejects.toThrow();
   });
 });

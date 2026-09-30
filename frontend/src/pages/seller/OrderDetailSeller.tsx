@@ -13,7 +13,11 @@ import {
   FileText,
   CreditCard,
 } from "lucide-react";
-import { getSellerOrder, updateSellerOrderStatus } from "../../services/sellerService";
+import {
+  getSellerOrder,
+  recordOrderShippingCost,
+  updateSellerOrderStatus,
+} from "../../services/sellerService";
 import type { OrderStatus, SellerOrder } from "../../types/seller";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { faNumber, formatDateTime, formatDate } from "../../lib/adminFormat";
@@ -41,6 +45,11 @@ export function OrderDetailSeller() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  // The courier's real invoice (Phase 36). The only shipping number that cannot
+  // be known in advance, and the one that turns `fee` into a margin.
+  const [costInput, setCostInput] = useState("");
+  const [costError, setCostError] = useState<string | null>(null);
+  const [costSaved, setCostSaved] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -60,6 +69,34 @@ export function OrderDetailSeller() {
       setOrder(updated);
     } catch (e) {
       setError(e instanceof Error ? e.message : "تغییر وضعیت ناموفق بود.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  /**
+   * Record what the courier actually charged.
+   *
+   * Correctable while the parcel is in transit and refused once it is delivered,
+   * both by the server. The form is not disabled on the way — a seller who
+   * mistyped a digit should be able to fix it, and the 409 is the real guard.
+   */
+  const handleRecordCost = async () => {
+    if (!order || !id) return;
+    const cost = Number(costInput);
+    if (!Number.isInteger(cost) || cost <= 0) {
+      setCostError("مبلغ هزینهٔ ارسال باید عدد صحیح و بزرگ‌تر از صفر باشد.");
+      return;
+    }
+    setBusyAction("shipping-cost");
+    setCostError(null);
+    setCostSaved(false);
+    try {
+      const updated = await recordOrderShippingCost(id, cost);
+      setOrder(updated);
+      setCostSaved(true);
+    } catch (e) {
+      setCostError(e instanceof Error ? e.message : "ثبت هزینهٔ ارسال ناموفق بود.");
     } finally {
       setBusyAction(null);
     }
@@ -186,6 +223,88 @@ export function OrderDetailSeller() {
                   </dd>
                 </div>
               </dl>
+
+              {/* Delivery economics (Phase 36). The buyer's fee is on the order;
+                  the courier's invoice is not knowable in advance, so it is
+                  entered here and the margin is whatever is left over. */}
+              {o.shipping ? (
+                <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]/40 p-3">
+                  <p className="mb-2 text-xs font-medium text-[var(--color-text)]">
+                    ارسال: {o.shipping.methodTitle}
+                    {o.shipping.zoneLabel ? ` · ${o.shipping.zoneLabel}` : ""}
+                  </p>
+                  <dl className="space-y-1.5 text-sm">
+                    <PriceRow
+                      label="دریافتی از خریدار"
+                      value={formatSellerPrice(o.shipping.fee, o.currency)}
+                    />
+                    <PriceRow
+                      label="هزینهٔ حامل"
+                      value={
+                        typeof o.shipping.cost === "number" && o.shipping.cost > 0
+                          ? formatSellerPrice(o.shipping.cost, o.currency)
+                          : "ثبت نشده"
+                      }
+                    />
+                    {typeof o.shipping.shippingMargin === "number" &&
+                    (o.shipping.cost ?? 0) > 0 ? (
+                      <PriceRow
+                        label="حاشیهٔ ارسال"
+                        value={formatSellerPrice(o.shipping.shippingMargin, o.currency)}
+                        emphasize={
+                          o.shipping.shippingMargin >= 0 ? "text-green-600" : "text-red-600"
+                        }
+                      />
+                    ) : null}
+                  </dl>
+
+                  {o.shipping.kind !== "pickup" ? (
+                    <div className="mt-3">
+                      <label className="mb-1 block text-xs text-[var(--color-muted)]">
+                        {o.shipping.costRecordedAt
+                          ? "اصلاح هزینهٔ واقعی ارسال"
+                          : "ثبت هزینهٔ واقعی ارسال"}
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step={1000}
+                          dir="ltr"
+                          value={costInput}
+                          onChange={(e) => {
+                            setCostInput(e.target.value);
+                            setCostSaved(false);
+                          }}
+                          placeholder={
+                            o.shipping.costRecordedAt
+                              ? String(o.shipping.cost ?? "")
+                              : "مبلغ فاکتور حامل"
+                          }
+                          className="w-44 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-start text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleRecordCost()}
+                          disabled={busyAction === "shipping-cost"}
+                          className="rounded-lg border border-[var(--color-primary)] px-3 py-2 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 disabled:opacity-50"
+                        >
+                          {busyAction === "shipping-cost" ? "در حال ثبت…" : "ثبت"}
+                        </button>
+                      </div>
+                      {costError ? <p className="mt-1 text-xs text-red-600">{costError}</p> : null}
+                      {costSaved ? (
+                        <p className="mt-1 text-xs text-green-700">هزینهٔ ارسال ثبت شد.</p>
+                      ) : null}
+                      {o.shipping.costRecordedAt ? (
+                        <p className="mt-1 text-xs text-[var(--color-muted)]">
+                          تا پیش از تحویل قابل اصلاح است؛ پس از تحویل قفل می‌شود.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 

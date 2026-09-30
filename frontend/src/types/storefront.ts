@@ -7,6 +7,7 @@
 
 import type { ReturnItem, ReturnStatus, ReturnTimelineEntry } from "./returns";
 import type { CouponPreview } from "./coupon";
+import type { ShippingAddressInput } from "./shipping";
 
 /**
  * The buyer's view of a campaign. Re-exported so storefront consumers can reach
@@ -144,6 +145,20 @@ export interface CheckoutInput {
    * about the code or the cart buys nothing. Omit it to check out normally.
    */
   couponCode?: string;
+  /**
+   * Structured destination (Phase 36). Sent instead of / alongside
+   * `customer.address` because a zone has to be matched against a province, a
+   * postal code and coordinates — none of which survive a single free-text
+   * string. Omit it for a pickup order, which has no destination by definition.
+   */
+  shippingAddress?: ShippingAddressInput;
+  /**
+   * The seller's method KEY from the quote. A lookup, never an amount: the server
+   * prices the delivery from the seller's own rate card, so editing this string
+   * cannot buy a cheaper parcel. Omit it and the server takes the cheapest
+   * method the destination allows.
+   */
+  shippingMethodId?: string;
 }
 
 export interface StorefrontPayment {

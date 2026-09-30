@@ -8,6 +8,8 @@ import {
   FileBarChart2,
   Download,
   CheckCircle2,
+  Truck,
+  AlertTriangle,
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import {
@@ -220,6 +222,52 @@ export function SalesReportSeller() {
                 sub="بدون احتساب سفارش‌های لغو/برگشتی"
                 icon={<Package className="h-5 w-5" />}
               />
+            </div>
+
+            {/* Delivery economics (Phase 36): the fee buyers paid, the courier
+                invoices actually recorded, and what is left between them. The
+                unrecorded count is stated rather than folded into the numbers,
+                because a missing cost is not a zero cost. */}
+            <div className="rounded-2xl border border-[var(--color-border)] bg-white p-5 shadow-sm">
+              <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+                <Truck className="h-4 w-4 text-[var(--color-primary)]" />
+                اقتصاد ارسال
+              </h3>
+              <p className="mb-3 text-xs text-[var(--color-muted)]">
+                حاشیهٔ ارسال، تفاضل مبلغ دریافتی از خریدار و هزینهٔ واقعی حامل است.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-[var(--color-border)] p-3">
+                  <p className="text-xs text-[var(--color-muted)]">دریافتی از خریدار</p>
+                  <p className="mt-1 text-base font-bold text-[var(--color-text)]">
+                    {formatSellerPrice(data.summary.shippingFee, data.currency)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--color-border)] p-3">
+                  <p className="text-xs text-[var(--color-muted)]">هزینهٔ حامل</p>
+                  <p className="mt-1 text-base font-bold text-[var(--color-text)]">
+                    {formatSellerPrice(data.summary.shippingCost, data.currency)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--color-border)] p-3">
+                  <p className="text-xs text-[var(--color-muted)]">حاشیهٔ ارسال</p>
+                  <p
+                    className={`mt-1 text-base font-bold ${
+                      data.summary.shippingMargin >= 0 ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {formatSellerPrice(data.summary.shippingMargin, data.currency)}
+                  </p>
+                </div>
+              </div>
+              {data.summary.shippingCostUnrecorded > 0 ? (
+                <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  هزینهٔ ارسال {faNumber(data.summary.shippingCostUnrecorded)} سفارش در این
+                  بازه هنوز ثبت نشده است؛ تا آن زمان حاشیهٔ بالا بیشتر از واقعیت نشان داده
+                  می‌شود.
+                </p>
+              ) : null}
             </div>
 
             {/* Status breakdown */}

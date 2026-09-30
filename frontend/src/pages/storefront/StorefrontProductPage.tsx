@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -10,6 +10,7 @@ import {
   Star,
   Store,
   Tag,
+  Truck,
   XCircle,
 } from "lucide-react";
 import { useAsync } from "../../hooks/useAsync";
@@ -20,8 +21,10 @@ import { toAbsoluteMediaUrl } from "../../services/media";
 import {
   checkoutStorefront,
   getMyStorefrontReview,
+  getShippingProvinces,
   getStorefrontProduct,
   getStorefrontProductReviews,
+  quoteStorefrontShipping,
   submitStorefrontPayment,
   submitStorefrontReview,
   validateStorefrontCoupon,
@@ -35,6 +38,7 @@ import {
   type ReviewItem,
 } from "../../types/storefront";
 import { Pagination } from "../../components/admin/Pagination";
+import { etaText, type ShippingAddressInput, type ShippingQuote } from "../../types/shipping";
 
 function categoryLabel(value: string): string {
   return STOREFRONT_CATEGORIES.find((c) => c.value === value)?.label ?? value;
@@ -95,7 +99,77 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
   const [couponBusy, setCouponBusy] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
 
+  // Delivery (Phase 36). The buyer picks a destination and a method; the server
+  // prices both. Nothing in this block computes a shipping amount, and the
+  // chosen `key` is the only thing sent to checkout.
+  const [address, setAddress] = useState<ShippingAddressInput>({});
+  const [provinces, setProvinces] = useState<string[]>([]);
+  const [shipping, setShipping] = useState<ShippingQuote | null>(null);
+  const [methodKey, setMethodKey] = useState("");
+  const [shippingBusy, setShippingBusy] = useState(false);
+  const [shippingMessage, setShippingMessage] = useState("");
+
+  /**
+   * Whether the buyer typed a real destination.
+   *
+   * An all-blank address means "no address" to the server, which is exactly what
+   * a pickup order needs; a half-filled one is a validation error. So the form
+   * only sends the field when there is something in it, and lets the server be
+   * the judge of partial entries rather than guessing here.
+   */
+  const hasAddress = Object.values(address).some((v) => String(v ?? "").trim().length > 0);
+
   const effectiveMax = Math.max(1, Math.min(maxQty || 1, 99));
+
+  // The province list comes from the server that will validate the address, so
+  // the dropdown cannot offer a province checkout would then reject.
+  useEffect(() => {
+    let cancelled = false;
+    getShippingProvinces(slug)
+      .then((list) => {
+        if (!cancelled) setProvinces(list);
+      })
+      .catch(() => {
+        // Fall back to a typed province. The server still validates it; the form
+        // simply cannot offer the list for convenience.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  /**
+   * Ask the seller engine what this basket costs to deliver to this address.
+   *
+   * Deliberately not automatic on every keystroke: the endpoint is rate limited
+   * and a buyer typing a postal code would otherwise burn the budget on
+   * half-finished addresses.
+   */
+  async function handleQuoteShipping() {
+    setShippingBusy(true);
+    setShippingMessage("");
+    try {
+      const quote = await quoteStorefrontShipping(slug, {
+        items: [{ productId, qty }],
+        shippingAddress: address,
+      });
+      setShipping(quote);
+      // Preselect the cheapest option, which is what checkout would have chosen
+      // on its own — so a buyer who ignores this step still gets the same order.
+      setMethodKey((current) =>
+        quote.methods.some((m) => m.key === current) ? current : (quote.methods[0]?.key ?? ""),
+      );
+    } catch (error) {
+      setShipping(null);
+      setMethodKey("");
+      setShippingMessage(
+        (error as { message?: string } | null)?.message ??
+          "محاسبهٔ هزینهٔ ارسال ناموفق بود.",
+      );
+    } finally {
+      setShippingBusy(false);
+    }
+  }
 
   /**
    * Ask the server what the code is worth for this exact cart.
@@ -158,6 +232,10 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
         items: [{ productId, qty }],
         paymentMethod: "card",
         ...(appliedCode ? { couponCode: appliedCode } : {}),
+        // The method KEY and the destination, never an amount. The server prices
+        // the delivery again from the seller's own rate card.
+        ...(methodKey ? { shippingMethodId: methodKey } : {}),
+        ...(hasAddress ? { shippingAddress: address } : {}),
       });
       setRefId(result.paymentIntent.refId);
       setPaidTotal(result.paymentIntent.amount);
@@ -216,6 +294,9 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
     setCoupon(null);
     setAppliedCode("");
     setCouponMessage("");
+    setShipping(null);
+    setMethodKey("");
+    setShippingMessage("");
   }
 
   if (!user) {
@@ -403,6 +484,151 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
             <span className="text-[var(--color-muted)]">
               {formatSellerPrice(coupon.discount, currency)} تخفیف
             </span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]/40 p-3">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--color-text)]">
+          <Truck className="h-4 w-4" />
+          ارسال
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-xs text-[var(--color-muted)]">استان</span>
+            {provinces.length > 0 ? (
+              <select
+                value={address.province ?? ""}
+                onChange={(e) =>
+                  setAddress((a) => ({ ...a, province: e.target.value }))
+                }
+                className="w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+              >
+                <option value="">— انتخاب کنید —</option>
+                {provinces.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={address.province ?? ""}
+                onChange={(e) => setAddress((a) => ({ ...a, province: e.target.value }))}
+                className="w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+              />
+            )}
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-[var(--color-muted)]">شهر</span>
+            <input
+              value={address.city ?? ""}
+              onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))}
+              className="w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-[var(--color-muted)]">کدپستی</span>
+            <input
+              value={address.postalCode ?? ""}
+              onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))}
+              dir="ltr"
+              inputMode="numeric"
+              className="w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-start text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-[var(--color-muted)]">نشانی</span>
+            <input
+              value={address.line1 ?? ""}
+              onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))}
+              className="w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleQuoteShipping()}
+            disabled={shippingBusy}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-primary)] px-3 py-2 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 disabled:opacity-40"
+          >
+            {shippingBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Truck className="h-4 w-4" />
+            )}
+            محاسبهٔ هزینهٔ ارسال
+          </button>
+          <span className="text-xs text-[var(--color-muted)]">
+            اگر دریافت حضوری می‌خواهید، آدرس را خالی بگذارید.
+          </span>
+        </div>
+
+        {shippingMessage ? <p className="mt-2 text-xs text-red-600">{shippingMessage}</p> : null}
+
+        {shipping ? (
+          <div className="mt-2 space-y-2">
+            {shipping.warning ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {shipping.warning}
+              </p>
+            ) : null}
+            {shipping.methods.length === 0 ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                برای این مقصد روش ارسالی در دسترس نیست.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {shipping.methods.map((m) => (
+                  <li key={m.key}>
+                    <label
+                      className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs ${
+                        methodKey === m.key
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5"
+                          : "border-[var(--color-border)]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="shipping-method"
+                        value={m.key}
+                        checked={methodKey === m.key}
+                        onChange={() => setMethodKey(m.key)}
+                        className="mt-0.5"
+                      />
+                      <span className="flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-[var(--color-text)]">{m.title}</span>
+                          <span className="font-medium text-[var(--color-text)]">
+                            {m.fee === 0
+                              ? "رایگان"
+                              : formatSellerPrice(m.fee, shipping.currency ?? currency)}
+                          </span>
+                        </span>
+                        <span className="block text-[var(--color-muted)]">
+                          {etaText(m.eta)}
+                          {m.carrier ? ` · ${m.carrier}` : ""}
+                        </span>
+                        {m.kind === "pickup" && m.pickup ? (
+                          <span className="mt-1 block text-[var(--color-muted)]">
+                            {[
+                              m.pickup.province,
+                              m.pickup.city,
+                              m.pickup.address,
+                              m.pickup.hours,
+                            ]
+                              .filter(Boolean)
+                              .join(" — ")}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : null}
       </div>

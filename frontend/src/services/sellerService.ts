@@ -18,6 +18,12 @@ import type {
   UpdateSellerCouponInput,
 } from "../types/coupon";
 import type {
+  SellerShippingPreviewInput,
+  SellerShippingProfile,
+  SellerShippingProfileInput,
+  ShippingQuote,
+} from "../types/shipping";
+import type {
   AnalyticsParams,
   BulkActionResult,
   CreateReturnInput,
@@ -288,7 +294,17 @@ export async function getSellerSalesReport(
   const res = await apiClient.get<SellerSalesReport>("/seller/reports/sales", { params });
   return unwrap(res, {
     period: { from: "", to: "" },
-    summary: { orders: 0, units: 0, subtotal: 0, shippingFee: 0, discount: 0, total: 0 },
+    summary: {
+      orders: 0,
+      units: 0,
+      subtotal: 0,
+      shippingFee: 0,
+      discount: 0,
+      total: 0,
+      shippingCost: 0,
+      shippingMargin: 0,
+      shippingCostUnrecorded: 0,
+    },
     byStatus: [],
     topProducts: [],
     daily: [],
@@ -483,6 +499,83 @@ export async function updateSellerOrderStatus(
   const res = await apiClient.patch<{ order: SellerOrder }>(
     `/seller/orders/${id}/status`,
     reason ? { status, reason } : { status },
+  );
+  return unwrap(res, { order: {} as SellerOrder }).order;
+}
+
+// — Shipping (Phase 36, P1-08) ————————————————————————————————————————————————
+
+/**
+ * GET /seller/shipping — the seller's rate card, or `configured: false`.
+ *
+ * A missing profile is a normal state, not an error: the store stays open with
+ * free shipping, so the editor has to render "nothing configured yet" rather
+ * than treat the response as a failure.
+ */
+export async function getSellerShipping(): Promise<SellerShippingProfile> {
+  const res = await apiClient.get<SellerShippingProfile>("/seller/shipping");
+  return unwrap(res, {
+    configured: false,
+    isEnabled: false,
+    freeShippingThreshold: 0,
+    methods: [],
+  });
+}
+
+/**
+ * PUT /seller/shipping — replace the whole rate card.
+ *
+ * A replace, not a patch: a zone list and a pricing mode are not fields you can
+ * meaningfully merge, and a partial update of a rate card is how a seller ends
+ * up with a method priced by the previous version's rules.
+ */
+export async function saveSellerShipping(
+  payload: SellerShippingProfileInput,
+): Promise<SellerShippingProfile> {
+  const res = await apiClient.put<SellerShippingProfile>("/seller/shipping", payload);
+  return unwrap(res, {
+    configured: false,
+    isEnabled: false,
+    freeShippingThreshold: 0,
+    methods: [],
+  });
+}
+
+/**
+ * POST /seller/shipping/preview — "what would this basket cost to ship?".
+ *
+ * The same engine the buyer's quote uses, run against an address the seller
+ * types. Without it a seller cannot find out that their own zone list does not
+ * cover a town until a buyer complains.
+ */
+export async function previewSellerShipping(
+  input: SellerShippingPreviewInput,
+): Promise<ShippingQuote> {
+  const res = await apiClient.post<ShippingQuote>("/seller/shipping/preview", input);
+  return unwrap(res, {
+    configured: false,
+    freeShippingThreshold: 0,
+    methods: [],
+    unavailable: [],
+    warning: "",
+  });
+}
+
+/**
+ * PATCH /seller/orders/:id/shipping-cost — what the courier actually charged.
+ *
+ * This is the number that makes `fee - cost` a real margin, and the only one
+ * that cannot be known in advance. Rejected with 409 once the order is
+ * delivered, and while the parcel is still `processing` there is no cost to
+ * record yet.
+ */
+export async function recordOrderShippingCost(
+  orderId: string,
+  cost: number,
+): Promise<SellerOrder> {
+  const res = await apiClient.patch<{ order: SellerOrder }>(
+    `/seller/orders/${orderId}/shipping-cost`,
+    { cost },
   );
   return unwrap(res, { order: {} as SellerOrder }).order;
 }

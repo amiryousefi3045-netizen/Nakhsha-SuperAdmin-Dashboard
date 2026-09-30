@@ -34,6 +34,22 @@ import type {
   StorefrontsPage,
   SubmitReviewInput,
 } from "../types/storefront";
+import type { ShippingQuote, ShippingQuoteInput } from "../types/shipping";
+
+/**
+ * A stand-in for an unconfigured store.
+ *
+ * `configured: false` is the honest answer, not a failure: a store with no rate
+ * card still trades, on free shipping. The UI keys off this flag to say so
+ * rather than to block the buyer.
+ */
+const emptyQuote: ShippingQuote = {
+  configured: false,
+  freeShippingThreshold: 0,
+  methods: [],
+  unavailable: [],
+  warning: "",
+};
 
 function unwrap<T>(res: ApiResult<T>, expected: T): T {
   if (!res.success || res.data === undefined) {
@@ -110,6 +126,44 @@ export async function checkoutStorefront(
     order: {} as CheckoutResponse["order"],
     paymentIntent: {} as CheckoutResponse["paymentIntent"],
   });
+}
+
+/**
+ * POST /storefront/:slug/shipping/quote — what delivery costs for this basket.
+ *
+ * Called before checkout, from the buyer's own form, so the number on screen is
+ * the number they will be charged: the server re-prices the basket from live
+ * products and the seller's rate card. Nothing here is an amount the client
+ * computed, and the quote is not a reservation — it changes if the basket,
+ * destination or rate card changes, and checkout always prices it again.
+ *
+ * Requires authentication, and is rate limited: this endpoint reveals a seller's
+ * rates, so it is for a human filling in a form, not a loop.
+ */
+export async function quoteStorefrontShipping(
+  slug: string,
+  input: ShippingQuoteInput,
+): Promise<ShippingQuote> {
+  const res = await apiClient.post<ShippingQuote>(
+    `/storefront/${encodeURIComponent(slug)}/shipping/quote`,
+    input,
+  );
+  return unwrap(res, emptyQuote);
+}
+
+/**
+ * GET /storefront/:slug/shipping/provinces — the canonical province list.
+ *
+ * Fetched rather than bundled on purpose: the server validates the buyer's
+ * province against exactly this table, so a local copy would drift and offer
+ * provinces that are then rejected. Public (no auth) because the answer is the
+ * same 31 names for every store and leaks nothing.
+ */
+export async function getShippingProvinces(slug: string): Promise<string[]> {
+  const res = await apiClient.get<{ provinces: string[] }>(
+    `/storefront/${encodeURIComponent(slug)}/shipping/provinces`,
+  );
+  return unwrap(res, { provinces: [] }).provinces;
 }
 
 /**
