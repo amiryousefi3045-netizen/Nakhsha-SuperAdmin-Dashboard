@@ -133,6 +133,61 @@ const OrderSchema = new mongoose.Schema(
     },
     total: { type: Number, required: true, min: 0 },
     currency: { type: String, default: "IRR", maxlength: 10 },
+    /**
+     * Delivery snapshot (Phase 36, P1-08). The method, the price the buyer was
+     * quoted and the destination are frozen here at checkout, because the seller
+     * can edit their rate card tomorrow and the order still has to show what was
+     * promised on the day — the same reason `coupon` is snapshotted.
+     *
+     * Three money fields that are deliberately NOT the same number:
+     *   - `fee`    → what the BUYER paid. Mirrored into `shippingFee` for the
+     *                existing totals math; it is the duplicate that is kept in
+     *                step here, not an independent value.
+     *   - `cost`   → what the SELLER paid the courier, recorded per shipment.
+     *                Not knowable at checkout, and this is the number that makes
+     *                `fee - cost` a real margin instead of a guess.
+     *   - `shippingFee` above is the charge; never treat it as the cost.
+     */
+    shipping: {
+      methodKey: { type: String, default: "", maxlength: 40 },
+      methodTitle: { type: String, default: "", maxlength: 80 },
+      kind: { type: String, enum: ["pickup", "delivery", ""], default: "" },
+      carrier: { type: String, default: "", maxlength: 80 },
+      // Integer, same unit as `total`. Mirrors `shippingFee`.
+      fee: { type: Number, default: 0, min: 0 },
+      // Seller's actual courier cost. 0 until the seller records it.
+      cost: { type: Number, default: 0, min: 0 },
+      zoneLabel: { type: String, default: "", maxlength: 80 },
+      eta: {
+        minDays: { type: Number, default: 0, min: 0 },
+        maxDays: { type: Number, default: 0, min: 0 },
+      },
+      // Structured destination. Free-text `customer.address` is retained for
+      // pre-Phase-36 orders, but a new order stores the parts so a zone can be
+      // re-evaluated and a courier label can be printed.
+      address: {
+        receiverName: { type: String, default: "", maxlength: 80 },
+        receiverPhone: { type: String, default: "", maxlength: 20 },
+        province: { type: String, default: "", maxlength: 80 },
+        city: { type: String, default: "", maxlength: 80 },
+        postalCode: { type: String, default: "", maxlength: 20 },
+        line1: { type: String, default: "", maxlength: 300 },
+        line2: { type: String, default: "", maxlength: 300 },
+        note: { type: String, default: "", maxlength: 200 },
+        lat: { type: Number, default: null },
+        lng: { type: Number, default: null },
+      },
+      pickup: {
+        address: { type: String, default: "", maxlength: 400 },
+        city: { type: String, default: "", maxlength: 80 },
+        province: { type: String, default: "", maxlength: 80 },
+        hours: { type: String, default: "", maxlength: 200 },
+        instructions: { type: String, default: "", maxlength: 400 },
+      },
+      // The full quote as issued, so a dispute can be settled against what the
+      // buyer actually saw rather than against the rate card of the moment.
+      quotedAt: { type: Date, default: null },
+    },
     status: { type: String, enum: ORDER_STATUSES, default: "pending" },
     timeline: { type: [TimelineEntrySchema], default: [] },
     notifications: { type: [OrderNotificationSchema], default: [] },

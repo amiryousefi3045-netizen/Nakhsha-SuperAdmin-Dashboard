@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const ShippingProfile = require("../models/ShippingProfile");
 const { nextSequence } = require("../models/AtomicCounter");
+const ShippingService = require("../services/ShippingService");
 const {
   createOrder,
   transitionOrder,
@@ -47,11 +49,15 @@ async function makeProduct(over = {}) {
 beforeEach(async () => {
   await Order.deleteMany({});
   await Product.deleteMany({});
+  // A rate card left over from a previous test would silently change the
+  // shipping total of the next one, so every test starts with no profile.
+  await ShippingProfile.deleteMany({});
 });
 
 afterAll(async () => {
   await Order.deleteMany({});
   await Product.deleteMany({});
+  await ShippingProfile.deleteMany({});
   await mongoose.connection.collection("atomiccounters").deleteMany({});
   await mongoose.connection.close();
 });
@@ -65,7 +71,7 @@ describe("Order model", () => {
       sellerId: sellerA,
       sellerUserId: userIdA,
       orderNumber: 1,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: product._id, title: product.title, price: 200000, qty: 2 }],
       subtotal: 400000,
       total: 400000,
@@ -82,7 +88,7 @@ describe("Order model", () => {
         sellerId: sellerA,
         sellerUserId: userIdA,
         orderNumber: 2,
-        customer: { name: "علی", phone: "09120000001" },
+        customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: product._id, title: "x", price: 1, qty: 1 }],
         subtotal: 1,
         total: 1,
@@ -97,7 +103,7 @@ describe("Order model", () => {
         sellerId: sellerA,
         sellerUserId: userIdA,
         orderNumber: 3,
-        customer: { name: "علی", phone: "09120000001" },
+        customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [],
         subtotal: 0,
         total: 0,
@@ -113,6 +119,18 @@ describe("OrderService.createOrder", () => {
     const p1 = await makeProduct({ title: "قلم", price: 1500 });
     const p2 = await makeProduct({ title: "کاسه", price: 2500 });
 
+    // A real rate card, so the 500 is produced by the seller's own profile
+    // rather than handed to the service as an amount.
+    await ShippingService.saveProfile({
+      sellerId: sellerA,
+      payload: {
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 500 } },
+        ],
+      },
+    });
+
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
@@ -121,14 +139,25 @@ describe("OrderService.createOrder", () => {
         { productId: String(p1._id), qty: 3 },
         { productId: String(p2._id), qty: 2 },
       ],
-      shippingFee: 500,
+      shippingMethodId: "post",
+      shippingAddress: {
+        receiverName: "علی",
+        receiverPhone: "09120000001",
+        province: "تهران",
+        city: "تهران",
+        postalCode: "1658953711",
+        line1: "خیابان آزادی، کوچه بهار",
+      },
       discount: 200,
       customerNote: "لطفا روز تحویل تماس بگیرید",
     });
 
     expect(order.status).toBe("pending");
     expect(order.subtotal).toBe(3 * 1500 + 2 * 2500); // 9500
+    expect(order.shippingFee).toBe(500);
     expect(order.total).toBe(9500 + 500 - 200); // 9800
+    expect(order.shipping.methodKey).toBe("post");
+    expect(order.shipping.fee).toBe(500);
     expect(order.itemCount).toBe(5);
     expect(order.timeline.length).toBe(1);
     expect(order.timeline[0].status).toBe("pending");
@@ -145,7 +174,7 @@ describe("OrderService.createOrder", () => {
     await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 4 }],
     });
 
@@ -161,7 +190,7 @@ describe("OrderService.createOrder", () => {
       createOrder({
         sellerId: sellerA,
         sellerUserId: userIdA,
-        customer: { name: "علی", phone: "09120000001" },
+        customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: String(product._id), qty: 5 }],
       }),
     ).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
@@ -180,7 +209,7 @@ describe("OrderService.createOrder", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 2 }],
     });
     expect(order.items[0].qty).toBe(2);
@@ -205,7 +234,7 @@ describe("OrderService.createOrder", () => {
       createOrder({
         sellerId: sellerA,
         sellerUserId: userIdA,
-        customer: { name: "علی", phone: "09120000001" },
+        customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: String(foreign._id), qty: 1 }],
       }),
     ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
@@ -219,7 +248,7 @@ describe("OrderService.createOrder", () => {
         createOrder({
           sellerId: sellerA,
           sellerUserId: userIdA,
-          customer: { name: "علی", phone: "09120000001" },
+          customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
           items: [{ productId: String(product._id), qty: 1 }],
         }),
       ),
@@ -240,7 +269,7 @@ describe("OrderService concurrency", () => {
       createOrder({
         sellerId: sellerA,
         sellerUserId: userIdA,
-        customer: { name: "علی", phone: "09120000001" },
+        customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: String(product._id), qty: 6 }],
       });
     const settled = await Promise.allSettled([mk(), mk()]);
@@ -270,7 +299,7 @@ describe("OrderService.transitionOrder", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 2 }],
     });
 
@@ -302,7 +331,7 @@ describe("OrderService.transitionOrder", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 4 }],
     });
 
@@ -328,7 +357,7 @@ describe("OrderService.transitionOrder", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 4 }],
     });
     for (const s of ["confirmed", "processing"]) {
@@ -356,7 +385,7 @@ describe("OrderService.transitionOrder", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 2 }],
     });
     for (const s of ["confirmed", "processing", "shipped", "delivered"]) {
@@ -386,7 +415,7 @@ describe("OrderService.transitionOrder", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 1 }],
     });
 
@@ -412,7 +441,7 @@ describe("OrderService queries", () => {
       await createOrder({
         sellerId: sellerA,
         sellerUserId: userIdA,
-        customer: { name: "علی", phone: "09120000001" },
+        customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: String(product._id), qty: 1 }],
       });
     }
@@ -433,7 +462,7 @@ describe("OrderService queries", () => {
     const order = await createOrder({
       sellerId: sellerA,
       sellerUserId: userIdA,
-      customer: { name: "علی", phone: "09120000001" },
+      customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(product._id), qty: 1 }],
     });
 

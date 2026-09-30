@@ -267,7 +267,7 @@ describe("seller live events — streaming", () => {
         sellerUserId: sellerUser._id,
         origin: "seller",
         orderNumber: 7001,
-        customer: { name: "خریدار زنده", phone: "09120000000" },
+        customer: { name: "خریدار زنده", phone: "09120000000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [
           {
             productId,
@@ -318,7 +318,7 @@ describe("seller live events — streaming", () => {
         sellerId: String(profileId),
         sellerUserId: String(sellerUser._id),
         origin: "storefront",
-        customer: { name: "خریدار تازه", phone: "09120000011" },
+        customer: { name: "خریدار تازه", phone: "09120000011" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: String(productId), qty: 1 }],
       });
 

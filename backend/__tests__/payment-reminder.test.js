@@ -226,7 +226,7 @@ describe("PaymentReminderService scheduler", () => {
     await createOrder({
       sellerId: String(storeId),
       sellerUserId: String(ownerUserId),
-      customer: { name: "ثبت دستی یادآوری", phone: PHONES.buyerWithoutUser },
+      customer: { name: "ثبت دستی یادآوری", phone: PHONES.buyerWithoutUser , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [
         { productId, title: "گلیم یادآوری", price: 400000, currency: "IRR", qty: 1 },
       ],

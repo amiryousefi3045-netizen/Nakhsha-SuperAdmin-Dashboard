@@ -226,14 +226,14 @@ describe("Seller Dashboard - authorization", () => {
       const pendingOrder = await createOrder({
         sellerId: sellerProfile._id,
         sellerUserId: sellerUser._id,
-        customer: { name: "KPI تست ۱", phone: "09129999991" },
+        customer: { name: "KPI تست ۱", phone: "09129999991" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: product._id, qty: 2 }],
       });
       pendingOrderId = pendingOrder._id;
       const deliveredOrder = await createOrder({
         sellerId: sellerProfile._id,
         sellerUserId: sellerUser._id,
-        customer: { name: "KPI تست ۲", phone: "09129999992" },
+        customer: { name: "KPI تست ۲", phone: "09129999992" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: product._id, qty: 1 }],
       });
       deliveredOrderId = deliveredOrder._id;

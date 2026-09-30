@@ -58,6 +58,8 @@ async function createBuyerOrder({
   paymentMethod = "card",
   customerNote = "",
   couponCode = "",
+  shippingAddress = null,
+  shippingMethodId = "",
 }) {
   if (!buyerUserId) {
     throw new StorefrontOrderError("VALIDATION_ERROR", "خریدار مشخص نیست");
@@ -128,6 +130,10 @@ async function createBuyerOrder({
     buyerUserId,
     customerNote,
     couponCode: couponCode || null,
+    // Both are lookups, not amounts: OrderService prices delivery from the
+    // seller's own rate card (Phase 36).
+    shippingAddress: shippingAddress || null,
+    shippingMethodId: shippingMethodId || null,
   });
 
   const refId = String(order._id);

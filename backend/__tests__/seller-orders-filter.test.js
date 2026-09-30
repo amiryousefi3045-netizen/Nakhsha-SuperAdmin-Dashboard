@@ -52,7 +52,7 @@ async function seedOrder({ sellerId, sellerUserId, createdAt, status, total, pai
     sellerUserId,
     orderNumber: Math.floor(Math.random() * 900000) + 100000,
     origin: "storefront",
-    customer: { name: "مشتری فیلتر", phone: "09120000000" },
+    customer: { name: "مشتری فیلتر", phone: "09120000000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items: [{ productId: new mongoose.Types.ObjectId(), title: "کالا", price: total, qty: 1, currency: "IRR" }],
     subtotal: total,
     shippingFee: 0,

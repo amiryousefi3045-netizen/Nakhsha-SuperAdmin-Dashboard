@@ -58,6 +58,8 @@ async function checkout(req, res) {
       paymentMethod: req.body.paymentMethod,
       customerNote: req.body.customerNote,
       couponCode: req.body.couponCode,
+      shippingAddress: req.body.shippingAddress,
+      shippingMethodId: req.body.shippingMethodId,
     });
 
     res.json(
@@ -80,6 +82,15 @@ async function checkout(req, res) {
         INSUFFICIENT_STOCK: 400,
         PRODUCT_NOT_FOUND: 404,
         VALIDATION_ERROR: 400,
+        // A bad destination or an unavailable method is a normal checkout
+        // outcome: the buyer simply has to correct the address or pick another
+        // method. 400 keeps it out of the 5xx noise.
+        INVALID_SHIPPING_ADDRESS: 400,
+        SHIPPING_METHOD_UNAVAILABLE: 400,
+        // Defence in depth: `createOrder` rejects a leftover `shippingFee` key.
+        // Reaching this means some caller still passes an amount, which would
+        // otherwise become a silently free shipment.
+        SHIPPING_FEE_NOT_ACCEPTED: 400,
       };
       return res
         .status(statusMap[e.code] || 400)

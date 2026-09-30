@@ -77,7 +77,7 @@ async function checkoutAndPay(token, refBody = {}) {
     .post(`/api/storefront/${slug}/checkout`)
     .set("Authorization", AUTH(token))
     .send({
-      customer: { name: "خریدار دیدگاه", phone: "09123456789" },
+      customer: { name: "خریدار دیدگاه", phone: "09123456789" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId, qty: 1 }],
       paymentMethod: "card",
     });

@@ -133,6 +133,33 @@ const checkoutBodySchema = z.object({
   // A lookup key only. The amount is decided server-side in OrderService, so a
   // client that tampers with this gains nothing except a validation error.
   couponCode: z.string().trim().max(64, "کد تخفیف نامعتبر است").optional().default(""),
+  /**
+   * Structured destination (Phase 36). Kept separate from the legacy free-text
+   * `customer.address` because a zone has to be matched against a province, a
+   * postal code and a coordinate pair — none of which survive a single string.
+   * Optional, because pickup legitimately has no destination; the `shipped`
+   * transition is where a missing destination is refused.
+   */
+  shippingAddress: z
+    .object({
+      receiverName: z.string().trim().max(80, "نام گیرنده نامعتبر است").optional().default(""),
+      receiverPhone: z.string().trim().max(20, "شماره گیرنده نامعتبر است").optional().default(""),
+      province: z.string().trim().max(80, "استان نامعتبر است").optional().default(""),
+      city: z.string().trim().max(80, "شهر نامعتبر است").optional().default(""),
+      postalCode: z.string().trim().max(20, "کدپستی نامعتبر است").optional().default(""),
+      line1: z.string().trim().max(300, "نشانی نامعتبر است").optional().default(""),
+      line2: z.string().trim().max(300, "نشانی نامعتبر است").optional().default(""),
+      note: z.string().trim().max(200, "یادداشت نامعتبر است").optional().default(""),
+      lat: z.number().min(-90).max(90).optional(),
+      lng: z.number().min(-180).max(180).optional(),
+    })
+    .optional(),
+  /**
+   * The seller's method KEY. A lookup, never an amount: a tampered body can pick
+   * a different method but cannot buy a cheaper one, because the price is
+   * computed from the seller's own rate card in ShippingService.
+   */
+  shippingMethodId: z.string().trim().max(40, "روش ارسال نامعتبر است").optional().default(""),
 });
 
 const callbackBodySchema = z.object({

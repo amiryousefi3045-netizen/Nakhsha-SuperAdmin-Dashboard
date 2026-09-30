@@ -22,6 +22,7 @@ const { nextSequence } = require("../models/AtomicCounter");
 const NotificationService = require("./NotificationService");
 const sellerEventHub = require("./SellerEventHub");
 const CouponService = require("./CouponService");
+const ShippingService = require("./ShippingService");
 const AuditService = require("./AuditService");
 const logger = require("../utils/logger");
 
@@ -74,6 +75,26 @@ function orderToDTO(order) {
     })),
     subtotal: o.subtotal,
     shippingFee: o.shippingFee || 0,
+    /**
+     * Delivery detail for the receipt (Phase 36). `cost` is deliberately NOT
+     * here: this DTO is shared by the buyer endpoint and the seller endpoint, so
+     * including the seller's courier cost would hand the buyer the seller's
+     * margin. The seller's own view of `cost` comes from the seller-only finance
+     * and margin reports.
+     */
+    shipping: o.shipping?.methodKey
+      ? {
+          methodKey: o.shipping.methodKey,
+          methodTitle: o.shipping.methodTitle || "",
+          kind: o.shipping.kind || "",
+          carrier: o.shipping.carrier || "",
+          fee: o.shipping.fee || 0,
+          zoneLabel: o.shipping.zoneLabel || "",
+          eta: o.shipping.eta || { minDays: 0, maxDays: 0 },
+          address: o.shipping.address || {},
+          pickup: o.shipping.pickup || {},
+        }
+      : null,
     discount: o.discount || 0,
     // Null on an order with no coupon, so the receipt can render a breakdown
     // line only when there is genuinely something to explain.
@@ -200,6 +221,57 @@ async function returnToStock(productId, sellerId, qty) {
 // ── Service ─────────────────────────────────────────────────────────────────
 
 /**
+ * Can this order physically be handed over?
+ *
+ * Two shapes are accepted, and nothing else:
+ *   - `pickup`: the store's own address must be on the order. A pickup method
+ *     with no address is a promise the seller cannot keep.
+ *   - `delivery`: a province, a city and a street line. A postal code alone is
+ *     not enough — plenty of Iranian couriers deliver to a named village, so
+ *     demanding one would refuse legitimate orders.
+ *
+ * Orders created before Phase 36 carry no `shipping` snapshot at all. Those fall
+ * back to the old free-text `customer.address`, which at least closes the "shipped
+ * with literally nowhere to go" hole without making every historical order
+ * permanently unshippable. This is a transitional allowance and is recorded as
+ * such; it disappears once no pre-Phase-36 order can still be in flight.
+ *
+ * @param {import("mongoose").Document} order
+ * @throws {OrderDomainError} SHIPPING_DESTINATION_REQUIRED
+ */
+function assertShippable(order) {
+  const shipping = order.shipping || {};
+
+  if (shipping.kind === "pickup") {
+    if (shipping.pickup?.address) return;
+    throw new OrderDomainError(
+      "SHIPPING_DESTINATION_REQUIRED",
+      "نشانی فروشگاه برای سفارش حضوری ثبت نشده است",
+      { kind: "pickup" },
+    );
+  }
+
+  if (shipping.kind === "delivery") {
+    const address = shipping.address || {};
+    if (address.province && address.city && address.line1) return;
+    throw new OrderDomainError(
+      "SHIPPING_DESTINATION_REQUIRED",
+      "برای ارسال، استان، شهر و نشانی گیرنده الزامی است",
+      { kind: "delivery" },
+    );
+  }
+
+  // No snapshot: a pre-Phase-36 order.
+  if (typeof order.customer?.address === "string" && order.customer.address.trim()) return;
+
+  throw new OrderDomainError(
+    "SHIPPING_DESTINATION_REQUIRED",
+    "برای ارسال، نشانی گیرنده الزامی است",
+    { kind: "unknown" },
+  );
+}
+
+/**
  * Create an order for one seller and reserve its stock.
  *
  * @param {object} params
@@ -207,7 +279,11 @@ async function returnToStock(productId, sellerId, qty) {
  * @param {import("mongoose").Types.ObjectId} params.sellerUserId - User id
  * @param {{ name: string; phone: string; email?: string; address?: string }} params.customer
  * @param {Array<{ productId: string; qty: number }>} params.items
- * @param {number} [params.shippingFee]
+ * @param {string} [params.shippingMethodId] the seller's method KEY (Phase 36).
+ *   Only a lookup key: the fee is derived here from the seller's own rate card,
+ *   so a tampered body can pick a different method but never a cheaper price.
+ * @param {object} [params.shippingAddress] structured destination for delivery.
+ *   Not required for pickup, which has no destination by definition.
  * @param {number} [params.discount]
  * @param {string} [params.couponCode] seller-owned code to redeem (Phase 35).
  *   Only a lookup key: the amount is derived here from the server-priced
@@ -221,13 +297,26 @@ async function createOrder({
   sellerUserId,
   customer,
   items,
-  shippingFee = 0,
+  shippingMethodId = null,
+  shippingAddress = null,
   discount = 0,
   couponCode = null,
   customerNote = "",
   origin = "seller",
   buyerUserId = null,
+  ...rejected
 }) {
+  // `shippingFee` used to be an accepted parameter. It is gone, because an
+  // amount on this call is a price the caller chose rather than one the seller's
+  // rate card produced. Ignoring it silently would hand every such caller FREE
+  // shipping, so a leftover key is a hard error instead of a quiet discount.
+  if ("shippingFee" in rejected) {
+    throw new OrderDomainError(
+      "SHIPPING_FEE_NOT_ACCEPTED",
+      "هزینهٔ ارسال از سمت سرور محاسبه می‌شود؛ shippingMethodId ارسال کنید",
+      { field: "shippingMethodId" },
+    );
+  }
   if (!customer || !customer.name || !customer.phone) {
     throw new OrderDomainError("VALIDATION_ERROR", "نام و شماره تماس مشتری الزامی است");
   }
@@ -244,6 +333,21 @@ async function createOrder({
 
   const productIds = items.map((item) => item.productId);
   const products = await Product.find({ _id: { $in: productIds }, sellerId }).lean();
+
+  // A destination is validated before anything is priced, so a malformed address
+  // is a hard error rather than a silently free shipment. Only delivery needs
+  // one: pickup has no destination by definition, and a seller-created order may
+  // legitimately be a phone order the seller will ask about.
+  let normalizedShippingAddress = null;
+  if (shippingAddress && typeof shippingAddress === "object") {
+    const normalized = ShippingService.normalizeAddress(shippingAddress);
+    if (!normalized.ok) {
+      throw new OrderDomainError("INVALID_SHIPPING_ADDRESS", normalized.errors[0], {
+        errors: normalized.errors,
+      });
+    }
+    normalizedShippingAddress = normalized.value;
+  }
 
   // ── Phase 1: price the basket (read-only) ──────────────────────────────────
   // Snapshot rows are built in the requested order WITHOUT touching stock, so
@@ -275,6 +379,80 @@ async function createOrder({
   }
 
   const subtotal = snapshotItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const totalWeightKg = products.reduce(
+    (sum, product) => sum + (Number(product.shipping?.weight) || 0) * (items.find((i) => String(i.productId) === String(product._id))?.qty || 0),
+    0,
+  );
+  const totalQty = snapshotItems.reduce((sum, item) => sum + item.qty, 0);
+
+  // ── Phase 1b: price delivery (Phase 36) ───────────────────────────────────
+  // `shippingMethodId` is a lookup key, never an amount. The price comes from
+  // the seller's own rate card via ShippingService, which is why a tampered
+  // checkout body can choose a different method but cannot buy a cheaper one.
+  //
+  // A seller with no shipping profile is NOT blocked: the store stays open and
+  // the order is created with free shipping, which is the decision of record.
+  const shippingQuote = await ShippingService.quoteProfile({
+    profile: await ShippingService.getProfile(sellerId),
+    address: normalizedShippingAddress || {},
+    subtotal,
+    totalWeightKg,
+    totalQty,
+  });
+
+  let chosenMethod = null;
+  if (shippingMethodId) {
+    chosenMethod =
+      shippingQuote.methods.find((m) => m.key === String(shippingMethodId).toLowerCase()) || null;
+    if (!chosenMethod) {
+      // A method that exists but is not available to this destination must be
+      // refused, and refused indistinguishably from one that never existed, so
+      // the endpoint cannot be used to enumerate another store's rate card.
+      throw new OrderDomainError(
+        "SHIPPING_METHOD_UNAVAILABLE",
+        "روش ارسال انتخاب‌شده برای این مقصد در دسترس نیست",
+        { shippingMethodId: String(shippingMethodId) },
+      );
+    }
+  } else if (shippingQuote.methods.length > 0) {
+    // No preference: take the cheapest quote. The list is already sorted
+    // cheapest-first, so this is the first entry by construction.
+    chosenMethod = shippingQuote.methods[0];
+  }
+
+  const shippingFee = chosenMethod ? chosenMethod.fee : 0;
+  const shippingSnapshot = chosenMethod
+    ? {
+        methodKey: chosenMethod.key,
+        methodTitle: chosenMethod.title,
+        kind: chosenMethod.kind,
+        carrier: chosenMethod.carrier || "",
+        fee: chosenMethod.fee,
+        cost: 0,
+        zoneLabel: chosenMethod.zoneLabel || "",
+        eta: { minDays: chosenMethod.eta.minDays, maxDays: chosenMethod.eta.maxDays },
+        address: normalizedShippingAddress || {
+          receiverName: "",
+          receiverPhone: "",
+          province: "",
+          city: "",
+          postalCode: "",
+          line1: "",
+          line2: "",
+          note: "",
+          lat: null,
+          lng: null,
+        },
+        pickup: chosenMethod.pickup || {
+          address: "",
+          city: "",
+          province: "",
+          hours: "",
+          instructions: "",
+        },
+        quotedAt: new Date(),
+      }
+    : undefined;
 
   // ── Phase 2: spend the coupon ──────────────────────────────────────────────
   // The discount is decided HERE, from the subtotal this server just priced.
@@ -373,11 +551,26 @@ async function createOrder({
         phone: customer.phone,
         email: customer.email || "",
         telegram: customer.telegram || "",
-        address: customer.address || "",
+        // Composed from the structured parts so the seller list, the receipt and
+        // the legacy free-text column all show a usable address. Kept as one
+        // line on purpose: the parts live in `shipping.address`.
+        address:
+          customer.address ||
+          (normalizedShippingAddress
+            ? [
+                normalizedShippingAddress.province,
+                normalizedShippingAddress.city,
+                normalizedShippingAddress.line1,
+                normalizedShippingAddress.line2,
+              ]
+                .filter(Boolean)
+                .join("، ")
+            : ""),
       },
       items: snapshotItems,
       subtotal,
       shippingFee,
+      shipping: shippingSnapshot,
       discount: appliedDiscount,
       coupon: couponSnapshot || undefined,
       total,
@@ -500,6 +693,12 @@ async function transitionOrder({
       await returnToStock(item.productId, sellerId, item.qty);
     }
   } else if (nextStatus === "shipped") {
+    // A shipment must have a destination. Before this guard an order could go to
+    // `shipped` with no address at all: the reservation was released, the buyer
+    // was told their parcel was on the way, and the order could then reach
+    // `delivered` and earn real money in the payout ledger with no evidence that
+    // anything was ever sent. An undeliverable order must never be earnable.
+    assertShippable(order);
     for (const item of order.items) {
       await releaseReserved(item.productId, sellerId, item.qty);
     }

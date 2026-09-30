@@ -122,7 +122,7 @@ afterAll(async () => {
 });
 
 const CHECKOUT_BODY = {
-  customer: { name: "مشتری اعلان", phone: "09123456789" },
+  customer: { name: "مشتری اعلان", phone: "09123456789" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
   items: [],
   paymentMethod: "card",
 };
@@ -150,7 +150,7 @@ describe("NotificationService unit helpers", () => {
     origin: "storefront",
     buyerUserId: new mongoose.Types.ObjectId(),
     orderNumber: 101,
-    customer: { phone: "09120000000" },
+    customer: { phone: "09120000000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
   };
 
   it("builds a Persian message with the order number and optional reason", () => {
@@ -182,7 +182,7 @@ describe("NotificationService unit helpers", () => {
     expect(
       NotificationService.hasNotificationTarget({
         ...base,
-        customer: { phone: "" },
+        customer: { phone: "" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       }),
     ).toBe(false);
   });
@@ -275,7 +275,7 @@ describe("seller-dashboard orders are never announced", () => {
     const created = await createOrder({
       sellerId: String(sellerProfile._id),
       sellerUserId: String(sellerProfile.userId),
-      customer: { name: "ثبت دستی", phone: "09120000000" },
+      customer: { name: "ثبت دستی", phone: "09120000000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [
         { productId, title: "ظرف سفالی اعلان", price: 300000, currency: "IRR", qty: 1 },
       ],

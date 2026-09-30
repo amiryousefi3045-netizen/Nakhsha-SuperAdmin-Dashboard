@@ -145,6 +145,16 @@ async function checkout() {
       },
       items: [{ productId, qty: 1 }],
       paymentMethod: "card",
+      // This helper's orders are driven all the way to `shipped`, which is
+      // refused without a real destination (Phase 36).
+      shippingAddress: {
+        receiverName: "مشتری تلگرام",
+        receiverPhone: "09123456777",
+        province: "تهران",
+        city: "تهران",
+        postalCode: "1658953711",
+        line1: "خیابان آزادی، کوچه بهار",
+      },
     });
   expect(res.status).toBe(200);
   return res.body.order;

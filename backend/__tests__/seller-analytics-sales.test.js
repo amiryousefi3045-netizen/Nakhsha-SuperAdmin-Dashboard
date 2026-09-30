@@ -55,7 +55,7 @@ async function makeOrder({ sellerId, sellerUserId, createdAt, status, items, tot
     sellerUserId,
     orderNumber,
     origin: "storefront",
-    customer: { name: "مشتری آنالیتیکس", phone: "09120000000" },
+    customer: { name: "مشتری آنالیتیکس", phone: "09120000000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items,
     subtotal: total,
     shippingFee: 0,

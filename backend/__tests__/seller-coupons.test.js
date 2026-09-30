@@ -489,7 +489,7 @@ function checkout({ token = null, code = null, qty = 1, slug = "coupon-shop" } =
     .post(`/api/storefront/${slug}/checkout`)
     .set("Authorization", AUTH(token || buyerToken))
     .send({
-      customer: { name: "خریدار تست", phone: "09121110000" },
+      customer: { name: "خریدار تست", phone: "09121110000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: String(productId), qty }],
       paymentMethod: "card",
       couponCode: code || "",
@@ -562,7 +562,7 @@ describe("coupons: redemption at checkout (P1-07)", () => {
       .post("/api/storefront/coupon-shop/checkout")
       .set("Authorization", AUTH(buyerToken))
       .send({
-        customer: { name: "خریدار تست", phone: "09121110000" },
+        customer: { name: "خریدار تست", phone: "09121110000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [
           { productId: String(productId), qty: 1 },
           { productId: String(second._id), qty: 1 },
@@ -657,7 +657,7 @@ describe("coupons: seller reporting (P1-07)", () => {
       .post("/api/storefront/coupon-shop/checkout")
       .set("Authorization", AUTH(buyer2Token))
       .send({
-        customer: { name: "خریدار گزارش", phone: "09121110000" },
+        customer: { name: "خریدار گزارش", phone: "09121110000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: String(productId), qty: 2 }],
         paymentMethod: "card",
         couponCode: "REPORT01",

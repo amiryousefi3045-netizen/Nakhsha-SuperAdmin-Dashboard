@@ -190,7 +190,7 @@ afterAll(async () => {
 });
 
 const CHECKOUT_BODY = {
-  customer: { name: "خریدار محمدی", phone: "09123456789" },
+  customer: { name: "خریدار محمدی", phone: "09123456789" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
   items: [],
   paymentMethod: "card",
 };
@@ -285,7 +285,7 @@ describe("POST /api/storefront/:slug/checkout", () => {
       .post("/api/storefront/buy-store/checkout")
       .set("Authorization", AUTH(buyerToken))
       .send({
-        customer: { name: "بدون تلفن", phone: "123" },
+        customer: { name: "بدون تلفن", phone: "123" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
         items: [{ productId: trackedProductId, qty: 1 }],
       });
     expect(res.status).toBe(400);

@@ -1581,6 +1581,9 @@ async function changeOrderStatus(req, res) {
         INVALID_TRANSITION: 409,
         INSUFFICIENT_STOCK: 400,
         VALIDATION_ERROR: 400,
+        // The order has nowhere to go (Phase 36). 409 rather than 400: the
+        // request is well-formed, the order is simply not ready to be shipped.
+        SHIPPING_DESTINATION_REQUIRED: 409,
       };
       return res
         .status(statusMap[e.code] || 400)

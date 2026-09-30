@@ -89,7 +89,7 @@ async function makeOrder({ sellerId, sellerUserId, productId, advanceTo = [] }) 
     sellerId: String(sellerId),
     sellerUserId: String(sellerUserId),
     origin: "seller",
-    customer: { name: "مشتری تست", phone: "09121110000" },
+    customer: { name: "مشتری تست", phone: "09121110000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items: [{ productId: String(productId), qty: 1 }],
   });
   for (const next of advanceTo) {

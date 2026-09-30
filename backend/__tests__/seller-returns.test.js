@@ -103,7 +103,7 @@ async function makeOrder({
     sellerUserId: String(sellerUserId),
     origin: buyerUserId ? "storefront" : "seller",
     buyerUserId,
-    customer: { name: "مشتری تست", phone: "09121110000" },
+    customer: { name: "مشتری تست", phone: "09121110000" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     // Must be a product of THIS seller: the service refuses to order another
     // store's goods, which is exactly what a cross-store leak would need.
     items: [{ productId: String(product || productId), qty: 1 }],

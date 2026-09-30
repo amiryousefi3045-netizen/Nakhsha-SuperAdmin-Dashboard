@@ -136,13 +136,13 @@ beforeAll(async () => {
   await createOrder({
     sellerId: sellerProfile._id,
     sellerUserId: sellerUser._id,
-    customer: { name: "مریم احمدی", phone: "09121111111" },
+    customer: { name: "مریم احمدی", phone: "09121111111" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items: [{ productId: trackedProductId, qty: 2 }],
   });
   await createOrder({
     sellerId: sellerProfile._id,
     sellerUserId: sellerUser._id,
-    customer: { name: "رضا کریمی", phone: "09122222222" },
+    customer: { name: "رضا کریمی", phone: "09122222222" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items: [{ productId: trackedProductId, qty: 3 }],
   });
 });
@@ -302,7 +302,7 @@ describe("PATCH /api/seller/orders/:id/status", () => {
     const order = await createOrder({
       sellerId: sellerProfile._id,
       sellerUserId: sellerUser._id,
-      customer: { name: "سارا نادری", phone: "09123333333" },
+      customer: { name: "سارا نادری", phone: "09123333333" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
       items: [{ productId: product._id, qty: 2 }],
     });
     orderId = String(order._id);

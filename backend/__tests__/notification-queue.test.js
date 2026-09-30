@@ -158,7 +158,7 @@ afterAll(async () => {
 });
 
 const CHECKOUT_BODY = {
-  customer: { name: "مشتری صف", phone: "09123456789" },
+  customer: { name: "مشتری صف", phone: "09123456789" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
   items: [],
   paymentMethod: "card",
 };

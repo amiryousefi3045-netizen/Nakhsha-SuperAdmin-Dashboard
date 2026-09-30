@@ -69,7 +69,7 @@ async function deliverOrder(profile, price = 1000000) {
   const order = await createOrder({
     sellerId: profile._id,
     sellerUserId: userIdA,
-    customer: { name: "علی", phone: "09120000001" },
+    customer: { name: "علی", phone: "09120000001" , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items: [{ productId: String(product._id), qty: 1 }],
   });
   for (const step of ["confirmed", "processing", "shipped", "delivered"]) {

@@ -64,7 +64,7 @@ async function makeOrder({ sellerId, sellerUserId, status, total, createdAt, cus
     sellerUserId,
     origin: "seller",
     orderNumber: 900 + Math.floor(Math.random() * 1000),
-    customer: { name: customerName, phone: "0912" + String(Math.floor(Math.random() * 90000000) + 10000000) },
+    customer: { name: customerName, phone: "0912" + String(Math.floor(Math.random() * 90000000) + 10000000) , address: "تهران، خیابان آزادی، پلاک ۱۲" },
     items: [{ productId: productA?._id, title: "کالای سفارش", sku: "SKU-ORD", price: total, currency: "IRR", qty: 1 }],
     subtotal: total,
     shippingFee: 0,
