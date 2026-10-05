@@ -6,6 +6,8 @@ const {
   methodCoversAddress,
   isEmptyAddress,
   computeFee,
+  computeTierFee,
+  resolveShippingDiscount,
   quoteProfile,
   ShippingDomainError,
   MAX_FEE,
@@ -525,6 +527,210 @@ describe("quoteProfile", () => {
     expect(quote.methods[0].zoneLabel).toBe("نزدیک");
     expect(quote.methods[0].fee).toBe(0);
     expect(quote.methods[0].eta).toEqual({ minDays: 1, maxDays: 1 });
+  });
+});
+
+describe("computeTierFee (Phase 37)", () => {
+  const tiers = [
+    { upToKg: 1, price: 60000 },
+    { upToKg: 3, price: 110000 },
+    { upToKg: 10, price: 240000 },
+  ];
+
+  it("falls back to a flat per-kg rate when the seller wrote no steps", () => {
+    expect(computeTierFee([], 2.4, 40000)).toBe(3 * 40000);
+  });
+
+  it("picks the step whose inclusive bound covers the billed kilogram", () => {
+    expect(computeTierFee(tiers, 0.4, 0)).toBe(60000);
+    expect(computeTierFee(tiers, 2.4, 0)).toBe(110000);
+    expect(computeTierFee(tiers, 9.9, 0)).toBe(240000);
+  });
+
+  it("uses the same whole kilo the courier bills, so 0.9 kg is not cheaper than 1 kg", () => {
+    // This is the boundary that matters: rounding the bracket down would make
+    // every parcel just under a step boundary cheaper than the step above it.
+    expect(computeTierFee(tiers, 0.999, 0)).toBe(60000);
+    expect(computeTierFee(tiers, 1.0, 0)).toBe(60000);
+    expect(computeTierFee(tiers, 1.001, 0)).toBe(110000);
+  });
+
+  it("holds the top step flat above it rather than guessing upward", () => {
+    // No rate card covers 40 kg. The buyer still needs a number, and inventing
+    // one would be a lie about a price nobody agreed to.
+    expect(computeTierFee(tiers, 40, 0)).toBe(240000);
+  });
+
+  it("re-sorts an unsorted list instead of trusting the caller's order", () => {
+    const shuffled = [tiers[2], tiers[0], tiers[1]];
+    expect(computeTierFee(shuffled, 0.5, 0)).toBe(60000);
+  });
+});
+
+describe("resolveShippingDiscount (Phase 37)", () => {
+  const withDiscounts = (discounts) => profile({ discounts });
+
+  it("applies a percent code to the delivery charge only", () => {
+    const p = withDiscounts([
+      { code: "SHIP50", type: "percent", value: 50, minSubtotal: 0, maxDiscount: 1000000, enabled: true },
+    ]);
+    const r = resolveShippingDiscount({ profile: p, code: "SHIP50", fee: 90000, subtotal: 500000 });
+    expect(r).toMatchObject({ amount: 45000, code: "SHIP50", applied: true });
+  });
+
+  it("matches a code case-insensitively and trims it", () => {
+    const p = withDiscounts([
+      { code: "SHIP50", type: "percent", value: 50, minSubtotal: 0, maxDiscount: 1000000, enabled: true },
+    ]);
+    expect(resolveShippingDiscount({ profile: p, code: "  ship50 ", fee: 90000, subtotal: 0 }).amount).toBe(45000);
+  });
+
+  it("never discounts more than maxDiscount", () => {
+    const p = withDiscounts([
+      { code: "BIG", type: "fixed", value: 900000, minSubtotal: 0, maxDiscount: 40000, enabled: true },
+    ]);
+    expect(resolveShippingDiscount({ profile: p, code: "BIG", fee: 90000, subtotal: 0 }).amount).toBe(40000);
+  });
+
+  it("never discounts more than the fee — the unbounded-loss clamp", () => {
+    // A fixed code larger than the charge would otherwise pay the buyer to shop.
+    // This is the exact trap Phase 35 flagged for "free shipping above X".
+    const p = withDiscounts([
+      { code: "HUGE", type: "fixed", value: 5000000, minSubtotal: 0, maxDiscount: 5000000, enabled: true },
+    ]);
+    const r = resolveShippingDiscount({ profile: p, code: "HUGE", fee: 200000, subtotal: 100000 });
+    expect(r.amount).toBe(200000);
+  });
+
+  it("applies nothing below minSubtotal but says why, so the buyer can add an item", () => {
+    const p = withDiscounts([
+      { code: "SHIP50", type: "percent", value: 50, minSubtotal: 1000000, maxDiscount: 900000, enabled: true },
+    ]);
+    const r = resolveShippingDiscount({ profile: p, code: "SHIP50", fee: 90000, subtotal: 500000 });
+    expect(r.applied).toBe(false);
+    expect(r.reason).toBe("SHIPPING_DISCOUNT_MIN_SUBTOTAL");
+  });
+
+  it("treats an unknown code and another store's code identically", () => {
+    // The whole point: a code that exists nowhere in THIS profile is a plain
+    // lookup miss, so the response cannot enumerate other sellers' campaigns.
+    const mine = withDiscounts([
+      { code: "MINE", type: "percent", value: 10, minSubtotal: 0, maxDiscount: 1000, enabled: true },
+    ]);
+    const unknown = resolveShippingDiscount({ profile: mine, code: "THEIRS", fee: 90000, subtotal: 0 });
+    const typo = resolveShippingDiscount({ profile: mine, code: "MINEE", fee: 90000, subtotal: 0 });
+    expect(unknown).toEqual(typo);
+    expect(unknown.applied).toBe(false);
+  });
+
+  it("ignores a disabled code", () => {
+    const p = withDiscounts([
+      { code: "OLD", type: "percent", value: 90, minSubtotal: 0, maxDiscount: 900000, enabled: false },
+    ]);
+    expect(resolveShippingDiscount({ profile: p, code: "OLD", fee: 90000, subtotal: 0 }).applied).toBe(false);
+  });
+
+  it("is a no-op when there is no charge to reduce", () => {
+    const p = withDiscounts([
+      { code: "SHIP50", type: "percent", value: 50, minSubtotal: 0, maxDiscount: 900000, enabled: true },
+    ]);
+    // Free-shipping methods and unconfigured stores land here. Applying a
+    // "discount" to zero would report a saving the buyer never received.
+    expect(resolveShippingDiscount({ profile: p, code: "SHIP50", fee: 0, subtotal: 0 }).applied).toBe(false);
+  });
+
+  it("is a no-op with no code at all", () => {
+    expect(resolveShippingDiscount({ profile: profile(), code: "", fee: 90000, subtotal: 0 })).toMatchObject({
+      amount: 0,
+      applied: false,
+    });
+  });
+});
+
+describe("quoteProfile with weight tiers and discount codes (Phase 37)", () => {
+  const weightMethod = method({
+    key: "post-heavy",
+    pricing: {
+      mode: "weight",
+      flatFee: 0,
+      perKgFee: 0,
+      perItemFee: 0,
+      freeThreshold: 0,
+      tiers: [
+        { upToKg: 1, price: 60000 },
+        { upToKg: 5, price: 150000 },
+      ],
+    },
+  });
+
+  const withCode = profile({
+    methods: [weightMethod],
+    discounts: [
+      { code: "SHIP30", type: "percent", value: 30, minSubtotal: 0, maxDiscount: 50000, enabled: true },
+    ],
+  });
+
+  it("prices from the seller's steps, not a per-kg multiplication", () => {
+    const q = quoteProfile({ profile: withCode, address: TEHRAN, totalWeightKg: 3.2 });
+    expect(q.methods[0].fee).toBe(150000);
+    expect(q.methods[0].originalFee).toBe(150000);
+  });
+
+  it("reports the discounted fee alongside what the rate card asked for", () => {
+    const q = quoteProfile({ profile: withCode, address: TEHRAN, totalWeightKg: 3.2, discountCode: "SHIP30" });
+    const m = q.methods[0];
+    expect(m.originalFee).toBe(150000);
+    expect(m.discount).toBe(45000);
+    expect(m.fee).toBe(105000);
+    expect(m.discountCode).toBe("SHIP30");
+  });
+
+  it("clamps a percent discount that exceeds maxDiscount", () => {
+    // 30% of 150000 is 45000, under the 50000 cap. Push the price up so the raw
+    // amount crosses it, proving the cap is doing the work.
+    const heavy = profile({
+      methods: [method({ pricing: { ...weightMethod.pricing, tiers: [{ upToKg: 5, price: 400000 }] } })],
+      discounts: [
+        { code: "SHIP30", type: "percent", value: 30, minSubtotal: 0, maxDiscount: 50000, enabled: true },
+      ],
+    });
+    const m = quoteProfile({ profile: heavy, address: TEHRAN, totalWeightKg: 2, discountCode: "SHIP30" }).methods[0];
+    expect(m.originalFee).toBe(400000);
+    expect(m.discount).toBe(50000);
+    expect(m.fee).toBe(350000);
+  });
+
+  it("clamps each method against its own charge, not the cheapest one", () => {
+    // A fixed code resolved once against the cheapest method and then applied
+    // everywhere would give the expensive method a discount it never earned.
+    const two = profile({
+      methods: [
+        method({ key: "cheap", pricing: { mode: "flat", flatFee: 50000, freeThreshold: 0 } }),
+        method({ key: "express", pricing: { mode: "flat", flatFee: 200000, freeThreshold: 0 } }),
+      ],
+      discounts: [
+        { code: "FLAT", type: "fixed", value: 40000, minSubtotal: 0, maxDiscount: 40000, enabled: true },
+      ],
+    });
+    const q = quoteProfile({ profile: two, address: TEHRAN, subtotal: 500000, discountCode: "FLAT" });
+    const byKey = Object.fromEntries(q.methods.map((m) => [m.key, m]));
+    expect(byKey.cheap.discount).toBe(40000);
+    expect(byKey.express.discount).toBe(40000);
+    expect(byKey.cheap.fee).toBe(10000);
+    expect(byKey.express.fee).toBe(160000);
+  });
+
+  it("tells the caller the code was not honoured instead of silently charging full price", () => {
+    const q = quoteProfile({ profile: withCode, address: TEHRAN, totalWeightKg: 2, discountCode: "NOPE" });
+    expect(q.discount.rejected).toBe(true);
+    expect(q.discount.applied).toBe(false);
+    expect(q.methods[0].fee).toBe(150000);
+  });
+
+  it("reports a code as rejected for an unconfigured store too", () => {
+    const q = quoteProfile({ profile: { isEnabled: false, methods: [] }, discountCode: "SHIP30" });
+    expect(q.configured).toBe(false);
+    expect(q.discount.rejected).toBe(true);
   });
 });
 

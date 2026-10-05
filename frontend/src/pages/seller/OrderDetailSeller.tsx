@@ -238,6 +238,27 @@ export function OrderDetailSeller() {
                       label="دریافتی از خریدار"
                       value={formatSellerPrice(o.shipping.fee, o.currency)}
                     />
+                    {(o.shipping.discount ?? 0) > 0 ? (
+                      <>
+                        {/* The rate card charged `originalFee`; the buyer's code
+                            took `discount` off and that came out of the seller's
+                            own money, not the platform's commission. Showing the
+                            before/after pair is the only way this row reconciles
+                            against the published rate card. */}
+                        <PriceRow
+                          label={`قیمت پیش از کد${o.shipping.discountCode ? ` (${o.shipping.discountCode})` : ""}`}
+                          value={formatSellerPrice(
+                            o.shipping.originalFee ?? o.shipping.fee,
+                            o.currency,
+                          )}
+                        />
+                        <PriceRow
+                          label="تخفیف ارسال فروشنده"
+                          value={`− ${formatSellerPrice(o.shipping.discount ?? 0, o.currency)}`}
+                          emphasize="text-red-600"
+                        />
+                      </>
+                    ) : null}
                     <PriceRow
                       label="هزینهٔ حامل"
                       value={

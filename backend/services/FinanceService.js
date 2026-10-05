@@ -154,6 +154,10 @@ async function computeBalance(sellerId, profile) {
           // `null` on a pre-Phase-36 order and on a pickup; `$ifNull` keeps the
           // arithmetic an integer instead of poisoning the whole ledger.
           shippingCost: { $sum: { $ifNull: ["$shipping.cost", 0] } },
+          // Seller-funded shipping discount (Phase 37). Deliberately NOT part of
+          // the payout basis — see the commission block below. Aggregated only so
+          // it can be reported and added to the commission base.
+          shippingDiscount: { $sum: { $ifNull: ["$shipping.discount", 0] } },
         },
       },
     ]),
@@ -166,10 +170,12 @@ async function computeBalance(sellerId, profile) {
   const byStatus = {};
   const refundedByStatus = {};
   const shippingCostByStatus = {};
+  const shippingDiscountByStatus = {};
   for (const row of revenueRows) {
     byStatus[row._id] = row.total;
     refundedByStatus[row._id] = row.refunded || 0;
     shippingCostByStatus[row._id] = row.shippingCost || 0;
+    shippingDiscountByStatus[row._id] = row.shippingDiscount || 0;
   }
   const byPayout = {};
   for (const row of payoutRows) byPayout[row._id] = row.total;
@@ -202,11 +208,16 @@ async function computeBalance(sellerId, profile) {
   // against their courier invoices instead of reverse-engineering `delivered`.
   const shippingCost =
     (shippingCostByStatus.delivered || 0) + (shippingCostByStatus.returned || 0);
+  /** Seller-funded shipping discounts on delivered/returned orders. Reported, and
+   *  fed to the commission base; never deducted from the payout basis. */
+  const shippingDiscount =
+    (shippingDiscountByStatus.delivered || 0) + (shippingDiscountByStatus.returned || 0);
 
   // Held = delivered inside the return/refund window, still reversible. A
   // returned order is never "held": it has already been through the refund path,
   // and holding it again would hide money that was never refunded.
   let heldAmount = 0;
+  let heldShippingDiscount = 0;
   if (holdDays > 0 && delivered > 0) {
     const cutoff = new Date(Date.now() - holdDays * HOLD_MS);
     const heldRows = await Order.aggregate([
@@ -223,15 +234,42 @@ async function computeBalance(sellerId, profile) {
           total: { $sum: "$total" },
           refunded: { $sum: { $ifNull: ["$payment.refundedAmount", 0] } },
           shippingCost: { $sum: { $ifNull: ["$shipping.cost", 0] } },
+          shippingDiscount: { $sum: { $ifNull: ["$shipping.discount", 0] } },
         },
       },
     ]);
     heldAmount =
       (heldRows[0]?.total || 0) - (heldRows[0]?.refunded || 0) - (heldRows[0]?.shippingCost || 0);
+    heldShippingDiscount = heldRows[0]?.shippingDiscount || 0;
   }
 
   const eligibleGross = Math.max(0, delivered - heldAmount);
-  const commissionAmount = Math.round((eligibleGross * commissionPercent) / 100);
+  /**
+   * Seller-funded shipping discount, Phase 37.
+   *
+   * The promotion is a *pricing* decision: the buyer pays less, and the store
+   * carries the difference. So the discount is added back to the commission base
+   * and NOT deducted from `eligibleGross`. That is what makes the seller fund
+   * exactly the discount:
+   *
+   *   45,000 fee, 40,000 courier, 10% commission, 13,500 discount
+   *   no promo:  545,000 - 40,000 = 505,000 gross -> 50,500 commission -> 454,500 net
+   *   promo:     531,500 - 40,000 = 491,500 gross
+   *             base  491,500 + 13,500 = 505,000 -> 50,500 commission
+   *             net   491,500 - 50,500 = 441,000
+   *   the seller's net fell by 13,500, exactly the discount, and the platform's
+   *   cut is unchanged.
+   *
+   * Deducting the discount from the payout basis instead (the obvious reading)
+   * would make the seller fund it twice: once in cash and again through the
+   * commission their smaller gross no longer attracts.
+   */
+  const eligibleShippingDiscount = Math.max(0, shippingDiscount - heldShippingDiscount);
+  const commissionBase = eligibleGross + eligibleShippingDiscount;
+  const commissionAmount = Math.round((commissionBase * commissionPercent) / 100);
+  // Floored: a discount near the whole fee can leave commission above the
+  // remaining gross. `maxDiscount` is what keeps that from happening in practice;
+  // the floor is the last line of defence so `net.earned` can never go negative.
   const netEarned = Math.max(0, eligibleGross - commissionAmount);
 
   const requested = byPayout.requested || 0;
@@ -251,12 +289,20 @@ async function computeBalance(sellerId, profile) {
        *  from `delivered`, and shown so the seller can match it against their
        *  carrier statements. */
       shippingCost,
+      /** Shipping the seller gave away on delivered orders (Phase 37). Added to
+       *  the commission base rather than deducted here, so the store funds the
+       *  whole discount and the platform's cut does not move. Shown so the seller
+       *  can match it against the codes they published. */
+      shippingDiscount,
       shipped: byStatus.shipped || 0,
       awaiting: (byStatus.confirmed || 0) + (byStatus.processing || 0),
       held: heldAmount,
     },
     commission: {
       percent: commissionPercent,
+      /** What the commission was computed on. Larger than `gross.delivered` when
+       *  discounts were given, which is the whole point. */
+      base: commissionBase,
       amount: commissionAmount,
     },
     net: {

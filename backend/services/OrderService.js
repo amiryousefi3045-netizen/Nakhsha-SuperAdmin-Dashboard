@@ -96,12 +96,25 @@ function orderToDTO(order, options = {}) {
           kind: o.shipping.kind || "",
           carrier: o.shipping.carrier || "",
           fee: o.shipping.fee || 0,
+          // The buyer's own discount code is theirs to see — it is on their
+          // receipt. The pre-discount figure is the rate card's, which is the
+          // seller's configuration, so it stays behind `includeCost` with the
+          // rest of the seller's margin view.
+          discount: o.shipping.discount || 0,
+          discountCode: o.shipping.discountCode || "",
           ...(options.includeCost
             ? {
                 // What the courier charged, and the margin the sale actually
                 // left. Only ever on a seller-authenticated read.
-                cost: o.shipping.cost || 0,
+                originalFee: o.shipping.originalFee || 0,
+                // Margin on the delivery leg alone, after both the seller's own
+                // promotion and the carrier's charge. `fee` is already net of
+                // the discount, so subtracting `discount` again here would count
+                // the promotion twice and report a loss the seller never took.
+                // This is the number that tells a seller whether a discount code
+                // was worth running.
                 shippingMargin: (o.shipping.fee || 0) - (o.shipping.cost || 0),
+                cost: o.shipping.cost || 0,
                 costRecordedAt: o.shipping.costRecordedAt || null,
               }
             : {}),
@@ -315,6 +328,7 @@ async function createOrder({
   items,
   shippingMethodId = null,
   shippingAddress = null,
+  shippingDiscountCode = null,
   discount = 0,
   couponCode = null,
   customerNote = "",
@@ -331,6 +345,17 @@ async function createOrder({
       "SHIPPING_FEE_NOT_ACCEPTED",
       "هزینهٔ ارسال از سمت سرور محاسبه می‌شود؛ shippingMethodId ارسال کنید",
       { field: "shippingMethodId" },
+    );
+  }
+  // Same rule for the discount, and it matters more here: a client-sent
+  // `shippingDiscount` is a number the caller chose, and honouring it would let
+  // anyone post `shippingDiscount: 5000000` and buy free delivery from a store
+  // that charges for it. The code is the only thing a client may send.
+  if ("shippingDiscount" in rejected) {
+    throw new OrderDomainError(
+      "SHIPPING_DISCOUNT_NOT_ACCEPTED",
+      "مبلغ تخفیف ارسال از سمت سرور محاسبه می‌شود؛ فقط کد تخفیف ارسال کنید",
+      { field: "shippingDiscountCode" },
     );
   }
   if (!customer || !customer.name || !customer.phone) {
@@ -414,6 +439,9 @@ async function createOrder({
     subtotal,
     totalWeightKg,
     totalQty,
+    // A code, never an amount. Resolved inside the quote because the clamp is
+    // against each method's own charge — see `resolveShippingDiscount`.
+    discountCode: shippingDiscountCode || "",
   });
 
   let chosenMethod = null;
@@ -455,6 +483,12 @@ async function createOrder({
         kind: chosenMethod.kind,
         carrier: chosenMethod.carrier || "",
         fee: chosenMethod.fee,
+        // What the rate card asked for, and what the code gave back, recorded so
+        // the margin report can show the seller their own promotion cost instead
+        // of a delivery price that silently disagrees with their editor.
+        originalFee: chosenMethod.originalFee,
+        discount: chosenMethod.discount,
+        discountCode: chosenMethod.discountCode,
         cost: 0,
         zoneLabel: chosenMethod.zoneLabel || "",
         eta: { minDays: chosenMethod.eta.minDays, maxDays: chosenMethod.eta.maxDays },

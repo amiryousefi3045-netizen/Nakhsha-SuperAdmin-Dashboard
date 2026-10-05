@@ -256,7 +256,7 @@ describe("GET /api/seller/finance", () => {
  */
 describe("GET /api/seller/finance — the courier's cost comes off the balance", () => {
   /** A delivered order whose shipping fee was 100000 and cost the seller 70000. */
-  async function deliverWithCourierCost({ fee = 100000, cost = 70000 } = {}) {
+  async function deliverWithCourierCost({ fee = 100000, cost = 70000, discount = 0 } = {}) {
     const product = await Product.create({
       sellerId: sellerProfile._id,
       sellerUserId: sellerUser._id,
@@ -282,16 +282,21 @@ describe("GET /api/seller/finance — the courier's cost comes off the balance",
         },
       ],
       subtotal: 1000000,
-      shippingFee: fee,
+      // `shippingFee` is what the buyer paid for delivery, i.e. the net of any
+      // seller-funded code, exactly as OrderService snapshots it.
+      shippingFee: fee - discount,
       discount: 0,
-      total: 1000000 + fee,
+      total: 1000000 + fee - discount,
       currency: "IRR",
       status: "delivered",
       shipping: {
         methodKey: "post",
         methodTitle: "پست",
         kind: "delivery",
-        fee,
+        fee: fee - discount,
+        originalFee: fee,
+        discount,
+        discountCode: discount ? "SHIP30" : "",
         cost,
         zoneLabel: "تهران",
         eta: { minDays: 1, maxDays: 3 },
@@ -358,6 +363,55 @@ describe("GET /api/seller/finance — the courier's cost comes off the balance",
     expect(f.gross.delivered).toBe(0);
     expect(f.net.earned).toBe(0);
     expect(f.net.available).toBe(0);
+  });
+
+  describe("a seller-funded shipping discount", () => {
+    afterEach(async () => {
+      await setFinanceTerms(sellerProfile, { commissionPercent: 0 });
+    });
+
+    it("takes the whole discount out of the seller's own earnings", async () => {
+      await setFinanceTerms(sellerProfile, { commissionPercent: 10 });
+      await deliverWithCourierCost({ fee: 100000, cost: 70000, discount: 30000 });
+
+      const discounted = await balance();
+      await Order.deleteMany({ orderNumber: 880001 });
+      await deliverWithCourierCost({ fee: 100000, cost: 70000 });
+      const plain = await balance();
+
+      // The point of the rule: the store gave 30000 away, and its net fell by
+      // 30000. Not 30000 and then some again through a smaller gross.
+      expect(discounted.gross.shippingDiscount).toBe(30000);
+      expect(plain.net.earned - discounted.net.earned).toBe(30000);
+    });
+
+    it("holds the platform's commission steady, because the store funds the code", async () => {
+      await setFinanceTerms(sellerProfile, { commissionPercent: 10 });
+      await deliverWithCourierCost({ fee: 100000, cost: 70000, discount: 30000 });
+      const discounted = await balance();
+
+      await Order.deleteMany({ orderNumber: 880001 });
+      await deliverWithCourierCost({ fee: 100000, cost: 70000 });
+      const plain = await balance();
+
+      // Same commission on the same goods. If this number moved with the
+      // discount, the platform would be co-funding a seller's promotion and the
+      // "seller-funded" label would be false.
+      expect(discounted.commission.amount).toBe(plain.commission.amount);
+      expect(discounted.commission.amount).toBe(103000);
+      // And the base is the pre-discount figure, which is why it exceeds the
+      // earnings basis the net is drawn from.
+      expect(discounted.commission.base).toBe(1030000);
+      expect(discounted.gross.delivered).toBe(1000000);
+    });
+
+    it("reports a zero discount on an order that used no code", async () => {
+      await deliverWithCourierCost();
+      const f = await balance();
+      // `null` on an order predating Phase 37 must aggregate as 0, not poison the
+      // whole ledger the way a missing field would in plain JavaScript.
+      expect(f.gross.shippingDiscount).toBe(0);
+    });
   });
 
   it("keeps the seller's goods revenue when only the delivery leg loses money", async () => {

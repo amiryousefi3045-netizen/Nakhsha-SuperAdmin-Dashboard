@@ -722,6 +722,49 @@ describe("storefrontService — delivery (Phase 36)", () => {
     expect(quote.methods[0].fee).toBe(45000);
   });
 
+  it("sends a shipping code as a lookup key and reads the discount back (Phase 37)", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({
+        ...QUOTE,
+        methods: [{ ...QUOTE.methods[0], fee: 31500, originalFee: 45000, discount: 13500, discountCode: "SHIP30" }],
+        discount: { code: "SHIP30", applied: true, rejected: false },
+      }) as never,
+    );
+
+    const quote = await quoteStorefrontShipping("nakhsha-vitrin", {
+      items: [{ productId: "p1", qty: 2 }],
+      shippingDiscountCode: "SHIP30",
+    });
+
+    // The code goes out; no amount does. The server re-prices from the seller's
+    // own rate card, and the numbers the buyer sees are the numbers checkout
+    // will charge.
+    expect(apiClient.post).toHaveBeenCalledWith("/storefront/nakhsha-vitrin/shipping/quote", {
+      items: [{ productId: "p1", qty: 2 }],
+      shippingDiscountCode: "SHIP30",
+    });
+    expect(quote.methods[0].fee).toBe(31500);
+    expect(quote.methods[0].originalFee).toBe(45000);
+    expect(quote.methods[0].discount).toBe(13500);
+    expect(quote.discount).toEqual({ code: "SHIP30", applied: true, rejected: false });
+  });
+
+  it("still quotes a full price when the code does not apply", async () => {
+    // A rejected code must not break the quote: the buyer is told it did not
+    // apply and shown the real price, rather than being blocked from checkout.
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({ ...QUOTE, discount: { code: "NOPE", applied: false, rejected: true } }) as never,
+    );
+
+    const quote = await quoteStorefrontShipping("nakhsha-vitrin", {
+      items: [{ productId: "p1", qty: 2 }],
+      shippingDiscountCode: "NOPE",
+    });
+
+    expect(quote.methods[0].fee).toBe(45000);
+    expect(quote.discount?.applied).toBe(false);
+  });
+
   it("treats an unconfigured store as a valid answer, not a failure", async () => {
     // Such a store still trades on free shipping, so the UI must render it as
     // "no delivery options, no charge" rather than an error state.

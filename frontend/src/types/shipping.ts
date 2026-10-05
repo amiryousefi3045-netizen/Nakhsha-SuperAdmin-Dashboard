@@ -66,8 +66,19 @@ export interface ShippingQuoteMethod {
   title: string;
   kind: ShippingMethodKind;
   carrier: string;
-  /** The buyer's price for THIS basket. Server-computed. */
+  /** The buyer's price for THIS basket, after any code. Server-computed. */
   fee: number;
+  /**
+   * What the rate card charges before the seller's own code (Phase 37).
+   * `originalFee - fee` is the discount the buyer actually received, which is
+   * not always the code's headline number: a fixed code larger than the fee, or
+   * one capped by `maxDiscount`, comes out lower.
+   */
+  originalFee?: number;
+  /** Rial actually taken off this shipment. 0 when no code applied. */
+  discount?: number;
+  /** The code that earned it, uppercased by the server. Empty when none applied. */
+  discountCode?: string;
   zoneLabel: string;
   eta: ShippingEta;
   /**
@@ -81,6 +92,21 @@ export interface ShippingQuoteMethod {
     hours: string;
     instructions: string;
   } | null;
+}
+
+/**
+ * The verdict on the code that was submitted (Phase 37).
+ *
+ * `rejected` is a boolean, not a reason string, and that is deliberate: this
+ * object is returned to the buyer as well as the seller, and naming *why* a code
+ * failed (disabled, below its minimum, wrong store) would tell a stranger which
+ * of a store's codes exist. A code that is absent, disabled, too small a basket
+ * or another store's all read the same: `applied: false`.
+ */
+export interface ShippingQuoteDiscount {
+  code: string;
+  applied: boolean;
+  rejected: boolean;
 }
 
 /** Why a configured method is not being offered. Shown to the seller, not the buyer. */
@@ -109,11 +135,18 @@ export interface ShippingQuote {
    */
   subtotal?: number;
   currency?: string;
+  /** Absent when no code was submitted, so the UI can hide the whole block. */
+  discount?: ShippingQuoteDiscount;
 }
 
 export interface ShippingQuoteInput {
   items: { productId: string; qty: number }[];
   shippingAddress?: ShippingAddressInput;
+  /**
+   * The seller's shipping code, uppercased server-side. A lookup key, never an
+   * amount - the same rule the buyer's coupon field follows.
+   */
+  shippingDiscountCode?: string;
 }
 
 /**
@@ -129,6 +162,8 @@ export interface SellerShippingPreviewInput {
   totalWeightKg: number;
   totalQty: number;
   shippingAddress?: ShippingAddressInput;
+  /** Try a code against this hypothetical basket before publishing it. */
+  discountCode?: string;
 }
 
 /* ── Seller side: the rate card ───────────────────────────────────────────── */
@@ -151,6 +186,42 @@ export interface ShippingZone {
   enabled: boolean;
 }
 
+/**
+ * One step of a weight rate card: "anything up to `upToKg` costs `price`"
+ * (Phase 37).
+ *
+ * `upToKg` is an INCLUSIVE bound, not a starting point, because that is how
+ * Iranian couriers write their brackets and how a buyer reads them. The steps
+ * must ascend; the server refuses a card that does not rather than sorting it,
+ * since a silently reordered card is one the seller never approved.
+ */
+export interface ShippingTier {
+  upToKg: number;
+  price: number;
+}
+
+export type ShippingDiscountType = "percent" | "fixed";
+
+/**
+ * A seller-funded reduction on the delivery charge (Phase 37).
+ *
+ * `maxDiscount` is required by the server, not merely recommended: without it a
+ * `fixed` value is an open-ended liability, and on a small fee it would pay the
+ * buyer to shop. The engine additionally never lets a discount exceed the fee.
+ */
+export interface ShippingDiscount {
+  /** Stored and compared uppercase, so a buyer may type it in any case. */
+  code: string;
+  type: ShippingDiscountType;
+  /** Percent (1-100) or rial, depending on `type`. */
+  value: number;
+  /** 0 = no minimum basket. Below it the code simply does not apply. */
+  minSubtotal: number;
+  /** Hard ceiling in rial, whatever the percentage works out to. */
+  maxDiscount: number;
+  enabled: boolean;
+}
+
 export interface ShippingMethodPricing {
   mode: ShippingPricingMode;
   flatFee: number;
@@ -158,6 +229,12 @@ export interface ShippingMethodPricing {
   perItemFee: number;
   /** 0 = this method never becomes free on its own. */
   freeThreshold: number;
+  /**
+   * Step pricing, in ascending `upToKg` order (Phase 37). Only read when
+   * `mode` is `weight`; the server falls back to `perKgFee` when it is empty, so
+   * a seller who has not migrated keeps working.
+   */
+  tiers: ShippingTier[];
 }
 
 export interface ShippingPickupInfo {
@@ -186,6 +263,7 @@ export interface SellerShippingProfile {
   isEnabled: boolean;
   freeShippingThreshold: number;
   methods: ShippingMethod[];
+  discounts: ShippingDiscount[];
   updatedAt?: string;
 }
 
@@ -193,6 +271,7 @@ export interface SellerShippingProfileInput {
   isEnabled: boolean;
   freeShippingThreshold: number;
   methods: ShippingMethod[];
+  discounts: ShippingDiscount[];
 }
 
 /** Server limits, mirrored so the form can refuse early instead of round-tripping. */
@@ -200,7 +279,14 @@ export const SHIPPING_LIMITS = {
   maxMethods: 12,
   maxZonesPerMethod: 50,
   maxFee: 100_000_000,
+  maxTiersPerMethod: 10,
+  maxTierKg: 1_000,
+  maxDiscounts: 10,
+  maxCodeLength: 20,
 } as const;
+
+/** The shape a code has to have. Mirrors the server so the form can say so now. */
+export const SHIPPING_CODE_PATTERN = /^[A-Z0-9-]{3,20}$/;
 
 export const SHIPPING_PRICING_LABELS: Record<ShippingPricingMode, string> = {
   flat: "مبلغ ثابت",
@@ -212,9 +298,33 @@ export const SHIPPING_PRICING_LABELS: Record<ShippingPricingMode, string> = {
 export const SHIPPING_ZONE_LABELS: Record<ShippingZoneType, string> = {
   all: "همهٔ ایران",
   province: "استان",
-  postal_code: "پیشوند کدپستی",
-  radius: "شعاع از مرکز",
+  postal_code: "پیشوند کد پستی",
+  radius: "شعاع دور از فروشگاه",
 };
+
+export const SHIPPING_DISCOUNT_TYPE_LABELS: Record<ShippingDiscountType, string> = {
+  percent: "درصدی",
+  fixed: "مبلغ ثابت",
+};
+
+/**
+ * The price a step card charges for a weight, in rial.
+ *
+ * Mirrors `ShippingService.computeTierFee` so the seller form can show the
+ * result as they type. A 30 kg parcel with no step that reaches it holds the
+ * last step's price - the server does the same, and the form says so rather than
+ * silently showing a cheaper number than will be charged.
+ */
+export function tierFeeFor(tiers: ShippingTier[], weightKg: number): number {
+  if (!tiers.length) return 0;
+  const steps = [...tiers].sort((a, b) => a.upToKg - b.upToKg);
+  let fee = steps[0].price;
+  for (const step of steps) {
+    if (weightKg <= step.upToKg) return step.price;
+    fee = step.price;
+  }
+  return fee;
+}
 
 export function etaText(eta: ShippingEta | null | undefined): string {
   if (!eta) return "";

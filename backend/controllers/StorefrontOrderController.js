@@ -62,6 +62,7 @@ async function checkout(req, res) {
       couponCode: req.body.couponCode,
       shippingAddress: req.body.shippingAddress,
       shippingMethodId: req.body.shippingMethodId,
+      shippingDiscountCode: req.body.shippingDiscountCode,
     });
 
     res.json(
@@ -293,6 +294,7 @@ async function quoteShipping(req, res) {
       subtotal,
       totalWeightKg,
       totalQty,
+      discountCode: req.body.shippingDiscountCode || "",
     });
 
     res.json(

@@ -37,15 +37,20 @@ import { faNumber } from "../../lib/adminFormat";
 import { formatSellerPrice } from "../../lib/sellerFormat";
 import {
   etaText,
+  SHIPPING_CODE_PATTERN,
+  SHIPPING_DISCOUNT_TYPE_LABELS,
   SHIPPING_LIMITS,
   SHIPPING_PRICING_LABELS,
   SHIPPING_PRICING_MODES,
   SHIPPING_ZONE_LABELS,
   SHIPPING_ZONE_TYPES,
+  tierFeeFor,
   type ShippingAddressInput,
+  type ShippingDiscount,
   type ShippingMethod,
   type ShippingPricingMode,
   type ShippingQuote,
+  type ShippingTier,
   type ShippingZone,
   type ShippingZoneType,
 } from "../../types/shipping";
@@ -56,6 +61,7 @@ interface DraftProfile {
   isEnabled: boolean;
   freeShippingThreshold: number;
   methods: ShippingMethod[];
+  discounts: ShippingDiscount[];
 }
 
 const inputClass =
@@ -97,11 +103,41 @@ function blankMethod(index: number, existing: ShippingMethod[]): ShippingMethod 
     kind: "delivery",
     enabled: true,
     carrier: "",
-    pricing: { mode: "flat", flatFee: 0, perKgFee: 0, perItemFee: 0, freeThreshold: 0 },
+    pricing: { mode: "flat", flatFee: 0, perKgFee: 0, perItemFee: 0, freeThreshold: 0, tiers: [] },
     eta: { minDays: 1, maxDays: 3 },
     zones: [],
     pickup: { address: "", city: "", province: "", hours: "", instructions: "" },
   };
+}
+
+/** The highest step a card reaches, for the "above this it holds" note. */
+function tiersTopKg(method: ShippingMethod): number {
+  const tiers = method.pricing.tiers ?? [];
+  return tiers.reduce((top, t) => Math.max(top, t.upToKg), 0);
+}
+
+/**
+ * The delivery price a method would charge for a given weight, for the
+ * "your code saves about this much" hint.
+ *
+ * Deliberately partial: zones, the free-shipping threshold and per-method
+ * overrides are not applied, because the hint only has to show the seller the
+ * order of magnitude their code operates in. The server does the real
+ * arithmetic, and the preview panel prints that number instead.
+ */
+function flatOrTierFee(method: ShippingMethod, weightKg: number): number {
+  const p = method.pricing;
+  if (p.mode === "free") return 0;
+  if (p.mode === "per_item") return p.perItemFee;
+  if (p.mode === "weight" && (p.tiers ?? []).length > 0) {
+    return tierFeeFor(p.tiers, weightKg);
+  }
+  if (p.mode === "weight") return p.perKgFee * Math.max(1, Math.ceil(weightKg));
+  return p.flatFee;
+}
+
+function blankDiscount(): ShippingDiscount {
+  return { code: "", type: "percent", value: 0, minSubtotal: 0, maxDiscount: 0, enabled: true };
 }
 
 function blankZone(): ShippingZone {
@@ -130,6 +166,7 @@ export function ShippingSeller() {
   const [preview, setPreview] = useState<ShippingQuote | null>(null);
   const [previewAddress, setPreviewAddress] = useState<ShippingAddressInput>({});
   const [previewBasket, setPreviewBasket] = useState({ subtotal: 0, weightKg: 0, qty: 1 });
+  const [previewCode, setPreviewCode] = useState("");
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -142,6 +179,9 @@ export function ShippingSeller() {
         isEnabled: res.isEnabled,
         freeShippingThreshold: res.freeShippingThreshold,
         methods: res.methods,
+        // A profile saved before Phase 37 has no `discounts` key at all, so the
+        // editor must not assume the field exists or the first render throws.
+        discounts: res.discounts ?? [],
       });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "خواندن تعرفهٔ ارسال ناموفق بود.");
@@ -207,6 +247,73 @@ export function ShippingSeller() {
     [],
   );
 
+  const patchTier = useCallback(
+    (methodIndex: number, tierIndex: number, next: Partial<ShippingTier>) => {
+      setDraft((d) => {
+        if (!d) return d;
+        const method = d.methods[methodIndex];
+        const tiers = (method.pricing.tiers ?? []).slice();
+        tiers[tierIndex] = { ...tiers[tierIndex], ...next };
+        const methods = d.methods.slice();
+        methods[methodIndex] = { ...method, pricing: { ...method.pricing, tiers } };
+        return { ...d, methods };
+      });
+      setSaved(false);
+    },
+    [],
+  );
+
+  const addTier = useCallback((methodIndex: number) => {
+    setDraft((d) => {
+      if (!d) return d;
+      const method = d.methods[methodIndex];
+      const tiers = (method.pricing.tiers ?? []).slice();
+      // A new step starts just above the last one, so the card stays ascending
+      // while the seller types instead of failing to save on an accidental
+      // duplicate bound. They can still retype it freely.
+      const last = tiers[tiers.length - 1]?.upToKg ?? 0;
+      tiers.push({ upToKg: last + 1, price: tiers[tiers.length - 1]?.price ?? 0 });
+      const methods = d.methods.slice();
+      methods[methodIndex] = { ...method, pricing: { ...method.pricing, tiers } };
+      return { ...d, methods };
+    });
+    setSaved(false);
+  }, []);
+
+  const removeTier = useCallback((methodIndex: number, tierIndex: number) => {
+    setDraft((d) => {
+      if (!d) return d;
+      const method = d.methods[methodIndex];
+      const tiers = (method.pricing.tiers ?? []).filter((_, i) => i !== tierIndex);
+      const methods = d.methods.slice();
+      methods[methodIndex] = { ...method, pricing: { ...method.pricing, tiers } };
+      return { ...d, methods };
+    });
+    setSaved(false);
+  }, []);
+
+  const patchDiscount = useCallback((index: number, next: Partial<ShippingDiscount>) => {
+    setDraft((d) => {
+      if (!d) return d;
+      const discounts = d.discounts.slice();
+      discounts[index] = { ...discounts[index], ...next };
+      return { ...d, discounts };
+    });
+    setSaved(false);
+  }, []);
+
+  const addDiscount = useCallback(() => {
+    setDraft((d) => (d ? { ...d, discounts: [...d.discounts, blankDiscount()] } : d));
+    setSaved(false);
+  }, []);
+
+  const removeDiscount = useCallback((index: number) => {
+    setDraft((d) =>
+      d ? { ...d, discounts: d.discounts.filter((_, i) => i !== index) } : d,
+    );
+    setSaved(false);
+  }, []);
+
   /**
    * Client-side refusals, so a seller finds out about a broken rate card while
    * typing rather than after a round-trip. The server enforces all of these
@@ -240,6 +347,63 @@ export function ShippingSeller() {
       if (m.kind === "pickup" && !m.pickup.address.trim()) {
         issues.push(`روش «${m.title}» حضوری است و نشانی تحویل ندارد.`);
       }
+      // Weight steps (Phase 37). Only a `weight` method reads them, so a stale
+      // list left over after switching mode is not an error - the server ignores
+      // it too rather than charging from a card the seller cannot see.
+      if (m.pricing.mode === "weight") {
+        const tiers = m.pricing.tiers ?? [];
+        if (tiers.length > SHIPPING_LIMITS.maxTiersPerMethod) {
+          issues.push(`روش «${m.title}» بیش از ${faNumber(SHIPPING_LIMITS.maxTiersPerMethod)} پلکن دارد.`);
+        }
+        tiers.forEach((t, i) => {
+          if (t.upToKg <= 0 || t.upToKg > SHIPPING_LIMITS.maxTierKg) {
+            issues.push(`پلکن ${faNumber(i + 1)} در روش «${m.title}» سقف وزن معتبر ندارد.`);
+          }
+          if (t.price <= 0) {
+            issues.push(`پلکن ${faNumber(i + 1)} در روش «${m.title}» قیمت ندارد.`);
+          }
+          // A duplicate or inverted bound would silently price the wrong parcel,
+          // and the seller would have no way to tell from the number.
+          if (i > 0 && t.upToKg <= tiers[i - 1].upToKg) {
+            issues.push(
+              `پلکن‌های وزن در روش «${m.title}» باید صعودی و بدون تکرار باشند.`,
+            );
+          }
+        });
+        if (tiers.length === 0 && m.pricing.perKgFee <= 0) {
+          issues.push(`روش «${m.title}» نه پلکن وزن دارد و نه نرخ هر کیلو.`);
+        }
+      }
+    });
+
+    if (draft.discounts.length > SHIPPING_LIMITS.maxDiscounts) {
+      issues.push(`حداکثر ${faNumber(SHIPPING_LIMITS.maxDiscounts)} کد تخفیف ارسال مجاز است.`);
+    }
+    const seenCodes = new Map<string, number>();
+    draft.discounts.forEach((d, i) => {
+      const code = d.code.trim().toUpperCase();
+      if (!SHIPPING_CODE_PATTERN.test(code)) {
+        issues.push(
+          `کد «${d.code || i + 1}» باید ${faNumber(3)} تا ${faNumber(SHIPPING_LIMITS.maxCodeLength)} نویسهٔ انگلیسی، عدد یا خط تیره باشد.`,
+        );
+      }
+      // Case-insensitive on purpose: the server stores uppercase, so "SUMMER"
+      // and "summer" are the same code and saving both would be a duplicate.
+      const first = seenCodes.get(code);
+      if (first !== undefined) {
+        issues.push(`کد تخفیف تکراری است: «${code}» در ردیف‌های ${faNumber(first + 1)} و ${faNumber(i + 1)}.`);
+      } else {
+        seenCodes.set(code, i);
+      }
+      if (d.value <= 0) {
+        issues.push(`کد «${code || i + 1}» مقدار ندارد.`);
+      }
+      if (d.type === "percent" && d.value > 100) {
+        issues.push(`کد «${code || i + 1}» درصدی نمی‌تواند بیش از ۱۰۰ باشد.`);
+      }
+      if (d.maxDiscount <= 0) {
+        issues.push(`کد «${code || i + 1}» سقف تخفیف (maxDiscount) ندارد.`);
+      }
     });
     return issues;
   }, [draft]);
@@ -254,11 +418,13 @@ export function ShippingSeller() {
         isEnabled: draft.isEnabled,
         freeShippingThreshold: draft.freeShippingThreshold,
         methods: draft.methods,
+        discounts: draft.discounts,
       });
       setDraft({
         isEnabled: res.isEnabled,
         freeShippingThreshold: res.freeShippingThreshold,
         methods: res.methods,
+        discounts: res.discounts ?? [],
       });
       setSaved(true);
     } catch (e) {
@@ -285,6 +451,9 @@ export function ShippingSeller() {
           totalWeightKg: previewBasket.weightKg,
           totalQty: previewBasket.qty,
           shippingAddress: previewAddress,
+          // An empty field must reach the server as an empty string, not as
+          // "the previous code", or a cleared box would keep discounting.
+          discountCode: previewCode.trim(),
         }),
       );
     } catch (e) {
@@ -472,12 +641,77 @@ export function ShippingSeller() {
               </label>
             ) : null}
             {method.pricing.mode === "weight" ? (
-              <label className="block">
-                <span className={labelClass}>هزینه به‌ازای هر کیلوگرم</span>
-                {moneyInput(method.pricing.perKgFee, (v) =>
-                  patchMethod(mi, { pricing: { ...method.pricing, perKgFee: v } }),
-                )}
-              </label>
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className={labelClass}>پلکان وزن (پستی)</span>
+                    <button
+                      type="button"
+                      onClick={() => addTier(mi)}
+                      disabled={(method.pricing.tiers ?? []).length >= SHIPPING_LIMITS.maxTiersPerMethod}
+                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-40"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> افزودن پلکان
+                    </button>
+                  </div>
+
+                  {(method.pricing.tiers ?? []).length === 0 ? (
+                    <p className="text-xs text-[var(--color-muted)]">
+                      پلکانی تعریف نشده است. در این حالت هزینه از نرخ هر کیلوگرم محاسبه می‌شود.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(method.pricing.tiers ?? []).map((tier, ti) => (
+                        <div key={ti} className="flex items-end gap-2">
+                          <label className="flex-1">
+                            <span className={labelClass}>تا {faNumber(ti + 1)} کیلوگرم</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={SHIPPING_LIMITS.maxTierKg}
+                              value={tier.upToKg}
+                              onChange={(e) =>
+                                patchTier(mi, ti, {
+                                  upToKg: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                                })
+                              }
+                              className={inputClass}
+                            />
+                          </label>
+                          <label className="flex-1">
+                            <span className={labelClass}>قیمت (ریال)</span>
+                            {moneyInput(tier.price, (v) => patchTier(mi, ti, { price: v }))}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeTier(mi, ti)}
+                            aria-label={`حذف پلکن ${ti + 1}`}
+                            className="mb-1 rounded-lg p-2 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(method.pricing.tiers ?? []).length > 0 ? (
+                    <p className="mt-2 text-xs text-[var(--color-muted)]">
+                      سقف وزن شامل است: بستهٔ {faNumber(1)} کیلوگرمی با پلکن اول حساب می‌شود. برای وزنی
+                      بیش از {faNumber(tiersTopKg(method))} کیلوگرم، قیمت آخرین پلکان ثابت می‌ماند.
+                    </p>
+                  ) : null}
+                </div>
+
+                <label className="block">
+                  <span className={labelClass}>
+                    هزینه به‌ازای هر کیلوگرم (وقتی پلکان تعریف نشده)
+                  </span>
+                  {moneyInput(method.pricing.perKgFee, (v) =>
+                    patchMethod(mi, { pricing: { ...method.pricing, perKgFee: v } }),
+                  )}
+                </label>
+              </div>
             ) : null}
             {method.pricing.mode === "per_item" ? (
               <label className="block">
@@ -761,6 +995,156 @@ export function ShippingSeller() {
         <Plus className="h-4 w-4" /> افزودن روش ارسال
       </button>
 
+
+      {/* ── Shipping discount codes (Phase 37) ────────────────────────────── */}
+      <div className={cardClass}>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-[var(--color-text)]">
+            کدهای تخفیف ارسال
+          </h2>
+          <button
+            type="button"
+            onClick={addDiscount}
+            disabled={draft.discounts.length >= SHIPPING_LIMITS.maxDiscounts}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" /> افزودن کد
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-[var(--color-muted)]">
+          این تخفیف از سهم خود فروشنده کم می‌شود، نه از کمیسیون پلتفرم. سقف تخفیف الزامی است:
+          بدون آن، یک کد مبلغ‌ثابت روی هزینهٔ ارسال کم، خریدار را بابت خرید پاداش می‌دهد.
+        </p>
+
+        {draft.discounts.length === 0 ? (
+          <p className="text-sm text-[var(--color-muted)]">هنوز کدی تعریف نشده است.</p>
+        ) : (
+          <div className="space-y-3">
+            {draft.discounts.map((d, di) => {
+              const code = d.code.trim().toUpperCase();
+              const codeValid = SHIPPING_CODE_PATTERN.test(code);
+// What the buyer would actually save on the cheapest method's fee.
+              // Indicative only: the server is the authority, and it clamps to
+              // the real fee, which this form does not know.
+              // Math.min, not max — "cheapest" is what a buyer will select, so a
+              // max would quote savings on a method nobody would choose.
+              const sampleFee = Math.min(
+                ...draft.methods
+                  .filter((m) => m.enabled)
+                  .map((m) => flatOrTierFee(m, previewBasket.weightKg || 1)),
+                Number.POSITIVE_INFINITY,
+              );
+              const sampleBaseFee = Number.isFinite(sampleFee) ? sampleFee : 0;
+              const sampleDiscount = Math.min(
+                d.maxDiscount,
+                d.type === "percent" ? Math.round((sampleBaseFee * Math.min(d.value, 100)) / 100) : d.value,
+              );
+              return (
+                <div key={di} className="rounded-xl border border-[var(--color-border)] p-3">
+                  <div className="mb-2 flex items-end gap-2">
+                    <label className="flex-1">
+                      <span className={labelClass}>کد تخفیف</span>
+                      <input
+                        value={d.code}
+                        onChange={(e) => patchDiscount(di, { code: e.target.value.toUpperCase() })}
+                        placeholder="SUMMER1405"
+                        className={`${inputClass} ${code && !codeValid ? "border-red-400" : ""}`}
+                      />
+                    </label>
+                    <label className="w-32">
+                      <span className={labelClass}>نوع</span>
+                      <select
+                        value={d.type}
+                        onChange={(e) =>
+                          patchDiscount(di, { type: e.target.value as ShippingDiscount["type"] })
+                        }
+                        className={inputClass}
+                      >
+                        {(Object.keys(SHIPPING_DISCOUNT_TYPE_LABELS) as ShippingDiscount["type"][]).map(
+                          (t) => (
+                            <option key={t} value={t}>
+                              {SHIPPING_DISCOUNT_TYPE_LABELS[t]}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-2 pb-1">
+                      <Switch
+                        checked={d.enabled}
+                        onChange={(v) => patchDiscount(di, { enabled: v })}
+                        label="فعال"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeDiscount(di)}
+                        aria-label={`حذف کد ${code || di + 1}`}
+                        className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="block">
+                      <span className={labelClass}>
+                        {d.type === "percent" ? "درصد (۱ تا ۱۰۰)" : "مبلغ تخفیف (ریال)"}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={d.type === "percent" ? 100 : undefined}
+                        step={d.type === "percent" ? 1 : 1000}
+                        value={Number.isFinite(d.value) ? d.value : 0}
+                        onChange={(e) =>
+                          patchDiscount(di, {
+                            value: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                          })
+                        }
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className={labelClass}>حداقل مبلغ سفارش (ریال)</span>
+                      {moneyInput(d.minSubtotal, (v) => patchDiscount(di, { minSubtotal: v }))}
+                    </label>
+                    <label className="block">
+                      <span className={labelClass}>سقف تخفیف (ریال)</span>
+                      {moneyInput(d.maxDiscount, (v) => patchDiscount(di, { maxDiscount: v }))}
+                    </label>
+                  </div>
+
+                  {code && !codeValid ? (
+                    <p className="mt-2 text-xs text-red-600">
+                      کد باید {faNumber(3)} تا {faNumber(SHIPPING_LIMITS.maxCodeLength)} نویسهٔ انگلیسی،
+                      عدد یا خط تیره باشد.
+                    </p>
+                  ) : null}
+                  {d.maxDiscount <= 0 ? (
+                    <p className="mt-2 text-xs text-red-600">سقف تخفیف الزامی است.</p>
+                  ) : null}
+                  {d.type === "percent" && d.value > 100 ? (
+                    <p className="mt-2 text-xs text-red-600">درصد نمی‌تواند بیش از ۱۰۰ باشد.</p>
+                  ) : null}
+                  {codeValid && d.maxDiscount > 0 && sampleFee > 0 ? (
+                    <p className="mt-2 text-xs text-[var(--color-muted)]">
+                      روی هزینهٔ ارسال {formatSellerPrice(sampleFee, "IRR")}، حداکثر{" "}
+                      {formatSellerPrice(sampleDiscount, "IRR")} کم می‌شود
+                      {d.type === "percent" ? ` (${faNumber(d.value)}٪` : ""}
+                      {d.minSubtotal > 0
+                        ? `، برای سبدهای ${formatSellerPrice(d.minSubtotal, "IRR")} به بالا`
+                        : ""}
+                      ).
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ── Preview ───────────────────────────────────────────────────────── */}
       <div className={cardClass}>
         <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
@@ -839,6 +1223,15 @@ export function ShippingSeller() {
               className={inputClass}
             />
           </label>
+          <label className="block">
+            <span className={labelClass}>کد تخفیف ارسال (اختیاری)</span>
+            <input
+              value={previewCode}
+              onChange={(e) => setPreviewCode(e.target.value.toUpperCase())}
+              placeholder="SUMMER1405"
+              className={inputClass}
+            />
+          </label>
         </div>
 
         <button
@@ -858,6 +1251,20 @@ export function ShippingSeller() {
             {preview.warning ? (
               <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <Info className="h-3.5 w-3.5 shrink-0" /> {preview.warning}
+              </p>
+            ) : null}
+            {preview.discount ? (
+              <p
+                className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                  preview.discount.applied
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                {preview.discount.applied
+                  ? `کد «${preview.discount.code}» اعمال شد.`
+                  : `کد «${preview.discount.code}» برای این سبد اعمال نشد. مبلغ سفارش یا شرایط کد را بررسی کنید.`}
               </p>
             ) : null}
             {preview.methods.length === 0 ? (
@@ -882,6 +1289,13 @@ export function ShippingSeller() {
                       {m.fee === 0
                         ? "رایگان"
                         : formatSellerPrice(m.fee, preview.currency ?? "IRR")}
+                      {m.discount ? (
+                        <span className="block text-xs text-emerald-700">
+                          {formatSellerPrice(m.originalFee ?? m.fee, preview.currency ?? "IRR")} ←{" "}
+                          {formatSellerPrice(m.discount, preview.currency ?? "IRR")} تخفیف{" "}
+                          {m.discountCode ? `(${m.discountCode})` : ""}
+                        </span>
+                      ) : null}
                     </span>
                   </li>
                 ))}

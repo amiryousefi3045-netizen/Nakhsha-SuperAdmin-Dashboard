@@ -1296,16 +1296,76 @@ describe("sellerService — delivery (Phase 36)", () => {
 
   it("replaces the whole rate card rather than patching it", async () => {
     vi.mocked(apiClient.put).mockResolvedValue(
-      ok({ configured: true, isEnabled: true, freeShippingThreshold: 0, methods: [] }) as never,
+      ok({
+        configured: true,
+        isEnabled: true,
+        freeShippingThreshold: 0,
+        methods: [],
+        discounts: [],
+      }) as never,
     );
 
-    await saveSellerShipping({ isEnabled: true, freeShippingThreshold: 0, methods: [] });
+    await saveSellerShipping({
+      isEnabled: true,
+      freeShippingThreshold: 0,
+      methods: [],
+      discounts: [],
+    });
 
     expect(apiClient.put).toHaveBeenCalledWith("/seller/shipping", {
       isEnabled: true,
       freeShippingThreshold: 0,
       methods: [],
+      discounts: [],
     });
+  });
+
+  it("reads back a discount list the server stored (Phase 37)", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(
+      ok({
+        configured: true,
+        isEnabled: true,
+        freeShippingThreshold: 0,
+        methods: [],
+        discounts: [
+          { code: "SUMMER", type: "percent", value: 30, minSubtotal: 0, maxDiscount: 40000, enabled: true },
+        ],
+      }) as never,
+    );
+
+    const profile = await getSellerShipping();
+
+    // The editor renders what came back, so a code the seller saved and then
+    // reloaded has to survive the round-trip instead of vanishing from the form.
+    expect(profile.discounts).toHaveLength(1);
+    expect(profile.discounts[0].code).toBe("SUMMER");
+  });
+
+  it("passes a code to the preview so a seller can test one before publishing", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue(
+      ok({
+        configured: true,
+        methods: [],
+        unavailable: [],
+        warning: "",
+        discount: { code: "SUMMER", applied: true, rejected: false },
+      }) as never,
+    );
+
+    const quote = await previewSellerShipping({
+      subtotal: 500000,
+      totalWeightKg: 2,
+      totalQty: 1,
+      discountCode: "SUMMER",
+    });
+
+    expect(apiClient.post).toHaveBeenCalledWith("/seller/shipping/preview", {
+      subtotal: 500000,
+      totalWeightKg: 2,
+      totalQty: 1,
+      discountCode: "SUMMER",
+    });
+    expect(quote.discount?.applied).toBe(true);
   });
 
   it("previews with basket totals, not a product list", async () => {

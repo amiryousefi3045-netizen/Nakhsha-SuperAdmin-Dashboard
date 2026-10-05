@@ -104,6 +104,61 @@ function validateZone(zone) {
 
 ZoneSchema.path("type").validators.push(validateZone);
 
+/**
+ * One step of a weight-based rate card: "anything up to N kg costs P".
+ *
+ * Step pricing rather than a single per-kg rate because that is how couriers
+ * actually price in Iran: پست پیشتاز bills in brackets, and a single
+ * `perKgFee` on a 30 kg crate of pottery either loses the seller money on every
+ * kilo or charges the buyer for a distance tier that does not exist.
+ */
+const TierSchema = new mongoose.Schema(
+  {
+    // Inclusive upper bound in whole kilograms. A 1 kg step covers anything up
+    // to and including 1 kg, so the boundary is unambiguous to a human reading
+    // the editor.
+    upToKg: { type: Number, required: true, min: 1, max: 1000 },
+    price: { type: Number, required: true, min: 0, max: 50_000_000 },
+  },
+  { _id: false },
+);
+
+/**
+ * A seller-funded reduction on the delivery charge.
+ *
+ * The clamp is the whole point. Phase 35 flagged that "free shipping above X"
+ * without a clamp rule builds an unbounded loss, and a public discount code with
+ * no cap is the same trap with a shorter fuse: a `fixed` value of 50,000,000 on
+ * a 200,000 fee pays the buyer to shop. `maxDiscount` is therefore mandatory,
+ * and the engine additionally never lets a discount exceed the fee itself.
+ *
+ * It is NOT funded from the platform's commission. The platform's cut is
+ * computed as though the buyer had paid the full fee, so a code moves money from
+ * the seller to the buyer and from nobody else. `FinanceService` is where that is
+ * enforced: the discount is added to the commission base and never deducted from
+ * the payout basis, which makes the seller's net fall by exactly the discount.
+ *
+ * (Deducting it from the payout basis instead - the obvious reading - would make
+ * the seller fund the code twice: once in cash, and again through the smaller
+ * commission their reduced gross no longer attracts. See `computeBalance`.)
+ */
+const DiscountSchema = new mongoose.Schema(
+  {
+    // Lookup key the checkout sends, exactly like a coupon code: a key, never an
+    // amount. Stored uppercase so matching is a plain equality test.
+    code: { type: String, required: true, trim: true, uppercase: true, maxlength: 20 },
+    type: { type: String, enum: ["percent", "fixed"], required: true, default: "percent" },
+    // percent: 1..100. fixed: an integer in the order's money unit.
+    value: { type: Number, required: true, min: 0, max: 50_000_000 },
+    // Only reduce the delivery charge on baskets at or above this subtotal.
+    minSubtotal: { type: Number, default: 0, min: 0, max: 50_000_000 },
+    // Mandatory cap. Without it a fixed-value code is an open-ended liability.
+    maxDiscount: { type: Number, required: true, min: 0, max: 50_000_000 },
+    enabled: { type: Boolean, default: true },
+  },
+  { _id: false },
+);
+
 const MethodSchema = new mongoose.Schema(
   {
     // The identifier the checkout sends. Kept short and machine-friendly so it
@@ -120,6 +175,23 @@ const MethodSchema = new mongoose.Schema(
       flatFee: { type: Number, min: 0, default: 0 },
       perKgFee: { type: Number, min: 0, default: 0 },
       perItemFee: { type: Number, min: 0, default: 0 },
+      // Step pricing for `weight` mode. When present this REPLACES `perKgFee`,
+      // not supplements it: a seller who has written steps has said what a kilo
+      // costs, and multiplying as well would charge for a rate they never set.
+      tiers: {
+        type: [TierSchema],
+        default: [],
+        validate: {
+          // Strictly ascending and unique. Two steps with the same `upToKg`
+          // would make the price depend on array order, which is the exact
+          // ambiguity `ZONE_SPECIFICITY` exists to avoid for zones.
+          validator: (tiers) => {
+            const bounds = (tiers || []).map((t) => t.upToKg);
+            return bounds.every((b, i) => i === 0 || b > bounds[i - 1]);
+          },
+          message: "سقف کیلوگرم پلکان‌ها باید به‌ترتیب صعودی و بدون تکرار باشد",
+        },
+      },
       // 0 = this method never becomes free on its own. A profile-level threshold
       // still applies on top; the effective threshold is the lower of the two.
       freeThreshold: { type: Number, min: 0, default: 0 },
@@ -160,6 +232,20 @@ const ShippingProfileSchema = new mongoose.Schema(
     // Store-wide "free shipping above X". 0 disables it. Lower than a method's
     // own threshold, so a seller can offer both without surprising the buyer.
     freeShippingThreshold: { type: Number, min: 0, default: 0 },
+    discounts: {
+      type: [DiscountSchema],
+      default: [],
+      validate: {
+        // Same reasoning as method keys: the code is the checkout's lookup
+        // handle, and a duplicate would make "apply my code" a coin flip between
+        // two different discounts.
+        validator: (codes) => {
+          const list = (codes || []).map((d) => d.code);
+          return new Set(list).size === list.length;
+        },
+        message: "کدهای تخفیف ارسال باید یکتا باشند",
+      },
+    },
     methods: {
       type: [MethodSchema],
       default: [],
@@ -182,3 +268,4 @@ module.exports.PRICING_MODES = PRICING_MODES;
 module.exports.METHOD_KINDS = METHOD_KINDS;
 module.exports.ZONE_TYPES = ZONE_TYPES;
 module.exports.ZONE_SPECIFICITY = ZONE_SPECIFICITY;
+module.exports.DISCOUNT_TYPES = DiscountSchema.path("type").enumValues;

@@ -317,6 +317,23 @@ export function FinanceSeller() {
                     value={`- ${formatSellerPrice(finance.gross.shippingCost, finance.currency)}`}
                   />
                 ) : null}
+{typeof finance.gross.shippingDiscount === "number" &&
+                finance.gross.shippingDiscount > 0 ? (
+                  <DetailRow
+                    label="تخفیف ارسال فروشنده (از سهم شما)"
+                    value={`- ${formatSellerPrice(finance.gross.shippingDiscount, finance.currency)}`}
+                    hint="کدهایی که خودتان منتشر کردید. کمیسیون پلتفرم روی این مبلغ محاسبه نمی‌شود؛ یعنی تخفیف کاملاً از سهم شما پرداخت شده است."
+                  />
+                ) : null}
+                {typeof finance.commission.base === "number" &&
+                typeof finance.gross.shippingDiscount === "number" &&
+                finance.gross.shippingDiscount > 0 ? (
+                  <DetailRow
+                    label="مبنای محاسبهٔ کمیسیون"
+                    value={formatSellerPrice(finance.commission.base, finance.currency)}
+                    hint="بیشتر از درآمد ناخالص شماست، چون تخفیف ارسال به آن اضافه شده. به این ترتیب کمیسیون شما با اجرای کد تخفیف تغییر نمی‌کند."
+                  />
+                ) : null}
                 <DetailRow
                   label={`مبلغ در انتظار آزادسازی (${faNumber(finance.hold.days)} روز)`}
                   value={formatSellerPrice(finance.hold.amount, finance.currency)}
@@ -792,11 +809,24 @@ function StatCard({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+/**
+ * One line of the money breakdown.
+ *
+ * `hint` exists for the two rows whose arithmetic is not self-evident: the
+ * courier cost and the seller-funded shipping discount. A seller who cannot see
+ * why a figure was subtracted will assume the ledger is wrong, and stop
+ * trusting it.
+ */
+function DetailRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-[var(--color-muted)]">{label}</dt>
-      <dd className="font-bold text-[var(--color-text)]">{value}</dd>
+    <div className="flex items-start justify-between gap-3">
+      <dt className="text-[var(--color-muted)]">
+        {label}
+        {hint ? (
+          <span className="mt-0.5 block text-xs text-[var(--color-muted)]/80">{hint}</span>
+        ) : null}
+      </dt>
+      <dd className="shrink-0 font-bold text-[var(--color-text)]">{value}</dd>
     </div>
   );
 }

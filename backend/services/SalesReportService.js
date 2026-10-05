@@ -66,6 +66,14 @@ async function salesReport(sellerId, { from, to, top } = {}) {
               shippingCostRecorded: {
                 $sum: { $cond: [{ $gt: [{ $ifNull: ["$shipping.cost", 0] }, 0] }, 1, 0] },
               },
+              // Phase 37: shipping the seller gave away via their own codes.
+              // `shippingFee` is already net of it, so without this column the
+              // report cannot explain a fee total that is lower than the rate
+              // card says it should be.
+              shippingDiscount: { $sum: { $ifNull: ["$shipping.discount", 0] } },
+              shippingDiscountOrders: {
+                $sum: { $cond: [{ $gt: [{ $ifNull: ["$shipping.discount", 0] }, 0] }, 1, 0] },
+              },
             },
           },
         ],
@@ -120,6 +128,8 @@ async function salesReport(sellerId, { from, to, top } = {}) {
     total: 0,
     shippingCost: 0,
     shippingCostRecorded: 0,
+    shippingDiscount: 0,
+    shippingDiscountOrders: 0,
   };
 
   const byStatusMap = {};
@@ -166,10 +176,21 @@ async function salesReport(sellerId, { from, to, top } = {}) {
        * entered yet is not zero, and a report that summed the recorded ones
        * without saying so would overstate margin for every seller still in the
        * habit of not filling this in.
+       *
+       * Phase 37 adds two more, for the same reason: a seller running a
+       * shipping code sees a `shippingFee` below their own rate card and has no
+       * column that explains it.
+       *   shippingDiscount         — given away via the seller's own codes
+       *   shippingDiscountOrders   — how many orders used one
+       * `shippingFee` is already net of the discount, so it must NOT be reduced
+       * again here; `shippingGross` shows the pre-discount figure for comparison.
        */
       shippingCost: ordersRow.shippingCost,
       shippingMargin: ordersRow.shippingFee - ordersRow.shippingCost,
       shippingCostUnrecorded: Math.max(0, ordersRow.count - ordersRow.shippingCostRecorded),
+      shippingDiscount: ordersRow.shippingDiscount,
+      shippingDiscountOrders: ordersRow.shippingDiscountOrders,
+      shippingGross: ordersRow.shippingFee + ordersRow.shippingDiscount,
     },
     byStatus,
     topProducts: faceted.topProducts.map((p) => ({
@@ -224,6 +245,12 @@ async function salesReportCsv(sellerId, { from, to } = {}) {
     "shippingCost",
     "shippingMargin",
     "shippingCostRecorded",
+    // Phase 37, appended last for the same positional reason as the columns
+    // above. `shippingFee` stays net of the code, so these three are what make
+    // a discounted line reconcilable in a spreadsheet.
+    "shippingOriginalFee",
+    "shippingDiscount",
+    "shippingDiscountCode",
   ];
 
   const rows = orders.map((o) => {
@@ -251,6 +278,11 @@ async function salesReportCsv(sellerId, { from, to } = {}) {
       // "no" rather than blank, so a spreadsheet formula can tell "not entered"
       // from "entered as zero" instead of reading an empty cell as free freight.
       recorded ? "yes" : "no",
+      // A pre-Phase-37 order has no `originalFee`; the rate card is the better
+      // answer than a blank, since the net fee *was* the original.
+      o.shipping?.originalFee ?? fee,
+      o.shipping?.discount || 0,
+      o.shipping?.discountCode || "",
     ]
       .map(csvCell)
       .join(",");

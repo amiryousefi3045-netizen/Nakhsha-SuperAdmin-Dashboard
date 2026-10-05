@@ -330,8 +330,40 @@ describe("sales report — delivery economics (Phase 36, P1-08)", () => {
       updatedAt: new Date(seedNow - 2 * DAY),
     });
 
+  /** A delivery order whose fee was reduced by the seller's own shipping code.
+   *  `shippingFee`/`total` are already net, exactly as checkout snapshots them. */
+  const withShippingDiscount = () =>
+    Order.create({
+      sellerId,
+      sellerUserId: sellerUserId,
+      orderNumber: "990003",
+      origin: "storefront",
+      customer: { name: "مشتری کد تخفیف", phone: "09120000003", address: "تهران" },
+      items: [{ productId: new mongoose.Types.ObjectId(), title: "پستی", price: 300000, qty: 1, currency: "IRR" }],
+      subtotal: 300000,
+      shippingFee: 31500,
+      discount: 0,
+      total: 331500,
+      currency: "IRR",
+      status: "delivered",
+      shipping: {
+        methodKey: "post",
+        methodTitle: "پست پیشتاز",
+        kind: "delivery",
+        carrier: "پست",
+        fee: 31500,
+        originalFee: 45000,
+        discount: 13500,
+        discountCode: "SHIP30",
+        cost: 38000,
+        zoneLabel: "تهران",
+      },
+      createdAt: new Date(seedNow - 1 * DAY),
+      updatedAt: new Date(seedNow - 1 * DAY),
+    });
+
   beforeEach(async () => {
-    await Order.deleteMany({ orderNumber: { $in: ["990001", "990002"] } });
+    await Order.deleteMany({ orderNumber: { $in: ["990001", "990002", "990003"] } });
   });
 
   afterAll(async () => {
@@ -387,6 +419,55 @@ describe("sales report — delivery economics (Phase 36, P1-08)", () => {
     const report = (await get("/api/seller/reports/sales")).body.report;
     expect(JSON.stringify(report)).not.toContain("88888888");
   });
+
+  describe("a shipping code the seller funded (Phase 37)", () => {
+    it("explains a fee that is below the rate card", async () => {
+      await withShippingDiscount();
+      const summary = (await get("/api/seller/reports/sales")).body.report.summary;
+      expect(summary.shippingFee).toBe(31500);
+      expect(summary.shippingDiscount).toBe(13500);
+      expect(summary.shippingDiscountOrders).toBe(1);
+      // The gross is the reconciliation the seller actually needs: "the card
+      // says 45000, the report says 31500" only makes sense with both numbers.
+      expect(summary.shippingGross).toBe(45000);
+    });
+
+    it("does not charge the discount against the fee a second time", async () => {
+      await withShippingDiscount();
+      const summary = (await get("/api/seller/reports/sales")).body.report.summary;
+      // `shippingFee` is already net, so margin must be net fee minus cost. If
+      // the engine subtracted the discount again the seller would see a margin
+      // of -6500 on a shipment that actually lost them 6500 nothing.
+      expect(summary.shippingMargin).toBe(31500 - 38000);
+      expect(summary.shippingMargin).toBeLessThan(0);
+    });
+
+    it("writes the discount columns into the CSV next to the net fee", async () => {
+      await withShippingDiscount();
+      const res = await get("/api/seller/reports/sales/export");
+      const header = res.text.split("\r\n")[0].replace(/^﻿/, "").split(",");
+      const row = res.text
+        .split("\r\n")
+        .slice(1)
+        .filter(Boolean)
+        .find((l) => l.startsWith("990003,"));
+      const cols = Object.fromEntries(row.split(",").map((v, i) => [header[i], v]));
+      expect(cols.shippingFee).toBe("31500");
+      expect(cols.shippingOriginalFee).toBe("45000");
+      expect(cols.shippingDiscount).toBe("13500");
+      expect(cols.shippingDiscountCode).toBe("SHIP30");
+    });
+
+    it("reports a zero discount for an order that used no code", async () => {
+      await withShipping();
+      const summary = (await get("/api/seller/reports/sales")).body.report.summary;
+      // `null` on a pre-Phase-37 order must aggregate as 0, and `shippingGross`
+      // must then equal the collected fee exactly.
+      expect(summary.shippingDiscount).toBe(0);
+      expect(summary.shippingDiscountOrders).toBe(0);
+      expect(summary.shippingGross).toBe(summary.shippingFee);
+    });
+  });
 });
 
 describe("sales report — CSV export", () => {
@@ -400,9 +481,10 @@ describe("sales report — CSV export", () => {
     expect(text.charCodeAt(0)).toBe(0xfeff); // BOM
     const lines = text.split("\r\n");
     // Phase 36 appends the delivery columns after `currency`, so an importer
-    // reading by position still lines up.
+    // reading by position still lines up. Phase 37 appends its three after
+    // those, for the same reason.
     expect(lines[0].replace(/^﻿/, "")).toBe(
-      "orderNumber,orderStatus,createdAt,customerName,customerPhone,items,units,subtotal,shippingFee,discount,total,currency,shippingMethod,shippingKind,shippingZone,shippingCost,shippingMargin,shippingCostRecorded",
+      "orderNumber,orderStatus,createdAt,customerName,customerPhone,items,units,subtotal,shippingFee,discount,total,currency,shippingMethod,shippingKind,shippingZone,shippingCost,shippingMargin,shippingCostRecorded,shippingOriginalFee,shippingDiscount,shippingDiscountCode",
     );
     expect(lines).toHaveLength(5); // header + 4 orders (seller B's order excluded)
     expect(lines.slice(1).join("\n")).not.toContain("88888888");

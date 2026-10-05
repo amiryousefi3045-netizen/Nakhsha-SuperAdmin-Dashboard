@@ -304,6 +304,9 @@ export async function getSellerSalesReport(
       shippingCost: 0,
       shippingMargin: 0,
       shippingCostUnrecorded: 0,
+      shippingDiscount: 0,
+      shippingDiscountOrders: 0,
+      shippingGross: 0,
     },
     byStatus: [],
     topProducts: [],
@@ -519,6 +522,7 @@ export async function getSellerShipping(): Promise<SellerShippingProfile> {
     isEnabled: false,
     freeShippingThreshold: 0,
     methods: [],
+    discounts: [],
   });
 }
 
@@ -538,6 +542,7 @@ export async function saveSellerShipping(
     isEnabled: false,
     freeShippingThreshold: 0,
     methods: [],
+    discounts: [],
   });
 }
 

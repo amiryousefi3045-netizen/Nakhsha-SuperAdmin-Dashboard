@@ -60,6 +60,7 @@ async function createBuyerOrder({
   couponCode = "",
   shippingAddress = null,
   shippingMethodId = "",
+  shippingDiscountCode = "",
 }) {
   if (!buyerUserId) {
     throw new StorefrontOrderError("VALIDATION_ERROR", "خریدار مشخص نیست");
@@ -130,10 +131,12 @@ async function createBuyerOrder({
     buyerUserId,
     customerNote,
     couponCode: couponCode || null,
-    // Both are lookups, not amounts: OrderService prices delivery from the
-    // seller's own rate card (Phase 36).
+    // All three are lookups, not amounts: OrderService prices delivery from the
+    // seller's own rate card and resolves the discount code against the seller's
+    // own codes (Phase 36/37).
     shippingAddress: shippingAddress || null,
     shippingMethodId: shippingMethodId || null,
+    shippingDiscountCode: shippingDiscountCode || null,
   });
 
   const refId = String(order._id);

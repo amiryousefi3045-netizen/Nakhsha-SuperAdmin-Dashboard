@@ -154,7 +154,18 @@ const OrderSchema = new mongoose.Schema(
       kind: { type: String, enum: ["pickup", "delivery", ""], default: "" },
       carrier: { type: String, default: "", maxlength: 80 },
       // Integer, same unit as `total`. Mirrors `shippingFee`.
+      //
+      // `fee` is what the BUYER paid for delivery, i.e. already net of any
+      // discount code. `originalFee` is what the rate card asked for. Both are
+      // kept because a seller who gave 20,000 away needs to see it in the margin
+      // report, and a disputed order has to be settled against the number the
+      // buyer was actually charged.
       fee: { type: Number, default: 0, min: 0 },
+      originalFee: { type: Number, default: 0, min: 0 },
+      // Seller-funded reduction on the delivery charge, and the code that earned
+      // it. 0/"" on an order placed without a code.
+      discount: { type: Number, default: 0, min: 0 },
+      discountCode: { type: String, default: "", maxlength: 20 },
       // Seller's actual courier cost. 0 until the seller records it.
       cost: { type: Number, default: 0, min: 0 },
       // Who recorded the cost and when, so a margin figure can be traced to the

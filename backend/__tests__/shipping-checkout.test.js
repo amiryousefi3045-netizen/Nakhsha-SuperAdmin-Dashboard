@@ -1,4 +1,4 @@
-const request = require("supertest");
+﻿const request = require("supertest");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const app = require("../server");
@@ -1036,5 +1036,377 @@ describe("Phase 36: the seller owns the rate card", () => {
   it("is not writable by an anonymous caller", async () => {
     const res = await request(app).put("/api/seller/shipping").send(RATE_CARD);
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Phase 37: weight step pricing", () => {
+  it("prices from the seller's steps rather than a per-kilo multiplication", async () => {
+    await Product.updateOne({ _id: productId }, { $set: { "shipping.weight": 3.2 } });
+    await configureProfile({
+      methods: [
+        {
+          key: "post",
+          title: "پست پیشتاز",
+          kind: "delivery",
+          carrier: "پست",
+          pricing: {
+            mode: "weight",
+            perKgFee: 0,
+            tiers: [
+              { upToKg: 1, price: 60000 },
+              { upToKg: 5, price: 150000 },
+            ],
+          },
+        },
+      ],
+    });
+    const res = await checkout({ shippingMethodId: "post", shippingAddress: ADDRESS });
+    expect(res.status).toBe(200);
+    expect(res.body.order.shippingFee).toBe(150000);
+  });
+
+  it("keeps the existing per-kilo rate working when no steps are written", async () => {
+    await Product.updateOne({ _id: productId }, { $set: { "shipping.weight": 2.4 } });
+    await configureProfile({
+      methods: [
+        {
+          key: "tipax",
+          title: "تیپاکس",
+          kind: "delivery",
+          pricing: { mode: "weight", perKgFee: 30000 },
+        },
+      ],
+    });
+    const res = await checkout({ shippingMethodId: "tipax", shippingAddress: ADDRESS });
+    expect(res.body.order.shippingFee).toBe(90000); // 3 started kilos
+  });
+
+  it("refuses steps that are not ascending, rather than silently sorting them", async () => {
+    // A seller who typed 5 then 2 made a mistake. Sorting it for them would
+    // store a rate card they never approved, and the price they meant would be
+    // unreachable with no error to explain why.
+    await expect(
+      configureProfile({
+        methods: [
+          {
+            key: "post",
+            title: "پست پیشتاز",
+            kind: "delivery",
+            pricing: {
+              mode: "weight",
+              tiers: [
+                { upToKg: 5, price: 150000 },
+                { upToKg: 1, price: 60000 },
+              ],
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/صعودی/);
+  });
+
+  it("refuses two steps with the same weight bound", async () => {
+    await expect(
+      configureProfile({
+        methods: [
+          {
+            key: "post",
+            title: "پست پیشتاز",
+            kind: "delivery",
+            pricing: {
+              mode: "weight",
+              tiers: [
+                { upToKg: 1, price: 60000 },
+                { upToKg: 1, price: 70000 },
+              ],
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/تکراری/);
+  });
+});
+
+describe("Phase 37: seller-funded shipping discounts", () => {
+  const CODE_CARD = {
+    methods: [
+      {
+        key: "post",
+        title: "پست پیشتاز",
+        kind: "delivery",
+        carrier: "پست",
+        pricing: { mode: "flat", flatFee: 45000 },
+      },
+    ],
+    discounts: [
+      { code: "SHIP30", type: "percent", value: 30, minSubtotal: 0, maxDiscount: 40000, enabled: true },
+    ],
+  };
+
+  it("reduces the charge and records the code on the order", async () => {
+    await configureProfile(CODE_CARD);
+    const res = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "SHIP30",
+    });
+    expect(res.status).toBe(200);
+    const order = res.body.order;
+    expect(order.shippingFee).toBe(31500);
+    expect(order.subtotal + order.shippingFee - (order.discount || 0)).toBe(order.total);
+
+    const stored = await Order.findById(order.id).lean();
+    expect(stored.shipping.fee).toBe(31500);
+    expect(stored.shipping.originalFee).toBe(45000);
+    expect(stored.shipping.discount).toBe(13500);
+    expect(stored.shipping.discountCode).toBe("SHIP30");
+  });
+
+  it("never lets a fixed code exceed the fee it is discounting", async () => {
+    // The unbounded-loss clamp, asserted through the public API. A code worth
+    // 5,000,000 against a 45,000 charge must produce free delivery, not a
+    // negative order total.
+    await configureProfile({
+      ...CODE_CARD,
+      discounts: [
+        { code: "HUGE", type: "fixed", value: 5000000, minSubtotal: 0, maxDiscount: 5000000, enabled: true },
+      ],
+    });
+    const res = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "HUGE",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.order.shippingFee).toBe(0);
+    expect(res.body.order.total).toBe(500000);
+  });
+
+  it("ignores a discount amount smuggled into the checkout body", async () => {
+    // Same guarantee as `shippingFee`, enforced one layer up: Zod strips the
+    // undeclared key, so a client posting `shippingDiscount: 45000` gets the
+    // code's real 13,500 reduction, not 45,000. `OrderService` keeps its own
+    // guard for internal callers that bypass the route.
+    await configureProfile(CODE_CARD);
+    const res = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "SHIP30",
+      shippingDiscount: 45000,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.order.shippingFee).toBe(31500);
+  });
+
+  it("refuses a code belonging to another store, indistinguishably from a typo", async () => {
+    await ShippingService.saveProfile({
+      sellerId: otherStore._id,
+      payload: {
+        isEnabled: true,
+        methods: [
+          { key: "cheap", title: "ارسال ارزان", kind: "delivery", pricing: { mode: "flat", flatFee: 1000 } },
+        ],
+        discounts: [
+          { code: "THEIRS", type: "percent", value: 100, minSubtotal: 0, maxDiscount: 100000, enabled: true },
+        ],
+      },
+    });
+    await configureProfile(CODE_CARD);
+
+    const stolen = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "THEIRS",
+    });
+    const typo = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "THEIRSX",
+    });
+    expect(stolen.status).toBe(200);
+    expect(typo.status).toBe(200);
+    expect(stolen.body.order.shippingFee).toBe(45000);
+    expect(typo.body.order.shippingFee).toBe(45000);
+  });
+
+  it("quotes the same discounted price the checkout then charges", async () => {
+    await configureProfile(CODE_CARD);
+    const quote = await request(app)
+      .post(`/api/storefront/${SLUG}/shipping/quote`)
+      .set("Authorization", AUTH(buyerToken))
+      .send({
+        items: [{ productId, qty: 1 }],
+        shippingAddress: ADDRESS,
+        shippingDiscountCode: "SHIP30",
+      });
+    expect(quote.status).toBe(200);
+    const quoted = quote.body.methods.find((m) => m.key === "post");
+    expect(quoted.fee).toBe(31500);
+    expect(quoted.originalFee).toBe(45000);
+
+    const res = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "SHIP30",
+    });
+    expect(res.body.order.shippingFee).toBe(quoted.fee);
+  });
+
+  it("keeps the seller's courier cost out of the buyer's receipt", async () => {
+    await configureProfile(CODE_CARD);
+    const res = await checkout({
+      shippingMethodId: "post",
+      shippingAddress: ADDRESS,
+      shippingDiscountCode: "SHIP30",
+    });
+    const buyerView = res.body.order.shipping;
+    expect(buyerView.discount).toBe(13500);
+    expect(buyerView.originalFee).toBeUndefined();
+  });
+});
+
+describe("Phase 37: what the seller can save", () => {
+  it("stores discount codes and round-trips them", async () => {
+    const res = await request(app)
+      .put("/api/seller/shipping")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 45000 } },
+        ],
+        discounts: [
+          { code: "ship30", type: "percent", value: 30, minSubtotal: 100000, maxDiscount: 40000 },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.discounts[0]).toMatchObject({
+      code: "SHIP30",
+      type: "percent",
+      value: 30,
+      minSubtotal: 100000,
+      maxDiscount: 40000,
+    });
+  });
+
+  it("requires a maxDiscount, because an uncapped fixed code is an open liability", async () => {
+    const res = await request(app)
+      .put("/api/seller/shipping")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 45000 } },
+        ],
+        discounts: [{ code: "NOCAP", type: "fixed", value: 50000, minSubtotal: 0 }],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PROFILE");
+    expect(JSON.stringify(res.body.error.details)).toContain("سقف تخفیف الزامی است");
+  });
+
+  it("refuses a percent code above 100 rather than clamping it silently", async () => {
+    const res = await request(app)
+      .put("/api/seller/shipping")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 45000 } },
+        ],
+        discounts: [
+          { code: "OVER", type: "percent", value: 150, minSubtotal: 0, maxDiscount: 45000 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body.error.details)).toContain("نمی‌تواند بیش از ۱۰۰ باشد");
+  });
+
+  it("refuses duplicate codes", async () => {
+    const res = await request(app)
+      .put("/api/seller/shipping")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 45000 } },
+        ],
+        discounts: [
+          { code: "DUP", type: "fixed", value: 1000, minSubtotal: 0, maxDiscount: 1000 },
+          { code: "dup", type: "fixed", value: 2000, minSubtotal: 0, maxDiscount: 2000 },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body.error.details)).toContain("کد تکراری است");
+  });
+
+  it("previews a code against a basket, so a seller can test it before it goes live", async () => {
+    await request(app)
+      .put("/api/seller/shipping")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 45000 } },
+        ],
+        discounts: [
+          { code: "SHIP30", type: "percent", value: 30, minSubtotal: 100000, maxDiscount: 40000 },
+        ],
+      });
+
+    // Typed in lower case on purpose: the seller types what a buyer would type,
+    // and the preview must not disagree with the buyer's own quote.
+    const res = await request(app)
+      .post("/api/seller/shipping/preview")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        subtotal: 500000,
+        totalWeightKg: 2,
+        totalQty: 1,
+        shippingAddress: ADDRESS,
+        discountCode: " ship30 ",
+      });
+    expect(res.status).toBe(200);
+    const post = res.body.methods.find((m) => m.key === "post");
+    expect(post.fee).toBe(31500);
+    expect(post.originalFee).toBe(45000);
+    expect(res.body.discount).toMatchObject({ code: "SHIP30", applied: true });
+  });
+
+  it("explains a code that the seller's own basket cannot satisfy", async () => {
+    await request(app)
+      .put("/api/seller/shipping")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        isEnabled: true,
+        methods: [
+          { key: "post", title: "پست", kind: "delivery", pricing: { mode: "flat", flatFee: 45000 } },
+        ],
+        discounts: [
+          { code: "BIGONLY", type: "fixed", value: 10000, minSubtotal: 1000000, maxDiscount: 10000 },
+        ],
+      });
+
+    const res = await request(app)
+      .post("/api/seller/shipping/preview")
+      .set("Authorization", AUTH(ownerToken))
+      .send({
+        subtotal: 50000,
+        totalWeightKg: 1,
+        totalQty: 1,
+        shippingAddress: ADDRESS,
+        discountCode: "BIGONLY",
+      });
+    expect(res.status).toBe(200);
+    // A rejected code still has to come back with a price, or the seller is
+    // debugging a preview that never rendered anything. The verdict stays a
+    // plain boolean on the public surface: a reason string here would tell a
+    // buyer which of a store's codes exist.
+    expect(res.body.methods.find((m) => m.key === "post").fee).toBe(45000);
+    expect(res.body.discount).toMatchObject({
+      code: "BIGONLY",
+      applied: false,
+      rejected: true,
+    });
   });
 });

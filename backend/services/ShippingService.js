@@ -29,6 +29,7 @@ const {
 const { calculateDistance, isValidCoordinates } = require("../utils/geospatial");
 
 const ZONE_SPECIFICITY = ShippingProfile.ZONE_SPECIFICITY;
+const DISCOUNT_TYPES = ShippingProfile.DISCOUNT_TYPES;
 const MAX_FEE = 50_000_000; // Sanity ceiling; a courier fee above this is a typo.
 // A rate card is a handful of methods and a handful of zones each. The caps keep
 // a runaway form post from turning the quote loop into a denial of service, and
@@ -36,6 +37,13 @@ const MAX_FEE = 50_000_000; // Sanity ceiling; a courier fee above this is a typ
 // the seller believes is live and is not.
 const MAX_METHODS = 12;
 const MAX_ZONES_PER_METHOD = 50;
+const MAX_TIERS_PER_METHOD = 10;
+const MAX_DISCOUNTS = 10;
+// Discount codes are enumerated by buyers, so the keyspace has to be tight and
+// the lookup has to be rate-limited. The coupon code rules (Phase 35) apply here
+// for the same reasons: a short, guessable code plus no rate limit is a coupon
+// printer.
+const DISCOUNT_CODE_RE = /^[A-Z0-9-]{3,20}$/;
 
 class ShippingDomainError extends Error {
   constructor(code, message, details = {}) {
@@ -65,6 +73,94 @@ function toInt(value, fallback = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.trunc(n));
+}
+
+/**
+ * Price a weight-billed method from a seller's step card.
+ *
+ * The step is chosen by the SAME whole-kilogram figure the courier bills by
+ * (`roundUpKg`), so a buyer and a seller looking at the same 0.4 kg parcel agree
+ * on which bracket it lands in. Reusing the rounded number is the point: pricing
+ * step one at 0.9 kg and step two at 1.1 kg would make a 1 kg parcel cheaper than
+ * a 0.9 kg one.
+ *
+ * @param {object[]} tiers   ascending by `upToKg`
+ * @param {number}   totalWeightKg
+ * @param {number}   perKgFee  fallback when the seller has written no steps
+ * @returns {number}
+ */
+function computeTierFee(tiers, totalWeightKg, perKgFee = 0) {
+  const list = Array.isArray(tiers) ? tiers : [];
+  if (list.length === 0) return toInt(perKgFee) * roundUpKg(totalWeightKg);
+
+  const kg = roundUpKg(totalWeightKg);
+  // The schema already forbids unsorted duplicates, but this list can also come
+  // straight from a request body, so the ordering is re-established here instead
+  // of trusted. Picking the first match is then deterministic.
+  const sorted = [...list].sort((a, b) => toInt(a.upToKg) - toInt(b.upToKg));
+  for (const tier of sorted) {
+    if (kg <= toInt(tier.upToKg)) return toInt(tier.price);
+  }
+  // Heavier than the top step. A courier would refuse or re-quote, but the buyer
+  // has to be given a number, so the top step is held flat rather than guessed
+  // upward — and the seller sees a `unavailable`-free but expensive option they
+  // can fix by adding a step.
+  return toInt(sorted[sorted.length - 1].price);
+}
+
+/**
+ * Resolve a shipping discount code against this seller's own codes.
+ *
+ * The client sends a CODE, never an amount. Everything about the reduction —
+ * whether it exists, how much it is, whether the basket qualifies — is decided
+ * here from the seller's stored policy.
+ *
+ * Clamp order matters, and it is the whole safety argument for this feature:
+ *   1. `minSubtotal` gate — a code that does not apply yet applies at 0, not as
+ *      an error, so a buyer can add an item and see the price drop;
+ *   2. percent/fixed → a raw amount;
+ *   3. `maxDiscount` — the seller's own promise about the ceiling;
+ *   4. the fee itself — the hard stop. Nothing above this can make the order's
+ *      total smaller than the goods subtotal, which is the unbounded loss
+ *      Phase 35 warned about.
+ *
+ * @param {object} params
+ * @param {object} params.profile   plain ShippingProfile
+ * @param {string} params.code      buyer-supplied code, may be empty
+ * @param {number} params.fee       the delivery charge BEFORE any discount
+ * @param {number} params.subtotal  goods subtotal, for the `minSubtotal` gate
+ * @returns {{amount: number, code: string, applied: boolean, reason: string}}
+ */
+function resolveShippingDiscount({ profile, code = "", fee = 0, subtotal = 0 }) {
+  const none = { amount: 0, code: "", applied: false, reason: "" };
+  const normalized = typeof code === "string" ? code.trim().toUpperCase() : "";
+  if (!normalized) return none;
+
+  const list = (profile?.discounts || []).filter((d) => d && d.enabled !== false);
+  const discount = list.find((d) => d.code === normalized);
+  // A code that does not exist here and a code belonging to another store are
+  // the same lookup miss, so the response cannot be used to discover which codes
+  // other sellers are running.
+  if (!discount) return { ...none, reason: "SHIPPING_DISCOUNT_INVALID" };
+
+  if (toInt(subtotal) < toInt(discount.minSubtotal)) {
+    return { ...none, reason: "SHIPPING_DISCOUNT_MIN_SUBTOTAL" };
+  }
+
+  const charge = toInt(fee);
+  if (charge <= 0) return { ...none, reason: "SHIPPING_DISCOUNT_NO_FEE" };
+
+  const raw =
+    discount.type === "percent"
+      ? Math.floor((charge * toInt(discount.value)) / 100)
+      : toInt(discount.value);
+  // The fee is the hard ceiling; `maxDiscount` is the seller's stated one. A
+  // percent code above 100 is nonsense rather than a free order, and a fixed
+  // code above the fee means the seller is paying the buyer to shop.
+  const amount = Math.min(Math.max(0, toInt(raw)), toInt(discount.maxDiscount), charge);
+  if (amount <= 0) return { ...none, code: normalized, reason: "SHIPPING_DISCOUNT_NO_EFFECT" };
+
+  return { amount, code: normalized, applied: true, reason: "" };
 }
 
 /**
@@ -283,7 +379,7 @@ function computeFee({
         fee = toInt(pricing.perItemFee) * toInt(totalQty);
         break;
       case "weight":
-        fee = toInt(pricing.perKgFee) * roundUpKg(totalWeightKg);
+        fee = computeTierFee(pricing.tiers, totalWeightKg, pricing.perKgFee);
         break;
       case "flat":
       default:
@@ -315,6 +411,7 @@ function computeFee({
  * @param {number} params.subtotal
  * @param {number} params.totalWeightKg
  * @param {number} params.totalQty
+ * @param {string} params.discountCode  seller-issued shipping discount code
  * @returns {object} quote
  */
 function quoteProfile({
@@ -323,6 +420,7 @@ function quoteProfile({
   subtotal = 0,
   totalWeightKg = 0,
   totalQty = 0,
+  discountCode = "",
 }) {
   const profileFreeThreshold = toInt(profile?.freeShippingThreshold);
   const methods = (profile?.methods || []).filter((m) => m.enabled !== false);
@@ -332,6 +430,15 @@ function quoteProfile({
       configured: false,
       freeShippingThreshold: profileFreeThreshold,
       methods: [],
+      // A code against a store that never configured shipping is a miss like any
+      // other: there is no charge to reduce, so there is nothing to apply. The
+      // shape matches the configured branch exactly, because the buyer UI reads
+      // one field and must not have to know which branch it got.
+      discount: {
+        code: typeof discountCode === "string" ? discountCode.trim().toUpperCase() : "",
+        applied: false,
+        rejected: Boolean(discountCode),
+      },
       warning:
         "فروشگاه هنوز روش ارسالی تنظیم نکرده است؛ سفارش‌ها فعلاً بدون هزینهٔ ارسال ثبت می‌شوند.",
     };
@@ -358,7 +465,7 @@ function quoteProfile({
       continue;
     }
     const zone = method.kind === "pickup" ? null : selectZone(method, address);
-    const fee = computeFee({
+    const originalFee = computeFee({
       method,
       zone,
       subtotal,
@@ -366,13 +473,26 @@ function quoteProfile({
       totalQty,
       profileFreeThreshold,
     });
+    // The discount is resolved per method, not once for the quote: a code can be
+    // valid, and it is clamped to whatever each method's charge happens to be.
+    // Resolving it once against the cheapest method and applying that number
+    // everywhere would discount an expensive method by a cheap method's amount.
+    const discount = resolveShippingDiscount({
+      profile,
+      code: discountCode,
+      fee: originalFee,
+      subtotal,
+    });
     const eta = (zone && zone.etaOverride) || method.eta || {};
     quoted.push({
       key: method.key,
       title: method.title,
       kind: method.kind,
       carrier: method.carrier || "",
-      fee,
+      fee: originalFee - discount.amount,
+      originalFee,
+      discount: discount.amount,
+      discountCode: discount.applied ? discount.code : "",
       zoneLabel: zone?.label || "",
       eta: {
         minDays: toInt(eta.minDays, 1),
@@ -404,6 +524,17 @@ function quoteProfile({
     // Why a configured method is missing. The seller can act on these; the buyer
     // never needs to see them.
     unavailable,
+    // A single verdict for the code, taken from the cheapest quoted method. The
+    // buyer needs to know whether their code was honoured, not per-method
+    // details; the per-method figures are on each entry.
+    discount: {
+      code: typeof discountCode === "string" ? discountCode.trim().toUpperCase() : "",
+      applied: quoted.some((m) => m.discount > 0),
+      // Not applied but the buyer typed something. Lets the UI say "this code is
+      // not valid for this store" instead of silently charging full price, which
+      // is the complaint that generates support tickets.
+      rejected: Boolean(discountCode) && !quoted.some((m) => m.discount > 0),
+    },
     warning: quoted.length === 0 ? "هیچ روش ارسالی برای این مقصد در دسترس نیست." : "",
   };
 }
@@ -555,6 +686,32 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
       : "flat";
     const pickupRaw = raw.pickup || {};
 
+    if (Array.isArray(pricingRaw.tiers) && pricingRaw.tiers.length > MAX_TIERS_PER_METHOD) {
+      errors.push(`${at}: حداکثر ${MAX_TIERS_PER_METHOD} پلکان وزن`);
+      return;
+    }
+    const tiers = [];
+    (Array.isArray(pricingRaw.tiers) ? pricingRaw.tiers : []).forEach((t, ti) => {
+      const upToKg = toInt(t?.upToKg);
+      const price = toInt(t?.price);
+      if (upToKg < 1) {
+        errors.push(`${at} / پلکان ${ti + 1}: سقف کیلوگرم باید حداقل ۱ باشد`);
+        return;
+      }
+      // Rejected rather than reordered: a seller who typed 5 then 2 made a
+      // mistake, and silently sorting it would store a rate card they never
+      // approved.
+      if (tiers.some((existing) => existing.upToKg === upToKg)) {
+        errors.push(`${at}: سقف کیلوگرم ${upToKg} تکراری است`);
+        return;
+      }
+      if (tiers.length > 0 && upToKg < tiers[tiers.length - 1].upToKg) {
+        errors.push(`${at}: پلکان‌های وزن باید به‌ترتیب صعودی وارد شوند`);
+        return;
+      }
+      tiers.push({ upToKg, price });
+    });
+
     methods.push({
       key,
       title: title.slice(0, 80),
@@ -568,6 +725,7 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
         flatFee: toInt(pricingRaw.flatFee),
         perKgFee: toInt(pricingRaw.perKgFee),
         perItemFee: toInt(pricingRaw.perItemFee),
+        tiers,
         freeThreshold: toInt(pricingRaw.freeThreshold),
       },
       eta: {
@@ -593,6 +751,11 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
     });
   });
 
+  // Discounts are validated into the same accumulator as the methods, so the
+  // seller gets one error listing every problem with the rate card rather than
+  // fixing them one round-trip at a time.
+  const discounts = normalizeDiscounts(payload.discounts, errors);
+
   if (errors.length) {
     throw new ShippingDomainError("INVALID_PROFILE", errors.join("؛ "), { errors });
   }
@@ -604,6 +767,7 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
         sellerUserId: sellerUserId || null,
         isEnabled: payload.isEnabled === true,
         freeShippingThreshold: toInt(payload.freeShippingThreshold),
+        discounts,
         methods,
       },
     },
@@ -611,9 +775,85 @@ async function saveProfile({ sellerId, sellerUserId, payload = {} }) {
   ).lean();
 }
 
+/**
+ * Validate a seller's shipping discount codes.
+ *
+ * `maxDiscount` is required rather than defaulted. A `fixed` code with no cap is
+ * an open-ended liability — the seller is promising a fixed amount off every
+ * delivery forever — so a code without one is refused rather than stored with a
+ * silent default, which would be the exact "unbounded loss" this feature has to
+ * avoid creating.
+ *
+ * @param {unknown} input
+ * @param {string[]} errors accumulator, so the seller sees every problem at once
+ * @returns {object[]} normalized codes, ready to store
+ */
+function normalizeDiscounts(input, errors) {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) {
+    errors.push("فهرست کدهای تخفیف ارسال نامعتبر است");
+    return [];
+  }
+  if (input.length > MAX_DISCOUNTS) {
+    errors.push(`حداکثر ${MAX_DISCOUNTS} کد تخفیف ارسال می‌توانید تعریف کنید`);
+    return [];
+  }
+
+  const out = [];
+  const seen = new Set();
+  input.forEach((raw, i) => {
+    const at = `کد تخفیف ${i + 1}`;
+    const code = typeof raw?.code === "string" ? raw.code.trim().toUpperCase() : "";
+    if (!DISCOUNT_CODE_RE.test(code)) {
+      errors.push(`${at}: کد باید ۳ تا ۲۰ نویسهٔ انگلیسی، عدد یا خط تیره باشد`);
+      return;
+    }
+    if (seen.has(code)) {
+      errors.push(`${at}: کد تکراری است`);
+      return;
+    }
+    seen.add(code);
+
+    const type = DISCOUNT_TYPES.includes(raw?.type) ? raw.type : null;
+    if (!type) {
+      errors.push(`${at}: نوع تخفیف نامعتبر است`);
+      return;
+    }
+    const value = Number(raw?.value);
+    if (!Number.isFinite(value) || value < 0) {
+      errors.push(`${at}: مقدار نامعتبر است`);
+      return;
+    }
+    if (type === "percent" && value > 100) {
+      // A "150% off delivery" code is not a promotion, it is a bug in the form.
+      // Storing it would rely entirely on the runtime clamp to make it safe,
+      // which hides the mistake from the seller who can fix it.
+      errors.push(`${at}: تخفیف درصدی نمی‌تواند بیش از ۱۰۰ باشد`);
+      return;
+    }
+    const maxDiscount = Number(raw?.maxDiscount);
+    if (!Number.isFinite(maxDiscount) || maxDiscount < 0) {
+      errors.push(`${at}: سقف تخفیف الزامی است`);
+      return;
+    }
+    out.push({
+      code,
+      type,
+      value: Math.trunc(value),
+      minSubtotal: toInt(raw?.minSubtotal),
+      maxDiscount: Math.trunc(maxDiscount),
+      enabled: raw?.enabled !== false,
+    });
+  });
+
+  return out;
+}
+
 module.exports = {
   ShippingDomainError,
   roundUpKg,
+  computeTierFee,
+  resolveShippingDiscount,
   normalizeAddress,
   isEmptyAddress,
   zoneMatches,
@@ -626,4 +866,6 @@ module.exports = {
   getProfile,
   saveProfile,
   MAX_FEE,
+  MAX_DISCOUNTS,
+  DISCOUNT_CODE_RE,
 };

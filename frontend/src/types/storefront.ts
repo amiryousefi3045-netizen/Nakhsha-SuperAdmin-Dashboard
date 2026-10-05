@@ -159,6 +159,16 @@ export interface CheckoutInput {
    * method the destination allows.
    */
   shippingMethodId?: string;
+  /**
+   * The store's shipping-discount code, or empty for none (Phase 37).
+   *
+   * A lookup key only, exactly like `couponCode`: the amount is decided
+   * server-side from the seller's own rate card and caps. Sending a number
+   * instead of a code would be dropped by the route's schema, so the buyer
+   * would still be charged the real price - which is why there is deliberately
+   * no `shippingDiscount` field here for the UI to be tempted into sending.
+   */
+  shippingDiscountCode?: string;
 }
 
 export interface StorefrontPayment {

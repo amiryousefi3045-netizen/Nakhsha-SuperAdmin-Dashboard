@@ -108,6 +108,12 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
   const [methodKey, setMethodKey] = useState("");
   const [shippingBusy, setShippingBusy] = useState(false);
   const [shippingMessage, setShippingMessage] = useState("");
+  // The store's own shipping code (Phase 37). Held separately from the campaign
+  // coupon above because the two are validated by different endpoints and can
+  // both be active at once: a buyer may use a 10%-off campaign AND a
+  // shipping-only code, and neither one may cancel the other.
+  const [shippingCodeInput, setShippingCodeInput] = useState("");
+  const [shippingCode, setShippingCode] = useState("");
 
   /**
    * Whether the buyer typed a real destination.
@@ -145,13 +151,19 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
    * and a buyer typing a postal code would otherwise burn the budget on
    * half-finished addresses.
    */
-  async function handleQuoteShipping() {
+  async function handleQuoteShipping(codeOverride?: string) {
     setShippingBusy(true);
     setShippingMessage("");
     try {
+      // The code is passed in rather than read from `shippingCode`: React state
+      // is not updated until this component re-renders, so a handler that both
+      // stores a new code and quotes in the same tick would send the OLD code
+      // and look like the feature is simply broken.
+      const code = codeOverride ?? shippingCode;
       const quote = await quoteStorefrontShipping(slug, {
         items: [{ productId, qty }],
         shippingAddress: address,
+        ...(code ? { shippingDiscountCode: code } : {}),
       });
       setShipping(quote);
       // Preselect the cheapest option, which is what checkout would have chosen
@@ -169,6 +181,32 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
     } finally {
       setShippingBusy(false);
     }
+  }
+
+  /**
+   * Store the code the buyer typed, then re-price.
+   *
+   * There is no separate validation call for shipping codes: the quote endpoint
+   * runs the same resolve checkout will run, so re-quoting IS the check. A code
+   * that does not earn anything comes back as `applied: false` and the quote is
+   * still rendered at full price — the buyer is never blocked, and a code that
+   * belongs to another store reads exactly like a typo, which is the point.
+   */
+  function handleApplyShippingCode() {
+    const code = shippingCodeInput.trim().toUpperCase();
+    setShippingCode(code);
+    if (!code) {
+      setShippingMessage("");
+      return;
+    }
+    void handleQuoteShipping(code);
+  }
+
+  function handleClearShippingCode() {
+    setShippingCodeInput("");
+    setShippingCode("");
+    setShippingMessage("");
+    void handleQuoteShipping("");
   }
 
   /**
@@ -235,6 +273,9 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
         // The method KEY and the destination, never an amount. The server prices
         // the delivery again from the seller's own rate card.
         ...(methodKey ? { shippingMethodId: methodKey } : {}),
+        // The code, never an amount. A client that posted a number here would
+        // have it dropped by the route schema and still be charged the real fee.
+        ...(shippingCode ? { shippingDiscountCode: shippingCode } : {}),
         ...(hasAddress ? { shippingAddress: address } : {}),
       });
       setRefId(result.paymentIntent.refId);
@@ -568,11 +609,51 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
 
         {shippingMessage ? <p className="mt-2 text-xs text-red-600">{shippingMessage}</p> : null}
 
+        {/* Store shipping code (Phase 37). A lookup key, resolved server-side. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            value={shippingCodeInput}
+            onChange={(e) => setShippingCodeInput(e.target.value.toUpperCase())}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleApplyShippingCode();
+              }
+            }}
+            placeholder="کد تخفیف ارسال"
+            aria-label="کد تخفیف ارسال"
+            className="w-44 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+          />
+          {shippingCode ? (
+            <button
+              type="button"
+              onClick={handleClearShippingCode}
+              className="text-xs text-[var(--color-muted)] underline"
+            >
+              حذف کد
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleApplyShippingCode}
+              disabled={!shippingCodeInput.trim() || shippingBusy}
+              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-40"
+            >
+              اعمال کد ارسال
+            </button>
+          )}
+        </div>
+
         {shipping ? (
           <div className="mt-2 space-y-2">
             {shipping.warning ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {shipping.warning}
+              </p>
+            ) : null}
+            {shipping.discount && !shipping.discount.applied ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                این کد برای سفارش شما اعمال نشد.
               </p>
             ) : null}
             {shipping.methods.length === 0 ? (
@@ -607,6 +688,13 @@ function BuyPanel({ slug, productId, price, currency, maxQty }: BuyPanelProps) {
                               : formatSellerPrice(m.fee, shipping.currency ?? currency)}
                           </span>
                         </span>
+                        {m.discount ? (
+                          <span className="mt-0.5 block text-emerald-700">
+                            {formatSellerPrice(m.originalFee ?? m.fee, shipping.currency ?? currency)}{" "}
+                            با کد {m.discountCode ?? ""} (
+                            {formatSellerPrice(m.discount, shipping.currency ?? currency)} تخفیف)
+                          </span>
+                        ) : null}
                         <span className="block text-[var(--color-muted)]">
                           {etaText(m.eta)}
                           {m.carrier ? ` · ${m.carrier}` : ""}

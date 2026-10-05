@@ -2322,14 +2322,20 @@ async function getShippingProfile(req, res) {
     if (!profile) {
       return res.json(
         createSuccessResponse(
-          { configured: false, isEnabled: false, methods: [], freeShippingThreshold: 0 },
+          {
+            configured: false,
+            isEnabled: false,
+            methods: [],
+            discounts: [],
+            freeShippingThreshold: 0,
+          },
           req.id,
         ),
       );
     }
     const fresh = await ShippingProfile.findById(profile._id)
       .select(
-        "isEnabled freeShippingThreshold methods updatedAt",
+        "isEnabled freeShippingThreshold methods discounts updatedAt",
       )
       .lean();
     res.json(
@@ -2339,6 +2345,7 @@ async function getShippingProfile(req, res) {
           isEnabled: fresh.isEnabled !== false,
           freeShippingThreshold: fresh.freeShippingThreshold || 0,
           methods: fresh.methods || [],
+          discounts: fresh.discounts || [],
           updatedAt: fresh.updatedAt,
         },
         req.id,
@@ -2374,6 +2381,7 @@ async function updateShippingProfile(req, res) {
           isEnabled: saved.isEnabled !== false,
           freeShippingThreshold: saved.freeShippingThreshold || 0,
           methods: saved.methods || [],
+          discounts: saved.discounts || [],
         },
         req.id,
       ),
@@ -2409,6 +2417,9 @@ async function previewShippingQuote(req, res) {
       ? {}
       : ShippingService.normalizeAddress(req.body.shippingAddress).value || {};
     const subtotal = Math.max(0, Number(req.body.subtotal) || 0);
+    // A code the seller just typed has to be testable before it goes live, and
+    // the only honest test is the same resolve the buyer's checkout will run.
+    const discountCode = String(req.body.discountCode || "").trim().toUpperCase();
 
     const quote = ShippingService.quoteProfile({
       profile: await ShippingService.getProfile(sellerId),
@@ -2416,6 +2427,7 @@ async function previewShippingQuote(req, res) {
       subtotal,
       totalWeightKg: Math.max(0, Number(req.body.totalWeightKg) || 0),
       totalQty: Math.max(0, Number(req.body.totalQty) || 0),
+      discountCode,
     });
     res.json(createSuccessResponse(quote, req.id));
   } catch (e) {

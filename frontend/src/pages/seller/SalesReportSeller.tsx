@@ -260,7 +260,22 @@ export function SalesReportSeller() {
                   </p>
                 </div>
               </div>
-              {data.summary.shippingCostUnrecorded > 0 ? (
+
+{data.summary.shippingDiscount > 0 ? (
+                  <div className="rounded-xl border border-[var(--color-border)] p-3">
+                    <p className="text-xs text-[var(--color-muted)]">
+                      تخفیف ارسال فروشنده
+                    </p>
+                    <p className="mt-1 text-base font-bold text-amber-700">
+                      − {formatSellerPrice(data.summary.shippingDiscount, data.currency)}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--color-muted)]">
+                      روی {faNumber(data.summary.shippingDiscountOrders)} سفارش، از سهم{" "}
+                      {formatSellerPrice(data.summary.shippingGross, data.currency)} دریافتی
+                      که به {formatSellerPrice(data.summary.shippingFee, data.currency)} رسید.
+                    </p>
+                  </div>
+                ) : null}              {data.summary.shippingCostUnrecorded > 0 ? (
                 <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   هزینهٔ ارسال {faNumber(data.summary.shippingCostUnrecorded)} سفارش در این

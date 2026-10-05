@@ -219,6 +219,17 @@ export interface SalesReportSummary {
   shippingCost: number;
   shippingMargin: number;
   shippingCostUnrecorded: number;
+  /**
+   * Shipping the seller gave away on their own codes (Phase 37).
+   *
+   * `shippingFee` is already NET of this, which is why it can look lower than
+   * the rate card. `shippingGross` is the pre-discount figure, so a seller can
+   * reconcile "the card says 45,000, the report says 31,500" with two numbers
+   * instead of guessing.
+   */
+  shippingDiscount: number;
+  shippingDiscountOrders: number;
+  shippingGross: number;
 }
 
 export interface SalesReportStatusRow {
@@ -499,6 +510,15 @@ export interface SellerOrder {
     kind: string;
     carrier: string;
     fee: number;
+    /**
+     * Delivery detail additions (Phase 37). `originalFee` is what the rate card
+     * charged before the seller's code; `discount` is what was actually taken
+     * off, which can be less than the code's headline number. Both are 0/empty on
+     * an order that used no code, and are part of this seller-only view.
+     */
+    originalFee?: number;
+    discount?: number;
+    discountCode?: string;
     cost?: number;
     shippingMargin?: number;
     costRecordedAt?: string | null;
@@ -711,10 +731,27 @@ export interface SellerFinanceSummary {
      */
     refunded?: number;
     shippingCost?: number;
+    /**
+     * Shipping given away on the seller's own codes (Phase 37).
+     *
+     * NOT deducted from `delivered` - see `commission.base`. The seller's net
+     * falls by this amount because the charge they collected falls by it, and
+     * the platform's cut does not move.
+     */
+    shippingDiscount?: number;
     held: number;
     awaiting: number;
   };
-  commission: { percent: number; amount: number };
+  commission: {
+    percent: number;
+    amount: number;
+    /**
+     * What the commission was charged on. Larger than `gross.delivered` when
+     * discounts were given - that gap is the seller funding their own
+     * promotion, and showing it is the only way the two numbers reconcile.
+     */
+    base?: number;
+  };
   net: { earned: number; available: number };
   outlaid: { requested: number; processing: number; paid: number; total: number };
   cancelledPayouts: number;

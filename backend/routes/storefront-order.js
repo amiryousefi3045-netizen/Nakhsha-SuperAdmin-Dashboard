@@ -162,6 +162,20 @@ const checkoutBodySchema = z.object({
    * computed from the seller's own rate card in ShippingService.
    */
   shippingMethodId: z.string().trim().max(40, "روش ارسال نامعتبر است").optional().default(""),
+  /**
+   * The seller's shipping-discount code (Phase 37). A lookup, never an amount.
+   *
+   * Note on the `shippingDiscount` that is deliberately NOT declared here: Zod
+   * strips unknown keys, so a client that posts its own discount number has it
+   * dropped before it reaches the domain, exactly as `shippingFee` already is.
+   * The result is the safe one — the real code, or no code, decides the price.
+   */
+  shippingDiscountCode: z
+    .string()
+    .trim()
+    .max(20, "کد تخفیف ارسال نامعتبر است")
+    .optional()
+    .default(""),
 });
 
 // Delivery preview (Phase 36, P1-08). Takes the basket and the destination
@@ -179,6 +193,9 @@ const shippingQuoteBodySchema = z.object({
     .min(1, "سبد خرید خالی است")
     .max(50, "تعداد اقلام بیش از حد مجاز است"),
   shippingAddress: checkoutBodySchema.shape.shippingAddress,
+  // The quote has to honour the same code the checkout will, or the preview
+  // would promise a price the order then contradicts.
+  shippingDiscountCode: checkoutBodySchema.shape.shippingDiscountCode,
 });
 
 const callbackBodySchema = z.object({  result: z.enum(["SUCCESS", "FAIL"], {
