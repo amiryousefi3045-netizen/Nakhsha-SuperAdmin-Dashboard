@@ -65,6 +65,9 @@ import type {
   RequestSellerPayoutInput,
   TeamMember,
   TeamMemberRole,
+  InventoryLocation,
+  InventoryLocationPayload,
+  ProductLevels,
 } from "../types/seller";
 
 /** Throws the normalized ApiError when a request failed. */
@@ -236,10 +239,76 @@ export async function exportSellerInventoryCsv(
 /** PATCH /seller/inventory/:productId (atomic, non-negativity enforced) */
 export async function adjustSellerStock(
   productId: string,
-  payload: { delta: number; reason?: string; type?: string },
+  payload: { delta: number; reason?: string; type?: string; locationId?: string | null },
 ): Promise<SellerProduct> {
   const res = await apiClient.patch<{ product: SellerProduct }>(
     `/seller/inventory/${productId}`,
+    payload,
+  );
+  return unwrap(res, { product: {} as SellerProduct }).product;
+}
+
+// ── Inventory locations (stage 38) ─────────────────────────────────────────
+
+/** GET /seller/inventory/locations */
+export async function listInventoryLocations(): Promise<InventoryLocation[]> {
+  const res = await apiClient.get<{ items: InventoryLocation[] }>("/seller/inventory/locations");
+  return unwrap(res, { items: [] }).items;
+}
+
+/** POST /seller/inventory/locations */
+export async function createInventoryLocation(
+  payload: InventoryLocationPayload,
+): Promise<InventoryLocation> {
+  const res = await apiClient.post<{ location: InventoryLocation }>(
+    "/seller/inventory/locations",
+    payload,
+  );
+  return unwrap(res, { location: {} as InventoryLocation }).location;
+}
+
+/** PATCH /seller/inventory/locations/:locationId */
+export async function updateInventoryLocation(
+  locationId: string,
+  payload: InventoryLocationPayload,
+): Promise<InventoryLocation> {
+  const res = await apiClient.patch<{ location: InventoryLocation }>(
+    `/seller/inventory/locations/${locationId}`,
+    payload,
+  );
+  return unwrap(res, { location: {} as InventoryLocation }).location;
+}
+
+/** DELETE /seller/inventory/locations/:locationId */
+export async function deleteInventoryLocation(locationId: string): Promise<void> {
+  await apiClient.delete(`/seller/inventory/locations/${locationId}`);
+}
+
+/** GET /seller/inventory/:productId/levels */
+export async function getProductLevels(productId: string): Promise<ProductLevels> {
+  const res = await apiClient.get<ProductLevels>(`/seller/inventory/${productId}/levels`);
+  return unwrap(res, {} as ProductLevels);
+}
+
+/** POST /seller/inventory/:productId/transfer */
+export async function transferInventoryStock(
+  productId: string,
+  payload: { fromLocationId: string; toLocationId: string; qty: number },
+): Promise<SellerProduct> {
+  const res = await apiClient.post<{ product: SellerProduct }>(
+    `/seller/inventory/${productId}/transfer`,
+    payload,
+  );
+  return unwrap(res, { product: {} as SellerProduct }).product;
+}
+
+/** POST /seller/inventory/:productId/reconcile */
+export async function reconcileInventoryStock(
+  productId: string,
+  payload: { locationId: string; counted: number; reason?: string },
+): Promise<SellerProduct> {
+  const res = await apiClient.post<{ product: SellerProduct }>(
+    `/seller/inventory/${productId}/reconcile`,
     payload,
   );
   return unwrap(res, { product: {} as SellerProduct }).product;

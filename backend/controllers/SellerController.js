@@ -8,6 +8,7 @@ const Craft = require("../models/Craft");
 const Order = require("../models/Order");
 const ShippingProfile = require("../models/ShippingProfile");
 const OrderService = require("../services/OrderService");
+const InventoryService = require("../services/InventoryService");
 const ReturnService = require("../services/ReturnService");
 const CouponService = require("../services/CouponService");
 const ShippingService = require("../services/ShippingService");
@@ -87,7 +88,18 @@ function productToDTO(product) {
       onHand: p.stock?.onHand ?? 0,
       reserved: p.stock?.reserved ?? 0,
       incoming: p.stock?.incoming ?? 0,
-      available: Math.max(0, (p.stock?.onHand ?? 0) - (p.stock?.reserved ?? 0)),
+      // Free balance, not `onHand - reserved`: reserved units have already
+      // been taken out of onHand (see Product.availableStock).
+      available: Math.max(0, p.stock?.onHand ?? 0),
+      // Per-location breakdown (stage 38). Empty for a seller who never set
+      // locations up, and for products that predate the feature.
+      locations: Array.isArray(p.stock?.locations)
+        ? p.stock.locations.map((l) => ({
+            locationId: String(l.locationId),
+            onHand: l.onHand ?? 0,
+            reserved: l.reserved ?? 0,
+          }))
+        : [],
     },
     isLowStock: typeof p.isLowStock === "boolean" ? p.isLowStock : false,
     isOutOfStock: typeof p.isOutOfStock === "boolean" ? p.isOutOfStock : false,
@@ -143,8 +155,14 @@ async function getDashboard(req, res) {
           sellerId,
           status: { $in: ["active", "paused"] },
           stockPolicy: "tracked",
+          // `> 0` as well as `<= threshold`: an empty shelf is reported as
+          // out-of-stock, and counting it in both tiles made the dashboard
+          // disagree with the `isLowStock` flag on the product itself.
           $expr: {
-            $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, "$lowStockThreshold"],
+            $and: [
+              { $gt: [{ $ifNull: ["$stock.onHand", 0] }, 0] },
+              { $lte: [{ $ifNull: ["$stock.onHand", 0] }, "$lowStockThreshold"] },
+            ],
           },
         }),
         Product.countDocuments({
@@ -152,7 +170,7 @@ async function getDashboard(req, res) {
           status: { $in: ["active", "paused"] },
           stockPolicy: "tracked",
           $expr: {
-            $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, 0],
+            $lte: [{ $ifNull: ["$stock.onHand", 0] }, 0],
           },
         }),
         Product.countDocuments({ sellerId, status: "pending_review" }),
@@ -737,12 +755,16 @@ async function bulkUpdateProductStatus(req, res) {
 function buildInventoryFilter(sellerId, { status, q } = {}) {
   const filter = { sellerId, stockPolicy: "tracked" };
   if (status === "low") {
+    // Same rule as Product.isLowStock: low means running out, not empty.
     filter.$expr = {
-      $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, "$lowStockThreshold"],
+      $and: [
+        { $gt: [{ $ifNull: ["$stock.onHand", 0] }, 0] },
+        { $lte: [{ $ifNull: ["$stock.onHand", 0] }, "$lowStockThreshold"] },
+      ],
     };
   } else if (status === "out") {
     filter.$expr = {
-      $lte: [{ $subtract: [{ $ifNull: ["$stock.onHand", 0] }, { $ifNull: ["$stock.reserved", 0] }] }, 0],
+      $lte: [{ $ifNull: ["$stock.onHand", 0] }, 0],
     };
   }
   if (q && String(q).trim()) {
@@ -805,7 +827,8 @@ async function exportInventory(req, res) {
       p.stock?.onHand ?? 0,
       p.stock?.reserved ?? 0,
       p.stock?.incoming ?? 0,
-      Math.max(0, (p.stock?.onHand ?? 0) - (p.stock?.reserved ?? 0)),
+      // See Product.availableStock: onHand is already net of reservations.
+      Math.max(0, p.stock?.onHand ?? 0),
       p.lowStockThreshold ?? 0,
       (p.createdAt || new Date(0)).toISOString(),
       (p.updatedAt || new Date(0)).toISOString(),
@@ -828,7 +851,7 @@ async function exportInventory(req, res) {
 
 async function adjustStock(req, res) {
   const { productId } = req.params;
-  const { delta, reason, type } = req.body || {};
+  const { delta, reason, type, locationId } = req.body || {};
 
   if (!mongoose.Types.ObjectId.isValid(productId)) {
     return res
@@ -840,6 +863,11 @@ async function adjustStock(req, res) {
       .status(400)
       .json(createErrorResponse("VALIDATION_ERROR", "مقدار تغییر موجودی باید عدد صحیح غیرصفر باشد", { field: "delta" }, req.id));
   }
+  if (locationId && !mongoose.Types.ObjectId.isValid(locationId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه انبار نامعتبر است", { field: "locationId" }, req.id));
+  }
 
   const ALLOWED_TYPES = ["receipt", "adjustment", "correction", "count"];
   const adjType = type && ALLOWED_TYPES.includes(type) ? type : "adjustment";
@@ -848,29 +876,14 @@ async function adjustStock(req, res) {
     const sellerId = req.seller._id;
 
     // Atomic owner-scoped update — a concurrent request can never change
-    // another seller's stock or drive onHand below zero.
-    const product = await Product.findOneAndUpdate(
-      {
-        _id: productId,
-        sellerId,
-        stockPolicy: "tracked",
-        "stock.onHand": { $gte: delta < 0 ? -delta : 0 },
-      },
-      [
-        {
-          $set: {
-            "stock.onHand": {
-              $max: [{ $add: [{ $ifNull: ["$stock.onHand", 0] }, delta] }, 0],
-            },
-          },
-        },
-      ],
-      { new: true, runValidators: true },
-    );
+    // another seller's stock or drive onHand below zero. When a location is
+    // named, the delta lands on that level and the aggregate is recomputed,
+    // so the two can never disagree even if the level has to be opened first.
+    const product = await InventoryService.adjustStock(req.seller._id, productId, delta, locationId || null);
 
-    if (!product) {
+    if (product === null || product === undefined) {
       const exists = await Product.exists({ _id: productId, sellerId });
-      if (!exists) {
+      if (!exists || product === undefined) {
         return res
           .status(404)
           .json(createErrorResponse("NOT_FOUND", "محصول یافت نشد", null, req.id));
@@ -887,14 +900,23 @@ async function adjustStock(req, res) {
         );
     }
 
-    // Record adjustment history
+    // Record adjustment history. The `before` snapshot for a location-scoped
+    // change is a separate read: the aggregate is recomputed by the write, so
+    // `after - delta` would not be exact there. The bracket is informational;
+    // the numbers themselves came from one atomic document update.
+    let beforeStock = { onHand: product.stock.onHand - delta, reserved: product.stock.reserved };
+    if (locationId) {
+      const pre = await Product.findOne({ _id: productId, sellerId }).select("stock").lean();
+      beforeStock = pre ? pre.stock : { onHand: product.stock.onHand - delta, reserved: product.stock.reserved };
+    }
+
     await StockAdjustment.create({
       productId: product._id,
       sellerId,
       delta,
       type: adjType,
       reason: reason || "",
-      before: { onHand: product.stock.onHand - delta, reserved: product.stock.reserved },
+      before: { onHand: beforeStock.onHand, reserved: beforeStock.reserved },
       after: { onHand: product.stock.onHand, reserved: product.stock.reserved },
       actor: req.user.id,
       source: "seller_ui",
@@ -907,7 +929,7 @@ async function adjustStock(req, res) {
       result: "SUCCESS",
       riskLevel: "MEDIUM",
       requestContext: req,
-      metadata: { productId: String(product._id), delta, reason: reason || "" },
+      metadata: { productId: String(product._id), delta, reason: reason || "", locationId: locationId ? String(locationId) : null },
     });
 
     res.json(createSuccessResponse({ product: productToDTO(product) }, req.id));
@@ -2884,6 +2906,413 @@ async function deleteSellerReviewReply(req, res) {
   }
 }
 
+// ── Inventory locations (stage 38) ──────────────────────────────────────────
+//
+// Locations answer "where", never "whether": the quantity that guards an order
+// lives in `Product.stock` and is written once per movement. Everything here
+// is therefore a thin, seller-scoped shell over InventoryService — no endpoint
+// accepts a `sellerId`, and a location belonging to another store answers
+// exactly as a missing one does.
+
+const LOCATION_KINDS = ["warehouse", "storefront", "marketplace", "transit"];
+
+function locationToDTO(loc) {
+  return {
+    id: String(loc._id),
+    name: loc.name,
+    code: loc.code,
+    kind: loc.kind,
+    address: loc.address || {},
+    isDefault: !!loc.isDefault,
+    isActive: !!loc.isActive,
+    sortOrder: loc.sortOrder ?? 0,
+    createdAt: loc.createdAt,
+    updatedAt: loc.updatedAt,
+  };
+}
+
+/** Shared body validation for create/update. Returns an error string or null. */
+function validateLocationBody(body, { partial }) {
+  const { name, code, kind, address } = body;
+
+  if (name !== undefined || !partial) {
+    if (typeof name !== "string" || name.trim().length < 2 || name.trim().length > 80) {
+      return "نام انبار باید بین ۲ تا ۸۰ نویسه باشد";
+    }
+  }
+  if (code !== undefined || !partial) {
+    if (typeof code !== "string" || !/^[A-Za-z0-9-]{3,20}$/.test(code.trim())) {
+      return "کد انبار باید ۳ تا ۲۰ نویسه و فقط شامل حروف انگلیسی، رقم و خط تیره باشد";
+    }
+  }
+  if (kind !== undefined && !LOCATION_KINDS.includes(kind)) {
+    return "نوع انبار نامعتبر است";
+  }
+  if (address !== undefined) {
+    if (typeof address !== "object" || address === null || Array.isArray(address)) {
+      return "آدرس انبار نامعتبر است";
+    }
+  }
+  return null;
+}
+
+async function listInventoryLocations(req, res) {
+  try {
+    const locations = await InventoryService.listLocations(req.seller._id);
+    res.json(createSuccessResponse({ items: locations.map(locationToDTO) }, req.id));
+  } catch (e) {
+    logger.error("Seller listInventoryLocations error", { error: e.message, sellerId: req.seller?._id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function createInventoryLocation(req, res) {
+  const body = req.body || {};
+  const invalid = validateLocationBody(body, { partial: false });
+  if (invalid) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", invalid, null, req.id));
+  }
+
+  try {
+    const loc = await InventoryService.createLocation(req.seller._id, {
+      name: body.name.trim(),
+      code: body.code.trim(),
+      kind: body.kind,
+      address: body.address,
+      isDefault: body.isDefault,
+      isActive: body.isActive,
+      sortOrder: body.sortOrder,
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "INVENTORY_LOCATION_CREATED",
+      resource: { type: "INVENTORY_LOCATION", id: String(loc._id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { code: loc.code, name: loc.name },
+    });
+
+    res.status(201).json(createSuccessResponse({ location: locationToDTO(loc) }, req.id));
+  } catch (e) {
+    if (e.code === "LOCATION_LIMIT") {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "LOCATION_LIMIT",
+            `حداکثر ${InventoryService.MAX_LOCATIONS} انبار برای هر فروشنده مجاز است`,
+            null,
+            req.id,
+          ),
+        );
+    }
+    if (e.code === 11000) {
+      return res
+        .status(409)
+        .json(createErrorResponse("DUPLICATE_CODE", "این کد انبار قبلاً استفاده شده است", null, req.id));
+    }
+    if (e.name === "ValidationError") {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "اطلاعات انبار نامعتبر است", null, req.id));
+    }
+    logger.error("Seller createInventoryLocation error", { error: e.message, sellerId: req.seller?._id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function updateInventoryLocation(req, res) {
+  const { locationId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(locationId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه انبار نامعتبر است", { field: "locationId" }, req.id));
+  }
+
+  const body = req.body || {};
+  const invalid = validateLocationBody(body, { partial: true });
+  if (invalid) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", invalid, null, req.id));
+  }
+
+  try {
+    const loc = await InventoryService.updateLocation(req.seller._id, locationId, {
+      name: typeof body.name === "string" ? body.name.trim() : undefined,
+      code: typeof body.code === "string" ? body.code.trim() : undefined,
+      kind: body.kind,
+      address: body.address,
+      isDefault: body.isDefault,
+      isActive: body.isActive,
+      sortOrder: body.sortOrder,
+    });
+
+    if (!loc) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "انبار یافت نشد", null, req.id));
+    }
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "INVENTORY_LOCATION_UPDATED",
+      resource: { type: "INVENTORY_LOCATION", id: String(loc._id) },
+      result: "SUCCESS",
+      riskLevel: "LOW",
+      requestContext: req,
+      metadata: { code: loc.code, isDefault: !!loc.isDefault, isActive: !!loc.isActive },
+    });
+
+    res.json(createSuccessResponse({ location: locationToDTO(loc) }, req.id));
+  } catch (e) {
+    if (e.code === 11000) {
+      return res
+        .status(409)
+        .json(createErrorResponse("DUPLICATE_CODE", "این کد انبار قبلاً استفاده شده است", null, req.id));
+    }
+    if (e.name === "ValidationError") {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "اطلاعات انبار نامعتبر است", null, req.id));
+    }
+    logger.error("Seller updateInventoryLocation error", { error: e.message, sellerId: req.seller?._id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function deleteInventoryLocation(req, res) {
+  const { locationId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(locationId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه انبار نامعتبر است", { field: "locationId" }, req.id));
+  }
+
+  try {
+    const loc = await InventoryService.deleteLocation(req.seller._id, locationId);
+    if (!loc) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "انبار یافت نشد", null, req.id));
+    }
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "INVENTORY_LOCATION_DELETED",
+      resource: { type: "INVENTORY_LOCATION", id: String(locationId) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: { code: loc.code, name: loc.name },
+    });
+
+    res.json(createSuccessResponse({ deleted: true }, req.id));
+  } catch (e) {
+    logger.error("Seller deleteInventoryLocation error", { error: e.message, sellerId: req.seller?._id });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+/** Per-product breakdown for the UI: joins each level to its location's name. */
+async function getProductLevels(req, res) {
+  const { productId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(productId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه محصول نامعتبر است", { field: "productId" }, req.id));
+  }
+
+  try {
+    const sellerId = req.seller._id;
+    const product = await Product.findOne({ _id: productId, sellerId })
+      .select("_id title sku stock stockPolicy")
+      .lean();
+    if (!product) {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "محصول یافت نشد", null, req.id));
+    }
+
+    const locations = await InventoryService.listLocations(sellerId);
+    const byId = new Map(locations.map((l) => [String(l._id), l]));
+    const levels = (product.stock?.locations || []).map((l) => {
+      const meta = byId.get(String(l.locationId));
+      return {
+        locationId: String(l.locationId),
+        // A level whose location was deleted still holds units; it is not
+        // silently dropped from the totals, so it must not be hidden either.
+        name: meta ? meta.name : "(انبار حذفشده)",
+        code: meta ? meta.code : "",
+        onHand: l.onHand ?? 0,
+        reserved: l.reserved ?? 0,
+      };
+    });
+
+    const sumOnHand = levels.reduce((s, l) => s + l.onHand, 0);
+    const sumReserved = levels.reduce((s, l) => s + l.reserved, 0);
+
+    res.json(
+      createSuccessResponse(
+        {
+          product: { id: String(product._id), title: product.title, sku: product.sku, stockPolicy: product.stockPolicy },
+          stock: {
+            onHand: product.stock?.onHand ?? 0,
+            reserved: product.stock?.reserved ?? 0,
+            incoming: product.stock?.incoming ?? 0,
+            available: Math.max(0, product.stock?.onHand ?? 0),
+            levels,
+            // Surfaced so a drift is visible rather than argued about.
+            levelsOnHand: sumOnHand,
+            levelsReserved: sumReserved,
+          },
+          locations: locations.map(locationToDTO),
+        },
+        req.id,
+      ),
+    );
+  } catch (e) {
+    logger.error("Seller getProductLevels error", { error: e.message, sellerId: req.seller?._id, productId });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function transferInventory(req, res) {
+  const { productId } = req.params;
+  const { fromLocationId, toLocationId, qty } = req.body || {};
+
+  if (!mongoose.Types.ObjectId.isValid(productId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه محصول نامعتبر است", { field: "productId" }, req.id));
+  }
+  if (!mongoose.Types.ObjectId.isValid(fromLocationId) || !mongoose.Types.ObjectId.isValid(toLocationId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه انبار مبدأ یا مقصد نامعتبر است", null, req.id));
+  }
+  if (!Number.isInteger(qty) || qty <= 0) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "تعداد انتقال باید عدد صحیح مثبت باشد", { field: "qty" }, req.id));
+  }
+
+  try {
+    const result = await InventoryService.transferStock(
+      req.seller._id,
+      productId,
+      fromLocationId,
+      toLocationId,
+      qty,
+    );
+
+    if (result.error === "VALIDATION") {
+      return res
+        .status(400)
+        .json(createErrorResponse("VALIDATION_ERROR", "انتقال به همان انبار مجاز نیست", null, req.id));
+    }
+    if (result.error === "NOT_FOUND" || result.error === "LOCATION_NOT_FOUND") {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "محصول یا انبار یافت نشد", null, req.id));
+    }
+    if (result.error) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("INSUFFICIENT_STOCK", "موجودی کافی در انبار مبدأ وجود ندارد", null, req.id),
+        );
+    }
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "INVENTORY_TRANSFERRED",
+      resource: { type: "TRANSACTION", id: String(productId) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: {
+        fromLocationId: String(fromLocationId),
+        toLocationId: String(toLocationId),
+        qty,
+      },
+    });
+
+    res.json(createSuccessResponse({ product: productToDTO(result.product) }, req.id));
+  } catch (e) {
+    logger.error("Seller transferInventory error", { error: e.message, sellerId: req.seller?._id, productId });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
+async function reconcileInventory(req, res) {
+  const { productId } = req.params;
+  const { locationId, counted, reason } = req.body || {};
+
+  if (!mongoose.Types.ObjectId.isValid(productId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه محصول نامعتبر است", { field: "productId" }, req.id));
+  }
+  if (!mongoose.Types.ObjectId.isValid(locationId)) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "شناسه انبار نامعتبر است", { field: "locationId" }, req.id));
+  }
+  if (!Number.isInteger(counted) || counted < 0) {
+    return res
+      .status(400)
+      .json(createErrorResponse("VALIDATION_ERROR", "موجودی شمارششده باید عدد صحیح نامنفی باشد", { field: "counted" }, req.id));
+  }
+
+  try {
+    const result = await InventoryService.reconcileLevel(
+      req.seller._id,
+      productId,
+      locationId,
+      counted,
+    );
+
+    if (result.error === "NOT_FOUND" || result.error === "LOCATION_NOT_FOUND") {
+      return res.status(404).json(createErrorResponse("NOT_FOUND", "محصول یا انبار یافت نشد", null, req.id));
+    }
+    if (result.error === "NOT_TRACKED") {
+      return res
+        .status(400)
+        .json(createErrorResponse("NOT_TRACKED", "این محصول انبارداری نمیشود", null, req.id));
+    }
+    if (result.error) {
+      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "درخواست نامعتبر است", null, req.id));
+    }
+
+    const after = result.product.stock;
+    const before = result.before || { onHand: after.onHand, reserved: after.reserved };
+
+    await StockAdjustment.create({
+      productId: result.product._id,
+      sellerId: req.seller._id,
+      delta: (after.onHand ?? 0) - (before.onHand ?? 0),
+      type: "count",
+      reason: reason || "",
+      before: { onHand: before.onHand ?? 0, reserved: before.reserved ?? 0 },
+      after: { onHand: after.onHand ?? 0, reserved: after.reserved ?? 0 },
+      actor: req.user.id,
+      source: "seller_ui",
+    });
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: "INVENTORY_RECONCILED",
+      resource: { type: "TRANSACTION", id: String(productId) },
+      result: "SUCCESS",
+      riskLevel: "MEDIUM",
+      requestContext: req,
+      metadata: { locationId: String(locationId), counted, reason: reason || "" },
+    });
+
+    res.json(createSuccessResponse({ product: productToDTO(result.product) }, req.id));
+  } catch (e) {
+    logger.error("Seller reconcileInventory error", { error: e.message, sellerId: req.seller?._id, productId });
+    res.status(500).json(createErrorResponse("INTERNAL_ERROR", "خطای داخلی سرور", null, req.id));
+  }
+}
+
 module.exports = {
   getDashboard,
   getProfile,
@@ -2899,6 +3328,13 @@ module.exports = {
   exportInventory,
   adjustStock,
   getStockHistory,
+  listInventoryLocations,
+  createInventoryLocation,
+  updateInventoryLocation,
+  deleteInventoryLocation,
+  getProductLevels,
+  transferInventory,
+  reconcileInventory,
   getAnalytics,
   getSalesReport,
   exportSalesReport,

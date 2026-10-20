@@ -53,9 +53,10 @@ function publicStorefrontToDTO(profile) {
 }
 
 function publicProductToDTO(product) {
-  const onHand = product.stock?.onHand ?? 0;
-  const reserved = product.stock?.reserved ?? 0;
-  const availableStock = Math.max(0, onHand - reserved);
+  // `onHand` is already the free balance — reserveStock removes a unit from it
+  // at the same moment it adds the unit to `reserved`, so subtracting reserved
+  // again here would advertise in-flight units as unavailable.
+  const availableStock = Math.max(0, product.stock?.onHand ?? 0);
   const tracked = product.stockPolicy === "tracked";
   return {
     id: String(product._id),

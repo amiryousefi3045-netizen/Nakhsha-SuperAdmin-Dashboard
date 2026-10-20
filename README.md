@@ -175,7 +175,7 @@ ssh root@your-vps-ip
 
 ---
 
-## � تنظیم متغیرهای محیطی (Environment Setup)
+## تنظیم متغیرهای محیطی (Environment Setup)
 
 **هرگز فایل `.env` را به مخزن git اضافه نکنید.**
 

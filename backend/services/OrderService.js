@@ -24,6 +24,7 @@ const sellerEventHub = require("./SellerEventHub");
 const CouponService = require("./CouponService");
 const ShippingService = require("./ShippingService");
 const AuditService = require("./AuditService");
+const InventoryService = require("./InventoryService");
 const logger = require("../utils/logger");
 
 // ── State machine ───────────────────────────────────────────────────────────
@@ -164,68 +165,29 @@ function orderToDTO(order, options = {}) {
 }
 
 // ── Atomic stock helpers ────────────────────────────────────────────────────
+//
+// All four delegate to InventoryService so the aggregate and the per-location
+// breakdown are never updated by two different pieces of code and drift apart.
+// `locationId` is the level the write lands on; `null` means this seller has no
+// locations at all, in which case only the aggregate moves — exactly the
+// behaviour every pre-Stage-38 order was created with.
 
 /**
  * Reserve `qty` units: onHand -= qty, reserved += qty. Atomic guard ensures the
  * reservation is impossible when available stock is insufficient.
  */
-async function reserveStock(productId, sellerId, qty) {
-  const updated = await Product.findOneAndUpdate(
-    {
-      _id: productId,
-      sellerId,
-      stockPolicy: "tracked",
-      "stock.onHand": { $gte: qty },
-    },
-    [
-      {
-        $set: {
-          "stock.onHand": { $subtract: [{ $ifNull: ["$stock.onHand", 0] }, qty] },
-          "stock.reserved": { $add: [{ $ifNull: ["$stock.reserved", 0] }, qty] },
-        },
-      },
-    ],
-    { new: true },
-  );
-  return updated;
+function reserveStock(productId, sellerId, qty, locationId = null) {
+  return InventoryService.reserveStock(productId, sellerId, qty, locationId);
 }
 
 /** Release a reservation without touching onHand (shipment): clamps at 0. */
-async function releaseReserved(productId, sellerId, qty) {
-  return Product.findOneAndUpdate(
-    { _id: productId, sellerId, stockPolicy: "tracked" },
-    [
-      {
-        $set: {
-          "stock.reserved": {
-            $max: [{ $subtract: [{ $ifNull: ["$stock.reserved", 0] }, qty] }, 0],
-          },
-        },
-      },
-    ],
-    { new: true },
-  );
+function releaseReserved(productId, sellerId, qty, locationId = null) {
+  return InventoryService.releaseReserved(productId, sellerId, qty, locationId);
 }
 
 /** Restore reserved units back to onHand (cancel/return). Strict guard. */
-async function restoreStock(productId, sellerId, qty) {
-  return Product.findOneAndUpdate(
-    {
-      _id: productId,
-      sellerId,
-      stockPolicy: "tracked",
-      "stock.reserved": { $gte: qty },
-    },
-    [
-      {
-        $set: {
-          "stock.reserved": { $subtract: [{ $ifNull: ["$stock.reserved", 0] }, qty] },
-          "stock.onHand": { $add: [{ $ifNull: ["$stock.onHand", 0] }, qty] },
-        },
-      },
-    ],
-    { new: true },
-  );
+function restoreStock(productId, sellerId, qty, locationId = null) {
+  return InventoryService.restoreStock(productId, sellerId, qty, locationId);
 }
 
 /**
@@ -233,18 +195,21 @@ async function restoreStock(productId, sellerId, qty) {
  * was already released at shipment, so only onHand grows; there is no reserved
  * balance to reconcile.
  */
-async function returnToStock(productId, sellerId, qty) {
-  return Product.findOneAndUpdate(
-    { _id: productId, sellerId, stockPolicy: "tracked" },
-    [
-      {
-        $set: {
-          "stock.onHand": { $add: [{ $ifNull: ["$stock.onHand", 0] }, qty] },
-        },
-      },
-    ],
-    { new: true },
-  );
+function returnToStock(productId, sellerId, qty, locationId = null) {
+  return InventoryService.returnToStock(productId, sellerId, qty, locationId);
+}
+
+/**
+ * The level a write should land on when an order item does not record one.
+ *
+ * Resolved once per operation rather than per item: an order of three lines
+ * must not draw from three different places just because the default was
+ * re-saved halfway through. Orders created before Stage 38 carry no
+ * `stockLocationId`, so they fall back to whatever the default is now — there
+ * is no historical level to recover, and inventing one would be a lie.
+ */
+function resolveStockLocation(sellerId) {
+  return InventoryService.resolveDefaultLocationId(sellerId);
 }
 
 // ── Service ─────────────────────────────────────────────────────────────────
@@ -396,6 +361,11 @@ async function createOrder({
   // records what phase 3 will have to reserve.
   const snapshotItems = [];
   const trackedToReserve = [];
+  // Resolved once for the whole basket: every line is charged to the same
+  // place, so a default re-saved mid-order cannot split one basket across two
+  // locations. `null` for a seller with no locations keeps the pre-stage-38
+  // behaviour of touching only the aggregate.
+  const stockLocationId = await resolveStockLocation(sellerId);
   for (const item of items) {
     const product = products.find((p) => String(p._id) === String(item.productId));
     if (!product) {
@@ -405,7 +375,7 @@ async function createOrder({
     }
 
     if (product.stockPolicy === "tracked") {
-      trackedToReserve.push({ product, qty: item.qty });
+      trackedToReserve.push({ product, qty: item.qty, locationId: stockLocationId });
     }
 
     snapshotItems.push({
@@ -416,6 +386,10 @@ async function createOrder({
       price: product.price,
       currency: product.currency || "IRR",
       qty: item.qty,
+      // Recorded only for lines whose stock actually moved. Cancellation and
+      // return have to give the units back to the level they left, not to
+      // whatever happens to be the default by then.
+      ...(product.stockPolicy === "tracked" ? { stockLocationId } : {}),
     });
   }
 
@@ -566,7 +540,7 @@ async function createOrder({
   /** Undo every reservation this call opened. Never masks the original error. */
   const unwindStock = async () => {
     for (const taken of reservedNow.reverse()) {
-      await restoreStock(taken.productId, String(sellerId), taken.qty).catch((err) =>
+      await restoreStock(taken.productId, String(sellerId), taken.qty, taken.locationId).catch((err) =>
         logger.error("Failed to unwind a stock reservation for a failed order", {
           productId: String(taken.productId),
           qty: taken.qty,
@@ -587,8 +561,8 @@ async function createOrder({
   };
 
   try {
-    for (const { product, qty } of trackedToReserve) {
-      const reserved = await reserveStock(product._id, sellerId, qty);
+    for (const { product, qty, locationId } of trackedToReserve) {
+      const reserved = await reserveStock(product._id, sellerId, qty, locationId);
       if (!reserved) {
         throw new OrderDomainError(
           "INSUFFICIENT_STOCK",
@@ -596,7 +570,7 @@ async function createOrder({
           { productId: String(product._id), title: product.title },
         );
       }
-      reservedNow.push({ productId: product._id, qty });
+      reservedNow.push({ productId: product._id, qty, locationId });
     }
 
     const orderNumber = await nextSequence(`order:${String(sellerId)}`);
@@ -726,11 +700,17 @@ async function transitionOrder({
     );
   }
 
+  // Give every unit back to the level it left. Lines written before stage 38
+  // record no level, so they fall back to today's default: there is no
+  // historical level to recover, and inventing one would be a lie.
+  const stockLocationId = await resolveStockLocation(sellerId);
+  const locationOf = (item) => item.stockLocationId || stockLocationId;
+
   // Stock side-effects happen BEFORE the status write so a failure leaves the
   // order untouched.
   if (nextStatus === "cancelled") {
     for (const item of order.items) {
-      const restored = await restoreStock(item.productId, sellerId, item.qty);
+      const restored = await restoreStock(item.productId, sellerId, item.qty, locationOf(item));
       if (!restored) {
         throw new OrderDomainError(
           "INSUFFICIENT_STOCK",
@@ -751,7 +731,7 @@ async function transitionOrder({
   } else if (nextStatus === "returned") {
     // Reservation was released at shipment; units physically return to onHand.
     for (const item of order.items) {
-      await returnToStock(item.productId, sellerId, item.qty);
+      await returnToStock(item.productId, sellerId, item.qty, locationOf(item));
     }
   } else if (nextStatus === "shipped") {
     // A shipment must have a destination. Before this guard an order could go to
@@ -761,7 +741,7 @@ async function transitionOrder({
     // anything was ever sent. An undeliverable order must never be earnable.
     assertShippable(order);
     for (const item of order.items) {
-      await releaseReserved(item.productId, sellerId, item.qty);
+      await releaseReserved(item.productId, sellerId, item.qty, locationOf(item));
     }
   }
 

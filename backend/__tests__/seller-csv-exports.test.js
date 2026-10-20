@@ -300,7 +300,9 @@ describe("inventory CSV export", () => {
     expect(lines.join("\n")).not.toContain("CSV-X");
     expect(lines.join("\n")).not.toContain("CSV-C");
     expect(lines[1]).toContain('"1","0","0","1"');
-    expect(lines[2]).toContain('"10","2","1","8"');
+    // onHand 10 with 2 committed elsewhere → 10 still sellable. available is the
+    // free balance; committed units are not part of it (see Product.availableStock).
+    expect(lines[2]).toContain('"10","2","1","10"');
   });
 
   it("filters by low-stock status like the list endpoint", async () => {

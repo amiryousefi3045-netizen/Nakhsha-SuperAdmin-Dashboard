@@ -10,6 +10,8 @@ import {
   Minus,
   Download,
   CheckCircle2,
+  Warehouse,
+  Layers,
 } from "lucide-react";
 import { useSellerFetch } from "../../hooks/useSellerFetch";
 import { useDebounce } from "../../hooks/useDebounce";
@@ -19,18 +21,21 @@ import {
   adjustSellerStock,
   exportSellerInventoryCsv,
   bulkUpdateSellerProductStatus,
+  listInventoryLocations,
 } from "../../services/sellerService";
 import type {
   SellerProduct,
   StockAdjustmentType,
   ProductStatus,
   BulkActionResult,
+  InventoryLocation,
 } from "../../types/seller";
 import {
   BulkActionBar,
   BulkActionButton,
   BulkResultNotice,
 } from "../../components/seller/BulkActionBar";
+import { ProductLevelsModal } from "../../components/seller/ProductLevelsModal";
 import { StatusBadge } from "../../components/admin/StatusBadge";
 import { Pagination } from "../../components/admin/Pagination";
 import { faNumber } from "../../lib/adminFormat";
@@ -53,6 +58,7 @@ interface AdjustTarget {
   delta: number;
   reason: string;
   type: StockAdjustmentType;
+  locationId: string;
 }
 
 export function InventorySeller() {
@@ -79,6 +85,30 @@ export function InventorySeller() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
+
+  // Stage 38: locations are optional. When the seller has none, every path here
+  // behaves exactly as before and the costly extra fetch is skipped.
+  const [locations, setLocations] = useState<InventoryLocation[]>([]);
+  const [levelsTarget, setLevelsTarget] = useState<SellerProduct | null>(null);
+
+  const loadLocations = useCallback(async () => {
+    try {
+      setLocations(await listInventoryLocations());
+    } catch {
+      // A seller without the locations feature must not see a page-level error.
+      setLocations([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLocations();
+  }, [loadLocations]);
+
+  const hasLocations = locations.length > 0;
+  const defaultLocationId = useMemo(
+    () => locations.find((l) => l.isDefault)?.id ?? locations[0]?.id ?? "",
+    [locations],
+  );
 
   const fetcher = useCallback(
     () =>
@@ -159,11 +189,16 @@ export function InventorySeller() {
 
   const handleAdjust = async () => {
     if (!adjustTarget) return;
-    const { product, delta, reason, type } = adjustTarget;
+    const { product, delta, reason, type, locationId } = adjustTarget;
     setAdjustBusy(true);
     setAdjustError(null);
     try {
-      await adjustSellerStock(product.id, { delta, reason: reason.trim(), type });
+      await adjustSellerStock(product.id, {
+        delta,
+        reason: reason.trim(),
+        type,
+        ...(hasLocations && locationId ? { locationId } : {}),
+      });
       setSuccessMsg(
         `موجودی «${product.title}» با تغییر ${faNumber(Math.abs(delta))} به‌روزرسانی شد.`,
       );
@@ -186,19 +221,28 @@ export function InventorySeller() {
             مدیریت موجودی فیزیکی و تاریخچه تنظیمات
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting || isLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
-        >
-          {exporting ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          خروجی CSV
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/seller/inventory/locations"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10"
+          >
+            <Warehouse className="h-4 w-4" />
+            مدیریت انبارها
+          </Link>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || isLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-muted)]/10 disabled:opacity-50"
+          >
+            {exporting ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            خروجی CSV
+          </button>
+        </div>
       </div>
 
       {exportError && (
@@ -366,7 +410,13 @@ export function InventorySeller() {
                         type="button"
                         disabled={adjustBusy}
                         onClick={() =>
-                          setAdjustTarget({ product: p, delta: 0, reason: "", type: "adjustment" })
+                          setAdjustTarget({
+                            product: p,
+                            delta: 0,
+                            reason: "",
+                            type: "adjustment",
+                            locationId: defaultLocationId,
+                          })
                         }
                         title="تنظیم موجودی"
                         className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-primary)]/5 disabled:opacity-40"
@@ -381,6 +431,16 @@ export function InventorySeller() {
                       >
                         <History className="h-4 w-4" />
                       </Link>
+                      {hasLocations ? (
+                        <button
+                          type="button"
+                          onClick={() => setLevelsTarget(p)}
+                          title="موجودی بر اساس انبار"
+                          className="rounded-lg border border-[var(--color-border)] bg-white p-1.5 text-[var(--color-text)] hover:bg-[var(--color-primary)]/5"
+                        >
+                          <Layers className="h-4 w-4" />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -475,6 +535,30 @@ export function InventorySeller() {
                 </select>
               </div>
 
+              {hasLocations ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--color-text)]">انبار</label>
+                  <select
+                    value={adjustTarget.locationId}
+                    onChange={(e) =>
+                      setAdjustTarget((t) => (t ? { ...t, locationId: e.target.value } : t))
+                    }
+                    className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm text-[var(--color-text)]"
+                  >
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                        {loc.isDefault ? " (پیش‌فرض)" : ""}
+                        {loc.isActive ? "" : " — غیرفعال"}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">
+                    تغییر فقط روی موجودی همین انبار اعمال می‌شود.
+                  </p>
+                </div>
+              ) : null}
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text)]">دلیل (اختیاری)</label>
                 <input
@@ -514,6 +598,16 @@ export function InventorySeller() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {levelsTarget ? (
+        <ProductLevelsModal
+          product={levelsTarget}
+          onClose={() => setLevelsTarget(null)}
+          onChanged={() => {
+            void reload();
+          }}
+        />
       ) : null}
     </div>
   );

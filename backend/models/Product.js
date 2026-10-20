@@ -77,6 +77,37 @@ const ProductSchema = new mongoose.Schema(
       onHand: { type: Number, default: 0, min: 0 },
       reserved: { type: Number, default: 0, min: 0 },
       incoming: { type: Number, default: 0, min: 0 },
+      /**
+       * Per-location breakdown (phase 38), summed at write time so that
+       * `stock.onHand === Σ locations.onHand` and likewise for `reserved`.
+       *
+       * These live on THIS document, not in a second collection, because the
+       * deployment runs a standalone MongoDB where multi-document
+       * transactions do not exist. Splitting them out would mean an order
+       * could move a unit between the two collections in two steps and land
+       * somewhere in between; keeping them here makes every stock movement a
+       * single atomic write.
+       *
+       * An empty array means "not yet broken down" rather than "no stock":
+       * InventoryService materializes it from the aggregate on first use.
+       */
+      locations: {
+        type: [
+          new mongoose.Schema(
+            {
+              locationId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "InventoryLocation",
+                required: true,
+              },
+              onHand: { type: Number, default: 0, min: 0 },
+              reserved: { type: Number, default: 0, min: 0 },
+            },
+            { _id: false }
+          ),
+        ],
+        default: [],
+      },
     },
     stockPolicy: {
       type: String,
@@ -138,16 +169,35 @@ ProductSchema.index({ title: "text", description: "text", tags: "text" }, {
 // VIRTUALS
 // ============================================================================
 
+/**
+ * How many units a buyer can actually take right now.
+ *
+ * `onHand` IS the free balance, so this is simply `onHand`. It is not
+ * `onHand - reserved`: `OrderService.reserveStock` moves a unit from `onHand`
+ * to `reserved` in one update, which already removed it from the free balance.
+ * Subtracting `reserved` here as well would count the same commitment twice
+ * and advertise a product as out of stock while units were still free —
+ * for example 6 units with 3 in flight leaves 3 sellable, not 0.
+ *
+ * Physical total on the seller's shelves = onHand + reserved; the rest of the
+ * system (reserve guard, CSV `onHand`, payout reconciliation) is written
+ * against that convention.
+ */
 ProductSchema.virtual("availableStock").get(function () {
-  const onHand = Number(this.stock?.onHand || 0);
-  const reserved = Number(this.stock?.reserved || 0);
-  const available = Math.max(0, onHand - reserved);
-  return available;
+  return Math.max(0, Number(this.stock?.onHand || 0));
 });
 
+/**
+ * Low stock means "running out", which is only useful while there is still
+ * something to run out of. An empty shelf is reported by `isOutOfStock`;
+ * labelling it low as well makes a dashboard show the same product twice in
+ * two different colours. StorefrontService has always used this stricter
+ * reading — this brings the model in line with it instead of the other way.
+ */
 ProductSchema.virtual("isLowStock").get(function () {
   if (this.stockPolicy !== "tracked") return false;
-  return this.availableStock <= (this.lowStockThreshold || 0);
+  const available = this.availableStock;
+  return available > 0 && available <= (this.lowStockThreshold || 0);
 });
 
 ProductSchema.virtual("isOutOfStock").get(function () {

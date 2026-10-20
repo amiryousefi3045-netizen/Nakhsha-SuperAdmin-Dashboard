@@ -24,6 +24,10 @@ const resourceSchema = new mongoose.Schema(
         // after it was added. Without it, Mongoose rejects the whole document
         // and `AuditService.log` swallows the error — a silent audit gap.
         "ORDER",
+        // Inventory locations (stage 38). Without this the whole document is
+        // rejected by the enum and `AuditService.log` swallows the error — the
+        // exact silent-gap this list already learned about with ORDER above.
+        "INVENTORY_LOCATION",
       ],
       required: true,
     },
@@ -131,6 +135,14 @@ const auditLogSchema = new mongoose.Schema(
         "PRODUCT_STATUS_CHANGED",
         "PRODUCT_ARCHIVED",
         "STOCK_ADJUSTED",
+        // Multi-location inventory (stage 38): where stock lives is a security
+        // boundary too — a seller must not be able to open a silo they can pour
+        // another store's stock into, and every movement has to be traceable.
+        "INVENTORY_LOCATION_CREATED",
+        "INVENTORY_LOCATION_UPDATED",
+        "INVENTORY_LOCATION_DELETED",
+        "INVENTORY_TRANSFERRED",
+        "INVENTORY_RECONCILED",
         "ORDER_CREATED",
         "ORDER_STATUS_CHANGED",
         // The seller's real courier expense (Phase 36, P1-08). Kept distinct from

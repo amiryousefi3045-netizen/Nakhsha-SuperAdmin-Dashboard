@@ -32,6 +32,13 @@ import {
   exportSellerInventoryCsv,
   adjustSellerStock,
   getSellerStockHistory,
+  listInventoryLocations,
+  createInventoryLocation,
+  updateInventoryLocation,
+  deleteInventoryLocation,
+  getProductLevels,
+  transferInventoryStock,
+  reconcileInventoryStock,
   getSellerAnalytics,
   getSellerSalesReport,
   exportSellerSalesReportCsv,
@@ -327,6 +334,117 @@ describe("seller inventory", () => {
       params: {},
     });
     expect(history.items[0].delta).toBe(5);
+  });
+});
+
+describe("seller inventory locations (stage 38)", () => {
+  const LOCATION = {
+    id: "loc1",
+    name: "انبار مرکزی",
+    code: "WH-01",
+    kind: "warehouse" as const,
+    address: { province: "تهران", city: "تهران" },
+    isDefault: true,
+    isActive: true,
+    sortOrder: 0,
+  };
+
+  it("listInventoryLocations GETs /seller/inventory/locations", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(ok({ items: [LOCATION] }));
+    const locations = await listInventoryLocations();
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/inventory/locations");
+    expect(locations).toHaveLength(1);
+    expect(locations[0].code).toBe("WH-01");
+  });
+
+  it("createInventoryLocation POSTs the payload", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ location: LOCATION }));
+    const location = await createInventoryLocation({
+      name: "انبار مرکزی",
+      code: "WH-01",
+      kind: "warehouse",
+      isDefault: true,
+    });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/inventory/locations", {
+      name: "انبار مرکزی",
+      code: "WH-01",
+      kind: "warehouse",
+      isDefault: true,
+    });
+    expect(location.id).toBe("loc1");
+  });
+
+  it("updateInventoryLocation PATCHes a single location", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(ok({ location: { ...LOCATION, isActive: false } }));
+    const location = await updateInventoryLocation("loc1", { isActive: false });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith(
+      "/seller/inventory/locations/loc1",
+      { isActive: false },
+    );
+    expect(location.isActive).toBe(false);
+  });
+
+  it("deleteInventoryLocation DELETEs the location", async () => {
+    vi.mocked(apiClient.delete).mockResolvedValueOnce(ok({ deleted: true }));
+    await deleteInventoryLocation("loc1");
+    expect(vi.mocked(apiClient.delete)).toHaveBeenCalledWith("/seller/inventory/locations/loc1");
+  });
+
+  it("adjustSellerStock forwards locationId when given", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce(
+      ok({ product: { ...PRODUCT, stock: { ...PRODUCT.stock, onHand: 20 } } }),
+    );
+    await adjustSellerStock("p1", { delta: -2, locationId: "loc1" });
+    expect(vi.mocked(apiClient.patch)).toHaveBeenCalledWith("/seller/inventory/p1", {
+      delta: -2,
+      locationId: "loc1",
+    });
+  });
+
+  it("getProductLevels GETs the per-location breakdown", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(
+      ok({
+        product: { id: "p1", title: "گلیم", stockPolicy: "track" },
+        stock: {
+          onHand: 20,
+          reserved: 2,
+          incoming: 0,
+          available: 20,
+          levels: [{ locationId: "loc1", name: "انبار مرکزی", code: "WH-01", onHand: 20, reserved: 2 }],
+          levelsOnHand: 20,
+          levelsReserved: 2,
+        },
+        locations: [LOCATION],
+      }),
+    );
+    const levels = await getProductLevels("p1");
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledWith("/seller/inventory/p1/levels");
+    expect(levels.stock.levels[0].onHand).toBe(20);
+    expect(levels.stock.levelsOnHand).toBe(20);
+  });
+
+  it("transferInventoryStock POSTs from/to/qty", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ product: PRODUCT }));
+    await transferInventoryStock("p1", {
+      fromLocationId: "loc1",
+      toLocationId: "loc2",
+      qty: 4,
+    });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/inventory/p1/transfer", {
+      fromLocationId: "loc1",
+      toLocationId: "loc2",
+      qty: 4,
+    });
+  });
+
+  it("reconcileInventoryStock POSTs the physical count", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce(ok({ product: PRODUCT }));
+    await reconcileInventoryStock("p1", { locationId: "loc1", counted: 18, reason: "شمارش ماهانه" });
+    expect(vi.mocked(apiClient.post)).toHaveBeenCalledWith("/seller/inventory/p1/reconcile", {
+      locationId: "loc1",
+      counted: 18,
+      reason: "شمارش ماهانه",
+    });
   });
 });
 

@@ -76,11 +76,68 @@ export interface SellerProfile {
   myRole?: "owner" | "manager" | "staff";
 }
 
+export interface ProductStockLevel {
+  locationId: string;
+  onHand: number;
+  reserved: number;
+}
+
 export interface ProductStock {
   onHand: number;
   reserved: number;
   incoming: number;
   available: number;
+  /**
+   * Per-location breakdown (stage 38). Empty for a seller with no locations and
+   * for products created before the feature — the aggregate is then all there is.
+   * Optional so older fixtures and mocked payloads stay valid.
+   */
+  locations?: ProductStockLevel[];
+}
+
+export type InventoryLocationKind = "warehouse" | "storefront" | "marketplace" | "transit";
+
+export interface InventoryLocation {
+  id: string;
+  name: string;
+  code: string;
+  kind: InventoryLocationKind;
+  address: { province?: string; city?: string; line?: string };
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InventoryLocationPayload {
+  name?: string;
+  code?: string;
+  kind?: InventoryLocationKind;
+  address?: { province?: string; city?: string; line?: string };
+  isDefault?: boolean;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export interface ProductLevels {
+  product: { id: string; title: string; sku?: string; stockPolicy: StockPolicy };
+  stock: {
+    onHand: number;
+    reserved: number;
+    incoming: number;
+    available: number;
+    levels: Array<{
+      locationId: string;
+      name: string;
+      code: string;
+      onHand: number;
+      reserved: number;
+    }>;
+    levelsOnHand: number;
+    levelsReserved: number;
+  };
+  locations: InventoryLocation[];
 }
 
 export interface SellerProduct {

@@ -323,7 +323,10 @@ describe("Seller Dashboard - products", () => {
     createdProductId = res.body.product.id;
     // Customer-supplied sellerId is always overridden server-side.
     expect(res.body.product.sellerId).toBe(String(sellerProfile._id));
-    expect(res.body.product.stock.available).toBe(18);
+    // 20 free units with 2 already committed to another order: available is 20,
+    // because reserveStock removes committed units from onHand as it records
+    // them. (Was 18 — the old formula subtracted them a second time.)
+    expect(res.body.product.stock.available).toBe(20);
     expect(res.body.product.price).toBe(250000);
   });
 

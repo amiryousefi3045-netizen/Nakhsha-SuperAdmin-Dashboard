@@ -219,8 +219,10 @@ describe("StorefrontService.getStorefrontProduct", () => {
     expect(result).not.toBeNull();
     expect(result.product.title).toBe("گلدان نقاشی");
     expect(result.product.price).toBe(1500000);
-    // available = onHand - reserved, quantity internals stay private
-    expect(result.product.availableStock).toBe(3);
+    // `onHand` is already net of reservations: reserveStock takes a unit out of
+    // onHand and into reserved in the same update, so the 4 free units here are
+    // sellable and the 1 committed unit is not counted twice. Was 3.
+    expect(result.product.availableStock).toBe(4);
     expect(result.product.stock).toBeUndefined();
     expect(result.product.isOutOfStock).toBe(false);
     expect(result.storefront.slug).toBe("detail-shop");

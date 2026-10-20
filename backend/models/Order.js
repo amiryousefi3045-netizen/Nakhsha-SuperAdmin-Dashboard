@@ -36,6 +36,17 @@ const OrderItemSchema = new mongoose.Schema(
     price: { type: Number, required: true, min: 0 },
     currency: { type: String, default: "IRR", maxlength: 10 },
     qty: { type: Number, required: true, min: 1, validate: Number.isInteger },
+    // The inventory location this line was reserved from (stage 38). Recorded
+    // only for tracked products, so cancellation and return give the units
+    // back to the level they left even if the seller changed their default
+    // since, instead of dumping the whole batch on today's first location.
+    // Historical orders carry no value and fall back to that location.
+    stockLocationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "InventoryLocation",
+      default: null,
+      index: true,
+    },
   },
   { _id: false },
 );

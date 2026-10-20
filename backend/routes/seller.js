@@ -86,11 +86,42 @@ router.get(
   requireSellerProfile,
   sellerController.exportInventory,
 );
+
+// Locations are registered BEFORE `/inventory/:productId` so that the literal
+// segment is never swallowed by the parameter route.
+router.get(
+  "/inventory/locations",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.listInventoryLocations,
+);
+router.post("/inventory/locations", write, sellerController.createInventoryLocation);
+router.patch(
+  "/inventory/locations/:locationId",
+  write,
+  sellerController.updateInventoryLocation,
+);
+router.delete(
+  "/inventory/locations/:locationId",
+  write,
+  sellerController.deleteInventoryLocation,
+);
+
 router.patch(
   "/inventory/:productId",
   write,
   sellerController.adjustStock,
 );
+router.get(
+  "/inventory/:productId/levels",
+  requireAuth,
+  requireRole("seller"),
+  requireSellerProfile,
+  sellerController.getProductLevels,
+);
+router.post("/inventory/:productId/transfer", write, sellerController.transferInventory);
+router.post("/inventory/:productId/reconcile", write, sellerController.reconcileInventory);
 router.get(
   "/inventory/:productId/history",
   requireAuth,

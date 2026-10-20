@@ -341,6 +341,7 @@ const Draft = require("./models/Draft");
 require("./models/SellerProfile");
 require("./models/Product");
 require("./models/StockAdjustment");
+require("./models/InventoryLocation");
 const authRoutes = require("./routes/auth");
 const craftRoutes = require("./routes/crafts");
 const postsRoutes = require("./routes/posts");
